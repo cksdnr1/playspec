@@ -1,8 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import path from 'node:path';
 import { createTempWorkspace, type TempWorkspace } from './createTempWorkspace.js';
 
-const REPO_ROOT = path.resolve('/volume2/PJ/playspec');
+const REPO_ROOT = process.cwd();
 
 describe('createTempWorkspace', () => {
   let workspace: TempWorkspace | null = null;
