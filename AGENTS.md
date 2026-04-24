@@ -17,6 +17,7 @@ PlaySpec is a TypeScript CLI/MCP workflow engine for managing LLM development ta
 - Do not auto-apply evolution proposals.
 - Do not perform destructive git operations.
 - Do not delete files outside `.playspec`.
+- Do not hardcode absolute paths (e.g. `path.resolve('/some/absolute/path')`). Derive paths dynamically using `process.cwd()` or `import.meta.url`.
 
 ## Phase 1 Scope
 
