@@ -4,7 +4,7 @@
 
 Phase 1 is the first usable CLI slice. It must deliver `.playspec` initialization, YAML-backed task creation and selection, active-task resolution, workflow/phase lookup, variable resolution, and prompt rendering for `next` and `phase`.
 
-Current repo state: no implementation exists yet. This handoff is therefore a zero-code-baseline build spec, not a refinement of existing runtime behavior.
+Current repo state: Phase 0-style bootstrap scaffolding exists, but the Phase 1 runtime is currently not yet implemented. This handoff is therefore a build spec for the first real runtime slice, not a refinement of working command behavior.
 
 ## Current Goal
 
@@ -60,13 +60,16 @@ Do not add Phase 2+ features.
 ### This phase is ready to implement / hand off when
 
 - the CLI/Core/storage/workflow/template split is fixed
-- `HEAD` is limited to the CLI boundary
+- `HEAD` is locked as the only Phase 1 human-CLI fallback source and remains limited to the CLI boundary
+- `sessions/cli.default.yaml` is treated as scaffold-only in Phase 1, not as a second current-task authority
+- `next` resolves the first workflow phase unless task state carries an explicit current/pending phase marker
 - `next` and `phase` share one render pipeline
+- stdout is the required observable output for rendered prompts; file persistence is optional only if it reuses the exact same rendered content
 - the test/demo scenarios below are accepted as the completion target
 
 ## Verified Facts
 
-- Repository is docs-only right now; no implementation code is present.
+- Repository contains bootstrap scaffolding and placeholder modules, but no Phase 1 runtime path is implemented yet.
 - Phase 1 requires `playspec init --preset default`, task creation, `HEAD`, `create/list/current/use`, workflow loading, phase resolving, variable resolving, template rendering, and `playspec next`.
 - `HEAD` is allowed only as a human CLI convenience; Core must prefer explicit `taskId`.
 - The default preset must install workflows, templates, and rules.
@@ -101,14 +104,14 @@ Do not add Phase 2+ features.
 1. CLI resolves explicit `--task` first, otherwise human CLI `HEAD`.
 2. Core loads task from `TaskStore`.
 3. Workflow loader loads the task workflow.
-4. Phase resolver calculates the next phase.
+4. Phase resolver selects the first workflow phase when no explicit current/pending phase marker exists in task state.
 5. Variable resolver computes prompt variables.
 6. Template renderer resolves includes and renders the template.
-7. CLI prints or writes one rendered prompt result.
+7. CLI prints the rendered prompt to stdout and may optionally persist the exact same rendered content under `{taskRoot}/prompts/`.
 
 ### `playspec phase <phaseNumber>`
 
-Same as `next`, except the phase selector is explicit instead of computed.
+Same as `next`, except the phase selector is explicit instead of computed. It must reuse the same render pipeline.
 
 ## Known Constraints
 
@@ -165,8 +168,8 @@ Target end-of-phase enabled use cases:
 - `playspec create multi-spec "Feature Name"` creates a slugged task folder and updates `HEAD`
 - `playspec current` returns the active task after create/use
 - `playspec use TASK_ID` switches the active task
-- `playspec next` renders the computed next phase prompt with resolved variables
-- `playspec phase 3` renders the explicit phase prompt
+- `playspec next` prints the first computed phase prompt to stdout when no explicit current/pending phase marker exists
+- `playspec phase 3` prints the explicit phase prompt to stdout
 - template include cycles and unresolved placeholders fail with actionable errors
 
 ## Reviewer Demo Checklist
@@ -177,15 +180,13 @@ Target end-of-phase enabled use cases:
 4. Confirm the task folder and YAML files exist under `.playspec/tasks/active/`.
 5. Run `playspec current`.
 6. Run `playspec next`.
-7. Confirm the prompt output contains resolved variables and no raw unresolved placeholders.
+7. Confirm stdout contains the first resolved phase prompt and no raw unresolved placeholders.
 8. Run `playspec phase 3`.
 9. Break a template include and confirm the error points to the failing file path.
 
 ## Open Questions
 
-- Is prompt output stdout-only in Phase 1, or stdout plus file persistence under `prompts/`?
-- Is `sessions/cli.default.yaml` only scaffolded in Phase 1, or updated as part of active-task changes?
-- What is the minimum `task.yaml` field set needed for `next` without prematurely adding Phase 2 completion state?
+No architecture/spec-level open questions remain.
 
 ## Next Phase Dependency
 
