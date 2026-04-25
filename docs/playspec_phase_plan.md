@@ -822,6 +822,17 @@ routing:
 - visitCount가 `phaseHistory`에 정확히 기록된다.
 - DAG 실행, automatic spawning, AI-driven routing을 도입하지 않는다.
 
+## Implementation Status
+
+- `playspec complete --result <value>` 기준 완료; `--result` 없는 non-interactive 환경 에러 처리 포함
+- `src/core/types.ts`: `PhaseDefinition`에 `results`, `nextByResult`, `maxVisits` 추가; `PhaseHistoryEntry`에 `result`, `visitCount` 추가
+- `src/core/schemas.ts`: `PhaseDefinitionSchema` / `PhaseHistoryEntrySchema` routing 필드 확장
+- `src/core/errors.ts`: `MissingResultError`, `InvalidResultError`, `MissingResultMappingError`, `InvalidRoutingTargetError`, `LoopGuardError`, `UnexpectedResultError` 추가
+- `src/core/playspec-core.ts`: `resolveRoutedCompletion` private method 추가; artifact write 전 routing 검증
+- `src/storage/yaml-task-store.ts`: `buildPhaseHistory` deduplication 제거; `result` / `visitCount` 영속 저장
+- `src/cli/index.ts` / `src/cli/commands/complete.ts`: `--result` 옵션 등록; interactive selection menu 구현
+- build: zero errors, test: 101/101 통과 (86 pre-existing + 15 new Phase 3.7 tests)
+
 # Dev Phase 4 — MCP Adapter
 
 ## Goal

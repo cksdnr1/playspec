@@ -13,6 +13,8 @@ export const PhaseHistoryEntrySchema = z.object({
   evidenceFiles: z.array(z.string()).optional(),
   snapshotFiles: z.array(z.string()).optional(),
   validationTemplate: z.string().optional(),
+  result: z.string().optional(),
+  visitCount: z.number().int().positive().optional(),
 });
 
 export const PhaseCompletionSchema = z.object({
@@ -78,6 +80,9 @@ export const PhaseDefinitionSchema = z.object({
   requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   completion: PhaseCompletionSchema.optional(),
+  results: z.array(z.string()).min(1).optional(),
+  nextByResult: z.record(z.string()).optional(),
+  maxVisits: z.number().int().positive().optional(),
 });
 
 export const WorkflowDefinitionSchema = z.object({

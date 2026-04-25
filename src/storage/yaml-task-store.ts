@@ -194,14 +194,10 @@ export class YamlTaskStore implements TaskStore {
     input: CompletePhaseInput,
     completedAt: string
   ): PhaseHistoryEntry[] {
-    const retainedHistory = existingHistory.filter((entry) => {
-      if (entry.status === 'active') {
-        return false;
-      }
-      return !(entry.phase === input.phaseId && entry.status === 'completed');
-    });
+    // Drop stale active entries; retain all completed entries (including repeated visits)
+    const retainedHistory = existingHistory.filter((entry) => entry.status !== 'active');
 
-    retainedHistory.push({
+    const newEntry: PhaseHistoryEntry = {
       phase: input.phaseId,
       status: 'completed',
       completedAt,
@@ -209,8 +205,16 @@ export class YamlTaskStore implements TaskStore {
       evidenceFiles: input.evidenceFiles,
       snapshotFiles: input.snapshotFiles,
       validationTemplate: input.validationTemplate,
-    });
+    };
 
+    if (input.result !== undefined) {
+      newEntry.result = input.result;
+    }
+    if (input.visitCount !== undefined) {
+      newEntry.visitCount = input.visitCount;
+    }
+
+    retainedHistory.push(newEntry);
     return retainedHistory;
   }
 }

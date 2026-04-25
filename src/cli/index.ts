@@ -144,9 +144,10 @@ program
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--with-review', 'Persist a review record', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
-  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean }) => {
+  .option('--result <value>', 'Result value for result-bearing phases (required in non-interactive mode)')
+  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string }) => {
     try {
-      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet);
+      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result);
     } catch (err) {
       handleError(err);
     }
