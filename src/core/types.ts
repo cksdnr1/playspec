@@ -47,6 +47,7 @@ export interface CreateTaskInput {
 export interface PhaseDefinition {
   title: string;
   template: string;
+  requiredVariables?: string[];
   outputs?: string[];
   completion?: string[];
 }

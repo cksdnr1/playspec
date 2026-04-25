@@ -694,6 +694,12 @@ phases:
 
     template: multi-spec/phase7_implementation.md
 
+    requiredVariables:
+
+      - FEATURE_SLUG
+
+      - PHASE_NUMBER
+
     defaultMode: strict
 
   
@@ -782,9 +788,15 @@ Variables:
 
 - include는 .playspec 내부만 허용
 
+- include path는 normalize 후에도 .playspec 밖으로 나가면 실패
+
 - 순환 include 금지
 
 - missing include는 실패
+
+- workflow phase는 `requiredVariables`로 render contract를 선언할 수 있다
+
+- active render path는 missing required variable이면 출력 전에 실패한다
 
 - unresolved placeholder가 남으면 실패
 

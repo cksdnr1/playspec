@@ -7,6 +7,22 @@ phases:
   "1":
     title: "Phase 1 — Investigation & Fix"
     template: simple-bug/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "2":
     title: "Phase 2 — Verification"
     template: simple-bug/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE

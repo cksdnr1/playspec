@@ -8,9 +8,33 @@ phases:
   "1":
     title: "Phase 1 — Spec & Planning"
     template: mono-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "2":
     title: "Phase 2 — Implementation"
     template: mono-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "3":
     title: "Phase 3 — Review"
     template: mono-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
