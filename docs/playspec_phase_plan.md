@@ -984,6 +984,19 @@ playspec migrate --target-phase-plan docs/playspec_phase_plan.md
 
 Full spec: `docs/playspec_phase4.1_implementation_spec.md`
 
+## Implementation Status
+
+- `src/migration/` 모듈 신규 추가: `types.ts` (DTOs), `schemas.ts` (Zod), `migration-store.ts` (영속화), `migration-runner.ts` (review/dry-run/auto 실행)
+- `src/cli/commands/migrate.ts` 신규 추가; `src/cli/index.ts`에 `migrate` 명령어 등록
+- `src/utils/paths.ts`에 마이그레이션 경로 헬퍼 5개 추가 (`getMigrationsRoot`, `getMigrationPlansDir`, `getMigrationReportsDir`, `getMigrationBackupsDir`, `getMigrationArchivedDir`)
+- `tsconfig.json` / `vitest.config.ts`에 `#migration` 경로 alias 추가
+- `MigrationPlanSchema`가 `delete_file` action type을 스키마 레벨에서 거부
+- `archive_file` action은 `--with-archive` 없이 실패
+- 모든 mutation 전 `.playspec/migrations/backups/` 하위 백업 생성
+- `task.yaml` state promotion은 `TaskRecordSchema.parse()` + `writeTextFileAtomic()` 경로로만 적용
+- build: zero errors, test: 133/133 (115 pre-existing + 18 new Phase 4.1 tests)
+- Phase 5 dependency 요건 충족: migration-local archive 경로(`/migrations/archived/`)는 Phase 5 general archive 모델과 독립적
+
 ---
 
 # Dev Phase 5 — Archive & Knowledge Base

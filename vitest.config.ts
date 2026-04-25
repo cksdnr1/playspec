@@ -14,6 +14,7 @@ export default defineConfig({
       '#preset': path.resolve(__dirname, 'src/preset'),
       '#utils': path.resolve(__dirname, 'src/utils'),
       '#mcp': path.resolve(__dirname, 'src/mcp'),
+      '#migration': path.resolve(__dirname, 'src/migration'),
     },
   },
   test: {
