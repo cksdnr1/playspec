@@ -865,6 +865,16 @@ MCP는 global HEAD fallback을 사용하지 않는다.
 - `render_next_prompt`는 CLI `next`와 같은 Core 결과를 반환한다
 - MCP는 HEAD를 직접 읽지 않는다
 
+## Implementation Status
+
+- `src/mcp/` 모듈 신규 추가: `index.ts` (stdio entry), `server.ts` (10 tools), `context.ts` (`resolveMcpTaskId`), `session-store.ts` (`McpSessionStore`), `errors.ts`
+- 10개 Phase 4.0 tool 전부 등록: `playspec_list_tasks`, `playspec_get_task`, `playspec_use_session_task`, `playspec_get_session_task`, `playspec_render_next_prompt`, `playspec_render_phase_prompt`, `playspec_complete_phase`, `playspec_collect_evidence`, `playspec_run_state_desync_check`, `playspec_rollback_state`
+- `resolveMcpTaskId()`가 HEAD 없이 taskId → sessionId 순으로 context를 해소; HEAD fallback 없음을 테스트로 검증
+- `McpSessionStore`가 `.playspec/sessions/{sessionId}.yaml` 읽기/쓰기 담당
+- `@modelcontextprotocol/sdk 1.29.0` 의존성 추가; `playspec-mcp` bin entry 등록
+- build: zero errors, test: 115/115 (101 pre-existing + 14 new Phase 4.0 tests)
+- Phase 4.1 dependency 요건 충족: working stdio server, reliable tool registration, explicit context resolution, stable structured results
+
 ---
 
 # Dev Phase 4.1 — MCP-Driven Context Migration and State Promotion
