@@ -1,5 +1,42 @@
 # PlaySpec Phase 1 Handoff
 
+## Implementation Status
+
+**Status: COMPLETE**
+**Build: PASS** (`npm run build` — zero TypeScript errors)
+**Tests: PASS** (43/43 tests, 10 test files)
+**End-to-end: VERIFIED** (init → create → current → next → phase all work)
+**Date completed: 2026-04-25**
+
+See `docs/playspec_phase1_implementation_result.md` and `docs/playspec_phase1_test_result.md` for full details.
+
+### Test Coverage Status (updated after test follow-up)
+- `ActiveTaskResolver` — 6 tests (resolveTask by explicit ID, HEAD fallback, empty HEAD, missing HEAD, ghost HEAD, missing task by explicit ID)
+- `WorkflowLoader` — 3 tests (load valid workflow, verify phase structure, WorkflowNotFoundError)
+- `PresetManager.initWorkspace` structure — 2 tests (directory structure, HEAD empty on init)
+- All prior 32 tests unchanged and passing
+
+### Migration status
+No migration required — Phase 0 was scaffolding only. All placeholder stubs replaced with real implementations.
+
+### Active entry points (post-implementation)
+All 7 entry points are now implemented and wired through Core:
+- `playspec init --preset default` — done
+- `playspec create` — done
+- `playspec list` — done
+- `playspec current` — done
+- `playspec use` — done
+- `playspec next` — done (calls PlaySpecCore.renderNextPrompt)
+- `playspec phase N` — done (calls PlaySpecCore.renderExplicitPhasePrompt, same pipeline)
+
+### Remaining old/bypass paths
+None.
+
+### Next-phase readiness
+Ready for Phase 2. The HEAD boundary is enforced. TaskStore abstraction is in place. phaseHistory uses structured objects ready for Phase 2 completion entries.
+
+---
+
 ## Phase Summary
 
 Phase 1 is the first usable CLI slice. It must deliver `.playspec` initialization, YAML-backed task creation and selection, active-task resolution, workflow/phase lookup, variable resolution, and prompt rendering for `next` and `phase`.

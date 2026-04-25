@@ -1,0 +1,24 @@
+id: multi-spec
+mode: linear
+phaseOrder:
+  - "1"
+  - "2"
+  - "3"
+  - "4"
+  - "5"
+phases:
+  "1":
+    title: "Phase 1 — Spec & Planning"
+    template: multi-spec/phase_template.md
+  "2":
+    title: "Phase 2 — Implementation Spec"
+    template: multi-spec/phase_template.md
+  "3":
+    title: "Phase 3 — Implementation"
+    template: multi-spec/phase_template.md
+  "4":
+    title: "Phase 4 — Verification"
+    template: multi-spec/phase_template.md
+  "5":
+    title: "Phase 5 — Review"
+    template: multi-spec/phase_template.md

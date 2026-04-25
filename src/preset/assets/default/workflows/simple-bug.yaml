@@ -1,0 +1,12 @@
+id: simple-bug
+mode: linear
+phaseOrder:
+  - "1"
+  - "2"
+phases:
+  "1":
+    title: "Phase 1 — Investigation & Fix"
+    template: simple-bug/phase_template.md
+  "2":
+    title: "Phase 2 — Verification"
+    template: simple-bug/phase_template.md

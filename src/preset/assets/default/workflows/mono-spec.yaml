@@ -1,0 +1,16 @@
+id: mono-spec
+mode: linear
+phaseOrder:
+  - "1"
+  - "2"
+  - "3"
+phases:
+  "1":
+    title: "Phase 1 — Spec & Planning"
+    template: mono-spec/phase_template.md
+  "2":
+    title: "Phase 2 — Implementation"
+    template: mono-spec/phase_template.md
+  "3":
+    title: "Phase 3 — Review"
+    template: mono-spec/phase_template.md

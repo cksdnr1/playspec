@@ -7,7 +7,7 @@
     "playspec": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/preset/assets dist/preset/assets",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },

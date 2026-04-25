@@ -1,4 +1,4 @@
-// Phase 0 placeholder — Workflow module
-// Workflow loading and phase resolution implemented in Phase 1
-
-export {};
+export { WorkflowLoader } from './workflow-loader.js';
+export { PhaseResolver } from './phase-resolver.js';
+export type { ResolvedPhase } from './phase-resolver.js';
+export { WorkflowDefinitionSchema, PhaseDefinitionSchema } from './workflow-schema.js';
