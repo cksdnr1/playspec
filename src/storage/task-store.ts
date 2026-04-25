@@ -1,4 +1,9 @@
-import type { TaskRecord, TaskSummary, CreateTaskInput } from '#core/types.js';
+import type {
+  TaskRecord,
+  TaskSummary,
+  CreateTaskInput,
+  CompletePhaseInput,
+} from '#core/types.js';
 
 export interface TaskStore {
   getTask(taskId: string): Promise<TaskRecord>;
@@ -6,4 +11,5 @@ export interface TaskStore {
   listActiveTasks(): Promise<TaskSummary[]>;
   createTask(input: CreateTaskInput): Promise<TaskRecord>;
   updateTask(taskId: string, patch: Partial<TaskRecord>): Promise<TaskRecord>;
+  completePhase(taskId: string, input: CompletePhaseInput): Promise<TaskRecord>;
 }

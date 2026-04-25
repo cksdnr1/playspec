@@ -332,6 +332,13 @@ playspec snapshot
 - write operation은 lock을 사용한다
 - lock timeout은 명확한 에러를 낸다
 
+## Implementation Status
+
+- active `CLI -> ActiveTaskResolver -> PlaySpecCore -> TaskStore.completePhase()` 경로 기준 완료
+- `playspec complete`, `playspec evidence`, `playspec snapshot`이 연결되어 있다
+- evidence / snapshot / optional review artifact가 phase 단위로 저장된다
+- Phase `2` 범위 밖의 기존 unlocked write 경로는 남아 있지만 active completion path 완료 판단을 무효화하지는 않는다
+
 ---
 
 # Dev Phase 3 — Reality Safety

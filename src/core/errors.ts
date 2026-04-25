@@ -115,3 +115,33 @@ export class MissingRequiredVariablesError extends PlaySpecError {
     this.name = 'MissingRequiredVariablesError';
   }
 }
+
+export class LockTimeoutError extends PlaySpecError {
+  constructor(lockTarget: string, timeoutMs: number) {
+    super(
+      `Timed out waiting for write lock: ${lockTarget}`,
+      `Another PlaySpec operation is holding the task lock. Retry after it finishes. Timeout: ${timeoutMs}ms.`
+    );
+    this.name = 'LockTimeoutError';
+  }
+}
+
+export class TaskNotActiveError extends PlaySpecError {
+  constructor(taskId: string, status: string) {
+    super(
+      `Task "${taskId}" is not active (status: ${status}).`,
+      'Switch HEAD to an active task with `playspec use <TASK_ID>` or pass an active task with `--task <TASK_ID>`.'
+    );
+    this.name = 'TaskNotActiveError';
+  }
+}
+
+export class GitEvidenceCollectionError extends PlaySpecError {
+  constructor(message: string) {
+    super(
+      `Failed to collect git evidence: ${message}`,
+      'Ensure the workspace root is inside a readable git repository and retry.'
+    );
+    this.name = 'GitEvidenceCollectionError';
+  }
+}

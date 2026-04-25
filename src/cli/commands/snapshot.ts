@@ -1,22 +1,18 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
-import { TaskNotActiveError } from '#core/errors.js';
 
-export async function runPhase(
+export async function runSnapshot(
   workspaceRoot: string,
-  phaseId: string,
   taskIdOption?: string
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
-  if (!taskIdOption && task.status !== 'active') {
-    throw new TaskNotActiveError(task.id, task.status);
-  }
 
   const core = new PlaySpecCore(workspaceRoot, store);
-  const prompt = await core.renderExplicitPhasePrompt(task.id, phaseId);
+  const result = await core.createSnapshot(task.id);
 
-  console.log(prompt);
+  console.log(`Created snapshot for phase ${result.phaseId} of task "${result.taskId}".`);
+  console.log(`Snapshot files: ${result.snapshotFiles.join(', ')}`);
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { access, readdir } from 'node:fs/promises';
 import { execa } from 'execa';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTempWorkspace } from './helpers/createTempWorkspace.js';
 import type { TempWorkspace } from './helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -9,8 +11,9 @@ import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 
-const CLI_PATH = path.resolve('/volume2/PJ/playspec/src/cli/index.ts');
-const TSCONFIG_PATH = path.resolve('/volume2/PJ/playspec/tsconfig.json');
+const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CLI_PATH = path.resolve(TESTS_DIR, '../src/cli/index.ts');
+const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../tsconfig.json');
 
 function runCli(args: string[], cwd?: string) {
   return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
@@ -42,6 +45,14 @@ async function createActiveTask(title: string, workflowType = 'multi-spec') {
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
   return taskId;
+}
+
+async function initGitRepo(): Promise<void> {
+  await execa('git', ['init'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
+  await execa('git', ['add', '.'], { cwd: workspace.dir });
+  await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
 }
 
 describe('CLI placeholder', () => {
@@ -106,5 +117,114 @@ phases:
       )
     );
     expect(result.stderr).toContain('Re-run `playspec init` if needed.');
+  });
+
+  it('completes the current phase and writes review artifacts via the CLI', async () => {
+    const taskId = await createActiveTask('CLI Complete Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete', '--with-review'], workspace.dir);
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Completed phase 1');
+    expect(task.currentPhase).toBe('2');
+    expect(task.phaseHistory).toContainEqual(
+      expect.objectContaining({
+        phase: '1',
+        status: 'completed',
+        reviewFile: 'reviews/phase1_review.yaml',
+      })
+    );
+    await expect(
+      access(
+        path.join(
+          workspace.dir,
+          '.playspec',
+          'tasks',
+          'active',
+          taskId,
+          'reviews',
+          'phase1_review.yaml'
+        )
+      )
+    ).resolves.not.toThrow();
+  });
+
+  it('marks the task completed on the final workflow phase via the CLI', async () => {
+    const taskId = await createActiveTask('CLI Final Phase Task');
+    await initGitRepo();
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '5' });
+
+    const result = await runCli(['complete'], workspace.dir);
+    const task = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Completed phase 5');
+    expect(result.stdout).toContain('Task status: completed');
+    expect(result.stdout).not.toContain('Review file:');
+    expect(task.status).toBe('completed');
+    expect(task.currentPhase).toBeNull();
+    expect(task.phaseHistory).toContainEqual(
+      expect.objectContaining({
+        phase: '5',
+        status: 'completed',
+      })
+    );
+    await expect(
+      access(
+        path.join(
+          workspace.dir,
+          '.playspec',
+          'tasks',
+          'active',
+          taskId,
+          'reviews',
+          'phase5_review.yaml'
+        )
+      )
+    ).rejects.toThrow();
+  });
+
+  it('creates evidence and snapshot artifacts via the CLI without phase mutation', async () => {
+    const taskId = await createActiveTask('CLI Artifact Task');
+    await initGitRepo();
+    const store = new YamlTaskStore(workspace.dir);
+
+    const evidenceResult = await runCli(['evidence'], workspace.dir);
+    const snapshotResult = await runCli(['snapshot'], workspace.dir);
+    const task = await store.getTask(taskId);
+
+    expect(evidenceResult.exitCode).toBe(0);
+    expect(snapshotResult.exitCode).toBe(0);
+    expect(evidenceResult.stdout).toContain('Collected evidence for phase 1');
+    expect(snapshotResult.stdout).toContain('Created snapshot for phase 1');
+    expect(task.currentPhase).toBeNull();
+    expect(task.phaseHistory).toEqual([]);
+    const evidenceFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'evidence')
+    );
+    const snapshotFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'snapshots')
+    );
+
+    expect(evidenceFiles.some((file) => file.startsWith('phase1'))).toBe(true);
+    expect(snapshotFiles.some((file) => file.startsWith('phase1'))).toBe(true);
+  });
+
+  it('rejects HEAD-based phase rendering for completed tasks via the CLI', async () => {
+    const taskId = await createActiveTask('Completed Phase Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['phase', '1'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active`);
   });
 });

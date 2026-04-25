@@ -1,8 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
-const REPO_ROOT = path.resolve('/volume2/PJ/playspec');
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..'
+);
 
 export interface TempWorkspace {
   dir: string;

@@ -9,6 +9,14 @@ export const PhaseHistoryEntrySchema = z.object({
   phase: z.string(),
   status: z.enum(['active', 'completed']),
   completedAt: z.string().optional(),
+  reviewFile: z.string().optional(),
+  evidenceFiles: z.array(z.string()).optional(),
+  snapshotFiles: z.array(z.string()).optional(),
+  validationTemplate: z.string().optional(),
+});
+
+export const PhaseCompletionSchema = z.object({
+  validationTemplate: z.string().optional(),
 });
 
 export const TaskRecordSchema = z.object({
@@ -37,7 +45,7 @@ export const PhaseDefinitionSchema = z.object({
   template: z.string(),
   requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
-  completion: z.array(z.string()).optional(),
+  completion: PhaseCompletionSchema.optional(),
 });
 
 export const WorkflowDefinitionSchema = z.object({

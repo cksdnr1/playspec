@@ -4,8 +4,14 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
 import { TaskNotFoundError } from '#core/errors.js';
 import type { TaskStore } from './task-store.js';
-import type { TaskRecord, TaskSummary, CreateTaskInput } from '#core/types.js';
-import { readTextFile, writeTextFile } from '#utils/fs.js';
+import type {
+  TaskRecord,
+  TaskSummary,
+  CreateTaskInput,
+  CompletePhaseInput,
+  PhaseHistoryEntry,
+} from '#core/types.js';
+import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import { getTasksRoot, getTaskRoot } from '#utils/paths.js';
 
 export class YamlTaskStore implements TaskStore {
@@ -118,5 +124,52 @@ export class YamlTaskStore implements TaskStore {
     };
     await this.saveTask(updated);
     return updated;
+  }
+
+  async completePhase(
+    taskId: string,
+    input: CompletePhaseInput
+  ): Promise<TaskRecord> {
+    const existing = await this.getTask(taskId);
+    const now = new Date().toISOString();
+    const phaseHistory = this.buildPhaseHistory(existing.phaseHistory, input, now);
+
+    const updated: TaskRecord = {
+      ...existing,
+      status: input.nextPhase === null ? 'completed' : 'active',
+      currentPhase: input.nextPhase,
+      updatedAt: now,
+      phaseHistory,
+    };
+
+    const validated = TaskRecordSchema.parse(updated);
+    const yamlPath = this.taskYamlPath(taskId);
+    await writeTextFileAtomic(yamlPath, stringifyYaml(validated));
+    return validated;
+  }
+
+  private buildPhaseHistory(
+    existingHistory: PhaseHistoryEntry[],
+    input: CompletePhaseInput,
+    completedAt: string
+  ): PhaseHistoryEntry[] {
+    const retainedHistory = existingHistory.filter((entry) => {
+      if (entry.status === 'active') {
+        return false;
+      }
+      return !(entry.phase === input.phaseId && entry.status === 'completed');
+    });
+
+    retainedHistory.push({
+      phase: input.phaseId,
+      status: 'completed',
+      completedAt,
+      reviewFile: input.reviewFile,
+      evidenceFiles: input.evidenceFiles,
+      snapshotFiles: input.snapshotFiles,
+      validationTemplate: input.validationTemplate,
+    });
+
+    return retainedHistory;
   }
 }
