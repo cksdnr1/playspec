@@ -17,6 +17,7 @@ import { runEvidence } from './commands/evidence.js';
 import { runSnapshot } from './commands/snapshot.js';
 import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
+import { runStatus } from './commands/status.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -112,9 +113,10 @@ program
   .description('Render the next phase prompt for the active task')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--write', 'Write prompt to prompts/ directory', false)
-  .action(async (opts: { task?: string; write: boolean }) => {
+  .option('--quiet', 'Suppress the compact Context Header', false)
+  .action(async (opts: { task?: string; write: boolean; quiet: boolean }) => {
     try {
-      await runNext(process.cwd(), opts.task, opts.write);
+      await runNext(process.cwd(), opts.task, opts.write, opts.quiet);
     } catch (err) {
       handleError(err);
     }
@@ -139,9 +141,24 @@ program
   .description('Complete the current workflow phase for the active task')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--with-review', 'Persist a review record', false)
-  .action(async (opts: { task?: string; withReview: boolean }) => {
+  .option('--quiet', 'Suppress the compact Context Header', false)
+  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean }) => {
     try {
-      await runComplete(process.cwd(), opts.task, opts.withReview);
+      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// status
+program
+  .command('status')
+  .description('Show compact header and full task detail for the active task')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--quiet', 'Suppress the compact Context Header', false)
+  .action(async (opts: { task?: string; quiet: boolean }) => {
+    try {
+      await runStatus(process.cwd(), opts.task, opts.quiet);
     } catch (err) {
       handleError(err);
     }

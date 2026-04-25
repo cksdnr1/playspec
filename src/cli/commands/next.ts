@@ -6,17 +6,24 @@ import { TaskNotActiveError } from '#core/errors.js';
 import { printDesyncResult } from './desync-check.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
+import { formatContextHeader } from '../context-header.js';
 
 export async function runNext(
   workspaceRoot: string,
   taskIdOption?: string,
-  write?: boolean
+  write?: boolean,
+  quiet?: boolean
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
   if (!taskIdOption && task.status !== 'active') {
     throw new TaskNotActiveError(task.id, task.status);
+  }
+
+  if (!quiet) {
+    console.log(formatContextHeader(task).join('\n'));
+    console.log('');
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
