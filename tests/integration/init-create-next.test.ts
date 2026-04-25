@@ -96,6 +96,43 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toMatch(/Phase 3/);
   });
 
+  it('renderNextPrompt refuses if a stored contextRef path is missing', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Exec Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Exec Task',
+      workflowType: 'multi-spec',
+      contextRefs: [
+        { path: 'docs/features/exec_task/nonexistent_spec.md', role: 'planning-context', source: 'planning_task' },
+      ],
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const { MissingContextRefError } = await import('#core/errors.js');
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(MissingContextRefError);
+  });
+
+  it('renderNextPrompt succeeds when contextRefs is empty', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Normal Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Normal Task',
+      workflowType: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+    expect(prompt).toBeTruthy();
+  });
+
   it('fails when a workflow phase requires a missing variable', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

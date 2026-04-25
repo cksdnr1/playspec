@@ -63,9 +63,11 @@ program
 program
   .command('create <workflowType> <title>')
   .description('Create a new task')
-  .action(async (workflowType: string, title: string) => {
+  .option('--phase <n>', 'Target workflow phase for phase-execution tasks')
+  .option('--from <taskId>', 'Planning task ID to bind context from')
+  .action(async (workflowType: string, title: string, opts: { phase?: string; from?: string }) => {
     try {
-      await runCreate(process.cwd(), workflowType, title);
+      await runCreate(process.cwd(), workflowType, title, opts);
     } catch (err) {
       handleError(err);
     }

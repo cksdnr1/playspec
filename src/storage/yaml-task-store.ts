@@ -70,6 +70,33 @@ export class YamlTaskStore implements TaskStore {
     return summaries;
   }
 
+  async listCompletedTasks(): Promise<TaskSummary[]> {
+    let entries: string[];
+    try {
+      entries = await readdir(this.tasksRoot);
+    } catch {
+      return [];
+    }
+
+    const summaries: TaskSummary[] = [];
+    for (const entry of entries) {
+      try {
+        const task = await this.getTask(entry);
+        if (task.status === 'completed') {
+          summaries.push({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            currentPhase: task.currentPhase,
+          });
+        }
+      } catch {
+        // Skip unreadable entries
+      }
+    }
+    return summaries;
+  }
+
   async createTask(input: CreateTaskInput): Promise<TaskRecord> {
     const now = new Date().toISOString();
     const taskRoot = path.join('.playspec', 'tasks', 'active', input.id);
@@ -99,6 +126,8 @@ export class YamlTaskStore implements TaskStore {
       rollback: {
         lastSafePoint: null,
       },
+      ...(input.target !== undefined ? { target: input.target } : {}),
+      ...(input.contextRefs !== undefined ? { contextRefs: input.contextRefs } : {}),
     };
 
     // Create task directory structure

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { access } from 'node:fs/promises';
 import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
@@ -10,6 +11,7 @@ import {
   TaskNotActiveError,
   GitEvidenceCollectionError,
   PhaseNotFoundError,
+  MissingContextRefError,
 } from '#core/errors.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
@@ -52,6 +54,7 @@ export class PlaySpecCore {
 
   async renderNextPrompt(taskId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
+    await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
@@ -59,6 +62,7 @@ export class PlaySpecCore {
 
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
+    await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
@@ -262,6 +266,24 @@ export class PlaySpecCore {
   private assertTaskIsActive(task: TaskRecord): void {
     if (task.status !== 'active') {
       throw new TaskNotActiveError(task.id, task.status);
+    }
+  }
+
+  private async assertContextRefsExist(task: TaskRecord): Promise<void> {
+    if (!task.contextRefs || task.contextRefs.length === 0) return;
+    for (const ref of task.contextRefs) {
+      if (path.isAbsolute(ref.path)) {
+        throw new MissingContextRefError(ref.path);
+      }
+      const resolved = path.resolve(this.workspaceRoot, ref.path);
+      if (!resolved.startsWith(path.resolve(this.workspaceRoot))) {
+        throw new MissingContextRefError(ref.path);
+      }
+      try {
+        await access(resolved);
+      } catch {
+        throw new MissingContextRefError(ref.path);
+      }
     }
   }
 

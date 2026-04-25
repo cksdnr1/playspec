@@ -648,6 +648,18 @@ contextRefs:
 - Non-interactive 환경에서 `--from` 없이 후보가 확정되지 않으면 에러를 출력하고 종료한다.
 - `contextRefs`에 명시된 파일이 없으면 `playspec next`가 prompt 렌더를 거부한다.
 - `project.yaml`, DAG 실행, automatic spawning을 도입하지 않는다.
+
+## Implementation Status
+
+- `playspec create phase-execution "<Title>" --phase <n> [--from <TASK_ID>]` 기준 완료
+- `TaskRecord`/`CreateTaskInput`에 `target`, `contextRefs` 필드 추가; `TaskRecordSchema` round-trip 통과
+- `YamlTaskStore.listCompletedTasks()` 추가; completed planning task 탐색 가능
+- `PlaySpecCore.assertContextRefsExist()`가 `renderNextPrompt`/`renderExplicitPhasePrompt` 양쪽에 적용됨
+- `phase-execution.yaml` default preset workflow 추가
+- `formatContextHeader()`에 `Target:`/`Context:` 조건부 라인 추가
+- 기존 `playspec create <type> "<Title>"` old path 변경 없음
+- build: zero errors, test: 83/86 통과 (3건은 pre-existing rollback timeout 실패)
+
 ---
 
 ---

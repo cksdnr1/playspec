@@ -37,6 +37,16 @@ export const TaskRollbackStateSchema = z.object({
   lastSafePoint: RollbackSafePointSchema.nullable(),
 });
 
+export const TaskTargetSchema = z.object({
+  phaseNumber: z.string(),
+});
+
+export const TaskContextRefSchema = z.object({
+  path: z.string(),
+  role: z.literal('planning-context'),
+  source: z.string(),
+});
+
 export const TaskRecordSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -51,6 +61,8 @@ export const TaskRecordSchema = z.object({
   phaseHistory: z.array(PhaseHistoryEntrySchema),
   stateSync: TaskStateSyncSchema.optional(),
   rollback: TaskRollbackStateSchema.optional(),
+  target: TaskTargetSchema.optional(),
+  contextRefs: z.array(TaskContextRefSchema).optional(),
 });
 
 export const TaskSummarySchema = z.object({
