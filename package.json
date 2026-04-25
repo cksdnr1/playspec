@@ -7,7 +7,7 @@
     "playspec": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },
@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/proper-lockfile": "^4.1.4",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.7.2",
     "typescript": "^5.4.5",
     "vitest": "^1.5.0"

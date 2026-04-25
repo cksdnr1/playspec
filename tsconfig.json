@@ -6,6 +6,15 @@
     "strict": true,
     "outDir": "dist",
     "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "#core/*.js": ["./src/core/*.js"],
+      "#storage/*.js": ["./src/storage/*.js"],
+      "#workflow/*.js": ["./src/workflow/*.js"],
+      "#template/*.js": ["./src/template/*.js"],
+      "#preset/*.js": ["./src/preset/*.js"],
+      "#utils/*.js": ["./src/utils/*.js"]
+    },
     "esModuleInterop": true,
     "skipLibCheck": true
   },
