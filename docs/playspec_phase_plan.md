@@ -34,7 +34,7 @@ Dev Phase 1 — Core Foundation
 |---|---|---|
 | Dev Phase 0 | Project Bootstrap | 프로젝트 뼈대, 테스트 환경, mock FS 준비 |
 | Dev Phase 1 | Core Foundation | init/create/next/phase 기본 동작 |
-| Dev Phase 1.5 | Template Renderer Hardening | next/phase` shared render path hardening |
+| Dev Phase 1.5 | Template Renderer Hardening | next/phase shared render path hardening |
 | Dev Phase 2 | Completion Engine | complete, lock, snapshot, evidence, review |
 | Dev Phase 3 | Reality Safety | desync 감지, safe rollback |
 | Dev Phase 4 | MCP Adapter | Claude Code / Codex / OpenClaw 연동 |
