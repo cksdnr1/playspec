@@ -61,6 +61,16 @@ TypeScript 기반 로컬 workflow engine이다.
 
 - 자동화는 편해야 하지만, 무한 반복되거나 상태를 오염시키면 안 된다.
 
+- 설정과 템플릿의 출처를 항상 사용자에게 공개한다. "magic" 동작을 허용하지 않는다.
+
+2.1 Predictable Transparency
+
+PlaySpec는 어떤 설정값이, 어떤 파일로부터, 어떤 우선순위로 적용되는지 항상 추적 가능해야 한다.
+
+글로벌 fallback이나 내장 기본값이 사용되는 경우에도 사용자가 `playspec config`를 통해 출처를 확인할 수 있어야 한다.
+
+"잘 동작하지만 왜 동작하는지 모른다"는 상태는 PlaySpec의 철학에 반한다.
+
   
 
 3. Responsibility Boundary
@@ -102,6 +112,10 @@ OpenClaw → MCP or CLI → PlaySpec
 playspec init --preset cpp-vulkan
 
 playspec create multi-spec "Post Simulation Transition Rendering"
+
+playspec create phase-execution "Feature Name" --phase 1
+
+playspec create phase-execution "Feature Name" --phase 1 --from planning_task_id
 
   
 
@@ -250,6 +264,8 @@ PlaySpec Core Engine
  ├─ PresetManager
 
  ├─ TokenOptimizer
+
+ ├─ ContextBindingResolver
 
  └─ LockManager
 
@@ -406,6 +422,98 @@ Directory Layout
     nestjs-backend/
 
   
+
+7.6 Task Relay & Context Inheritance
+
+Planning Task(spec 작성, phase plan 수립)에서 Execution Task(구현 작업)로의 context 전달은 PlaySpec의 핵심 워크플로우 중 하나다.
+
+이 기능은 Project/Stage hierarchy 없이 Single Task 모델 내에서 동작한다.
+
+핵심 개념:
+
+- Planning Context / Master Task: spec 작성, phase plan 수립처럼 planning이 주 목적인 완료된 task.
+- Execution Task: 특정 Planning Context를 바탕으로 구현을 진행하는 task.
+- contextRefs: Execution Task가 참조하는 외부 파일 목록. workflow 상태(state)가 아닌 참조(reference)다.
+- target: Execution Task가 대상으로 삼는 workflow phase 번호. task.yaml에 저장된다.
+
+Binding Priority:
+
+1. --from <TASK_ID>: 사용자가 명시한 source task를 최우선으로 사용한다.
+2. Unique match: 완료된 Planning Task 중 제목이 고유하게 일치하면 자동 바인딩한다.
+3. Interactive selector: 복수 후보가 있고 TTY가 interactive하면 선택 prompt를 제공한다.
+4. Fail with error: non-interactive 환경에서 복수 후보가 있거나 필수 context를 찾을 수 없을 때 즉시 종료한다.
+
+Safety Rules:
+
+- contextRefs는 참조이지 workflow 상태가 아니다. DAG나 task 간 실행 의존성을 만들지 않는다.
+- 자동 바인딩은 항상 CLI 출력과 task.yaml 저장으로 가시화된다.
+- 바인딩된 파일이 실제로 존재하지 않으면 playspec next가 prompt 렌더를 거부한다.
+- project.yaml, automatic next-task spawning, DAG 실행을 도입하지 않는다.
+
+7.7 Compact Context Header
+
+playspec next, playspec status, playspec complete 실행 시 명령어 출력 상단에 scannable Context Header를 렌더한다.
+
+Header는 오직 task.yaml에서 파생하며, project-level state를 도입하지 않는다.
+
+표시 항목:
+
+- task title
+- 현재 workflow phase
+- attempt count (1보다 클 때만)
+- target phase (설정된 경우에만)
+- contextRefs 요약 count 또는 경로 (있을 때만)
+
+최대 5줄. Full detail은 playspec status에 속한다.
+
+--quiet 플래그 또는 config 동등 옵션으로 Header를 완전히 억제할 수 있다.
+
+7.8 Simple Conditional Routing
+
+하나의 task 안에서 결과(result) 기반 phase routing을 선언적으로 정의한다.
+
+workflow yaml에 results, nextByResult, maxVisits 필드를 추가한다.
+
+playspec complete가 현재 phase에 results가 정의된 경우:
+
+- Interactive 환경: selection menu를 표시하고 사람이 result를 선택한다.
+- Non-interactive 환경: --result <value> 플래그가 필수다.
+
+선택된 result는 phaseHistory에 저장되고, playspec next가 nextByResult 매핑에 따라 다음 phase를 결정한다.
+
+maxVisits를 초과하면 loop guard가 발동해 에러를 출력하고 종료한다.
+
+AI output을 파싱해 result를 자동 결정하지 않는다. 사람의 선택 또는 --result 플래그가 항상 authoritative하다.
+
+7.5 Configuration Resolution Layer
+
+PlaySpec는 설정, 템플릿, rule을 로드할 때 고정된 탐색 순서를 따른다.
+
+Resolution Order:
+
+  1. Project Local    .playspec/config.yaml / templates/ / rules/
+  2. User Global      ~/.playspec/config.yaml / templates/ / rules/
+  3. Internal Defaults  (PlaySpec built-in)
+
+원칙:
+
+- Local always wins: 프로젝트 로컬 리소스는 글로벌 리소스를 항상 오버라이드한다.
+- 팀 환경에서 `.playspec/`를 저장소에 커밋하면 팀 전체의 설정 일관성이 보장된다.
+- 개인 개발자는 `~/.playspec/`에 공통 workflow, template, rule을 두고 여러 프로젝트에서 재사용할 수 있다.
+- Fallback이 발생하면 `playspec config`가 출처를 명시한다. 투명성 없는 자동 탐색은 허용하지 않는다.
+
+Config Merge Behavior:
+
+- `config.yaml`은 deep merge로 처리한다.
+- 로컬에서 정의된 키는 글로벌 값을 덮어쓴다.
+- 로컬에서 정의되지 않은 키는 글로벌 값을 상속한다.
+- 글로벌에도 없는 키는 내장 기본값을 사용한다.
+
+Template / Rule Fallback:
+
+- 로컬에 없는 템플릿: ~/.playspec/templates/ 에서 탐색
+- 로컬에 없는 rule: ~/.playspec/rules/ 에서 탐색
+- 글로벌에도 없으면: PlaySpec 내장 기본값 또는 명확한 에러
 
 8. Active Task and Session Context
 
@@ -588,6 +696,18 @@ rollback:
   
 
 subtasks: []
+
+target:
+
+  phaseNumber: null
+
+contextRefs: []
+
+routing:
+
+  currentResult: null
+
+phaseAttempts: []
 
   
 
@@ -1015,6 +1135,10 @@ phase: "7"
 status: completed
 
 completedAt: "2026-04-24T14:00:00+09:00"
+
+result: approved
+
+visitCount: 1
 
   
 
@@ -1756,6 +1880,14 @@ global HEAD fallback forbidden
 
 playspec init --preset cpp-vulkan
 
+playspec init --local-only
+
+playspec init --global-only
+
+playspec config
+
+playspec status
+
 playspec create multi-spec "Feature Name"
 
   
@@ -1774,6 +1906,8 @@ playspec next
 
 playspec next --task TASK_ID
 
+playspec next --quiet
+
   
 
 playspec phase 3
@@ -1785,6 +1919,10 @@ playspec phase 3 --task TASK_ID
 playspec complete
 
 playspec complete --task TASK_ID --with-review
+
+playspec complete --result approved
+
+playspec complete --result needs_patch
 
   
 
@@ -1910,6 +2048,84 @@ PlaySpec 없이 코드가 크게 바뀐 경우 next 전에 경고하고,
 복잡한 git 상태에서는 안전한 rollback 옵션만 제공한다.
 
   
+
+Phase 3.5 — Compact Context Header and Task Visibility
+
+Scope:
+
+- playspec next / status / complete에 최대 5줄 Context Header 추가
+
+- task title, 현재 phase, attempt count (>1), target phase, contextRefs 요약 표시
+
+- --quiet 플래그로 Header 억제
+
+- Header는 task.yaml에서만 파생
+
+- project-level state 도입 없음
+
+Acceptance:
+
+playspec next 실행 시 상단에 compact Context Header가 출력되고,
+
+--quiet 플래그로 억제할 수 있다.
+
+  
+
+Phase 3.6 — Task Relay and Smart Context Binding
+
+Scope:
+
+- playspec create phase-execution workflow 지원
+
+- --phase <n> 플래그로 target phase 지정 (target.phaseNumber 저장)
+
+- Final task title 자동 생성 (e.g. "Login System Phase 1 Execution")
+
+- 완료된 Planning Context / Master Task에서 contextRefs 자동 바인딩
+
+- Binding priority: --from > unique match > interactive selector > error
+
+- Interactive 환경에서 auto-linked 파일 목록 출력 + one-time confirmation 요청
+
+- Non-interactive 환경에서 복수 후보 또는 --from 없으면 에러 처리
+
+- contextRefs 없는 task에서 playspec next 렌더 거부
+
+Acceptance:
+
+PlaySpec가 완료된 Planning Context를 자동으로 발견해 Execution Task에 연결하고,
+
+바인딩 결과를 명시적으로 출력하고 interactive 환경에서 one-time confirmation을 거쳐 task.yaml에 저장한다.
+
+  
+
+Phase 3.7 — Simple Conditional Routing with Human Selection
+
+Scope:
+
+- workflow yaml에 results, nextByResult, maxVisits 필드 추가
+
+- playspec complete: results 정의된 phase에서 interactive selection menu 표시
+
+- Non-interactive 환경에서 --result <value> 필수
+
+- 선택된 result를 phaseHistory.result에 저장
+
+- visitCount 추적 및 phaseHistory에 기록
+
+- playspec next가 nextByResult 매핑에 따라 다음 phase 결정
+
+- maxVisits 초과 시 loop guard 에러
+
+- AI output 자동 파싱 금지; 사람 선택 또는 --result가 authoritative
+
+- optional non-authoritative recommendation hint 지원
+
+Acceptance:
+
+사람이 result를 선택하거나 --result로 명시하면 playspec next가 올바른 다음 phase로 이동하고,
+
+maxVisits 초과 시 loop guard가 발동한다.
 
 Phase 4 — MCP Adapter with Explicit Task Context
 
