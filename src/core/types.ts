@@ -6,6 +6,16 @@ export type WorkflowType = string;
 export type TaskStatus = 'active' | 'completed' | 'archived';
 export type WorkflowMode = 'linear';
 
+export interface TaskTarget {
+  phaseNumber: string;
+}
+
+export interface TaskContextRef {
+  path: string;
+  role: 'planning-context';
+  source: TaskId;
+}
+
 export interface TaskPaths {
   taskRoot: string;
   projectDocRoot: string;
@@ -35,6 +45,8 @@ export interface TaskRecord {
   phaseHistory: PhaseHistoryEntry[];
   stateSync?: TaskStateSync;
   rollback?: TaskRollbackState;
+  target?: TaskTarget;
+  contextRefs?: TaskContextRef[];
 }
 
 export interface TaskStateSync {
@@ -66,6 +78,8 @@ export interface CreateTaskInput {
   id: TaskId;
   title: string;
   workflowType: WorkflowType;
+  target?: TaskTarget;
+  contextRefs?: TaskContextRef[];
 }
 
 export interface PhaseDefinition {

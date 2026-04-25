@@ -195,3 +195,33 @@ export class InvalidRollbackOptionsError extends PlaySpecError {
     this.name = 'InvalidRollbackOptionsError';
   }
 }
+
+export class MissingContextRefError extends PlaySpecError {
+  constructor(missingPath: string) {
+    super(
+      `Context ref file not found: ${missingPath}`,
+      'Ensure the referenced context file exists or remove the stale contextRef from task.yaml.'
+    );
+    this.name = 'MissingContextRefError';
+  }
+}
+
+export class AmbiguousPlanningTaskError extends PlaySpecError {
+  constructor(candidates: string[]) {
+    super(
+      `Multiple completed planning tasks match. Candidates: ${candidates.join(', ')}`,
+      'Use --from <TASK_ID> to specify which planning task to bind context from.'
+    );
+    this.name = 'AmbiguousPlanningTaskError';
+  }
+}
+
+export class PlanningContextNotFoundError extends PlaySpecError {
+  constructor(taskId: string, missingFile: string) {
+    super(
+      `Required planning context file not found for task "${taskId}": ${missingFile}`,
+      'Ensure the planning task has generated its total spec and phase plan documents.'
+    );
+    this.name = 'PlanningContextNotFoundError';
+  }
+}

@@ -88,6 +88,72 @@ describe('YamlTaskStore', () => {
     await expect(access(path.join(taskRoot, 'memory.yaml'))).resolves.not.toThrow();
   });
 
+  it('persists target and contextRefs through create/get', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.createTask({
+      id: 'exec_task',
+      title: 'Exec Task',
+      workflowType: 'phase-execution',
+      target: { phaseNumber: '1' },
+      contextRefs: [
+        { path: 'docs/features/planning/planning_total_spec.md', role: 'planning-context', source: 'planning' },
+      ],
+    });
+
+    expect(task.target?.phaseNumber).toBe('1');
+    expect(task.contextRefs).toHaveLength(1);
+    expect(task.contextRefs![0].path).toBe('docs/features/planning/planning_total_spec.md');
+
+    const fetched = await store.getTask('exec_task');
+    expect(fetched.target?.phaseNumber).toBe('1');
+    expect(fetched.contextRefs).toHaveLength(1);
+    expect(fetched.contextRefs![0].role).toBe('planning-context');
+    expect(fetched.contextRefs![0].source).toBe('planning');
+  });
+
+  it('loads task YAML without target or contextRefs', async () => {
+    const { writeFile, mkdir } = await import('node:fs/promises');
+    const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', 'legacy_task');
+    await mkdir(taskRoot, { recursive: true });
+    await writeFile(
+      path.join(taskRoot, 'task.yaml'),
+      `id: legacy_task
+title: Legacy Task
+workflowType: multi-spec
+status: active
+workflowMode: linear
+currentPhase: null
+createdAt: "2026-04-25T00:00:00.000Z"
+updatedAt: "2026-04-25T00:00:00.000Z"
+paths:
+  taskRoot: .playspec/tasks/active/legacy_task
+  projectDocRoot: docs/features/legacy_task
+variables:
+  FEATURE_SLUG: legacy_task
+phaseHistory: []
+`
+    );
+
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask('legacy_task');
+    expect(task.id).toBe('legacy_task');
+    expect(task.target).toBeUndefined();
+    expect(task.contextRefs).toBeUndefined();
+  });
+
+  it('listCompletedTasks returns only completed tasks', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'active_task', title: 'Active Task', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'done_task', title: 'Done Task', workflowType: 'multi-spec' });
+    // Mark done_task as completed
+    await store.updateTask('done_task', { status: 'completed' });
+
+    const completed = await store.listCompletedTasks();
+    const ids = completed.map((t) => t.id);
+    expect(ids).toContain('done_task');
+    expect(ids).not.toContain('active_task');
+  });
+
   it('loads pre-Phase-3 task YAML without sync or rollback metadata', async () => {
     const taskRoot = path.join(
       workspace.dir,
