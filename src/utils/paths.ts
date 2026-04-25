@@ -23,3 +23,23 @@ export function getWorkflowPath(workspaceRoot: string, workflowType: string): st
 export function getTemplatePath(workspaceRoot: string, templatePath: string): string {
   return path.join(workspaceRoot, '.playspec', 'templates', templatePath);
 }
+
+export function getMigrationsRoot(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.playspec', 'migrations');
+}
+
+export function getMigrationPlansDir(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.playspec', 'migrations', 'plans');
+}
+
+export function getMigrationReportsDir(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.playspec', 'migrations', 'reports');
+}
+
+export function getMigrationBackupsDir(workspaceRoot: string, planId: string): string {
+  return path.join(workspaceRoot, '.playspec', 'migrations', 'backups', planId);
+}
+
+export function getMigrationArchivedDir(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.playspec', 'migrations', 'archived');
+}

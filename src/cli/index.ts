@@ -18,6 +18,7 @@ import { runSnapshot } from './commands/snapshot.js';
 import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
+import { runMigrate } from './commands/migrate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -222,6 +223,46 @@ program
   }) => {
     try {
       await runRollback(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// migrate
+program
+  .command('migrate')
+  .description('Migrate historical markdown documents into structured PlaySpec state')
+  .option('--mode <mode>', 'Migration mode: review (default), dry-run, auto', 'review')
+  .option('--source <path>', 'Source directory or file to scan for markdown documents')
+  .option('--task <id>', 'Target task ID (defaults to HEAD)')
+  .option('--plan <file>', 'External migration plan file (YAML) to load instead of auto-generating')
+  .option('--target-total-spec <file>', 'Specific total spec file to add as a context reference')
+  .option('--target-phase-plan <file>', 'Specific phase plan file to add as a context reference')
+  .option('--with-archive', 'Enable archive_file actions', false)
+  .action(async (opts: {
+    mode: string;
+    source?: string;
+    task?: string;
+    plan?: string;
+    targetTotalSpec?: string;
+    targetPhasePlan?: string;
+    withArchive: boolean;
+  }) => {
+    try {
+      const mode = opts.mode as 'review' | 'dry-run' | 'auto';
+      if (mode !== 'review' && mode !== 'dry-run' && mode !== 'auto') {
+        console.error(chalk.red(`Error: --mode must be one of: review, dry-run, auto`));
+        process.exit(1);
+      }
+      await runMigrate(process.cwd(), {
+        mode,
+        source: opts.source,
+        task: opts.task,
+        plan: opts.plan,
+        targetTotalSpec: opts.targetTotalSpec,
+        targetPhasePlan: opts.targetPhasePlan,
+        withArchive: opts.withArchive,
+      });
     } catch (err) {
       handleError(err);
     }
