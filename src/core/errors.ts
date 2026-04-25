@@ -145,3 +145,53 @@ export class GitEvidenceCollectionError extends PlaySpecError {
     this.name = 'GitEvidenceCollectionError';
   }
 }
+
+export class DesyncCheckFailedError extends PlaySpecError {
+  constructor(message: string) {
+    super(
+      `Failed to check workspace desync: ${message}`,
+      'Ensure the workspace root is inside a readable git repository and retry.'
+    );
+    this.name = 'DesyncCheckFailedError';
+  }
+}
+
+export class NoRollbackSafePointError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Task "${taskId}" has no rollback safe point.`,
+      'Run `playspec complete` successfully before attempting rollback.'
+    );
+    this.name = 'NoRollbackSafePointError';
+  }
+}
+
+export class UnsafeGitRollbackBlockedError extends PlaySpecError {
+  constructor(reasons: string[]) {
+    super(
+      `Git rollback is blocked: ${reasons.join('; ')}`,
+      'Use `playspec rollback --state-only` or clean the workspace before retrying.'
+    );
+    this.name = 'UnsafeGitRollbackBlockedError';
+  }
+}
+
+export class RollbackSnapshotError extends PlaySpecError {
+  constructor(snapshotFile: string, reason: string) {
+    super(
+      `Rollback snapshot "${snapshotFile}" is not usable: ${reason}`,
+      'Inspect the task snapshots or choose state recovery manually.'
+    );
+    this.name = 'RollbackSnapshotError';
+  }
+}
+
+export class InvalidRollbackOptionsError extends PlaySpecError {
+  constructor() {
+    super(
+      'Rollback options are ambiguous.',
+      'Use only one of `--state-only` or `--git-only`.'
+    );
+    this.name = 'InvalidRollbackOptionsError';
+  }
+}

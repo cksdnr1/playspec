@@ -73,6 +73,18 @@ describe('Phase 2 completion engine', () => {
     const updatedTask = await store.getTask(taskId);
     expect(updatedTask.currentPhase).toBe('2');
     expect(updatedTask.status).toBe('active');
+    expect(updatedTask.stateSync?.lastKnownGitHead).toMatch(/^[0-9a-f]{40}$/);
+    expect(updatedTask.stateSync?.lastCompletedAt).toEqual(
+      updatedTask.phaseHistory.find((entry) => entry.phase === '1')?.completedAt
+    );
+    expect(updatedTask.rollback?.lastSafePoint).toEqual(
+      expect.objectContaining({
+        phase: '1',
+        gitHead: updatedTask.stateSync?.lastKnownGitHead,
+        taskSnapshotFile: 'snapshots/phase1_before_complete.yaml',
+        promptSnapshotFile: 'snapshots/phase1_prompt.md',
+      })
+    );
     expect(updatedTask.phaseHistory).toContainEqual(
       expect.objectContaining({
         phase: '1',
@@ -228,5 +240,56 @@ phases:
       'utf8'
     );
     expect(reviewContent).toContain('.playspec/templates/validation/checklist.md');
+  });
+
+  it('reports medium desync for tracked source edits after completion', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.completePhase(taskId);
+
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await execa('git', ['add', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'add source'], { cwd: workspace.dir });
+    await core.completePhase(taskId);
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+
+    const result = await core.checkTaskDesync(taskId);
+
+    expect(result.severity).toBe('medium');
+    expect(result.changedFiles).toContain('src/app.ts');
+  });
+
+  it('reports high desync for deleted tracked files after completion', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    const trackedPath = path.join(workspace.dir, 'src', 'deleted.ts');
+    await writeTextFile(trackedPath, 'export const deleted = true;\n');
+    await execa('git', ['add', 'src/deleted.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'add tracked file'], { cwd: workspace.dir });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.completePhase(taskId);
+    await execa('git', ['rm', 'src/deleted.ts'], { cwd: workspace.dir });
+
+    const result = await core.checkTaskDesync(taskId);
+
+    expect(result.severity).toBe('high');
+    expect(result.deletedFiles).toContain('src/deleted.ts');
+  });
+
+  it('reports high desync for renamed tracked files through PlaySpecCore', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await writeTextFile(path.join(workspace.dir, 'src', 'old-name.ts'), 'export const renamed = true;\n');
+    await execa('git', ['add', 'src/old-name.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'add tracked file for rename'], { cwd: workspace.dir });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.completePhase(taskId);
+    await execa('git', ['mv', 'src/old-name.ts', 'src/new-name.ts'], { cwd: workspace.dir });
+
+    const result = await core.checkTaskDesync(taskId);
+
+    expect(result.severity).toBe('high');
+    expect(result.renamedFiles).toEqual(['src/new-name.ts', 'src/old-name.ts']);
+    expect(result.reasons).toContain('Tracked files were renamed since the last safe point.');
   });
 });

@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { execa } from 'execa';
 import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
@@ -12,6 +11,9 @@ import {
   GitEvidenceCollectionError,
   PhaseNotFoundError,
 } from '#core/errors.js';
+import { GitState, statusEntryPathList } from '#core/git-state.js';
+import { StateDesyncDetector } from '#core/state-desync-detector.js';
+import { RollbackManager } from '#core/rollback-manager.js';
 import type {
   PhaseDefinition,
   TaskRecord,
@@ -19,6 +21,10 @@ import type {
   CompletionResult,
   EvidenceResult,
   SnapshotResult,
+  DesyncCheckResult,
+  RollbackPlanResult,
+  RollbackExecutionResult,
+  RollbackSafePoint,
 } from '#core/types.js';
 import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
@@ -27,6 +33,9 @@ export class PlaySpecCore {
   private readonly phaseResolver: PhaseResolver;
   private readonly variableResolver: VariableResolver;
   private readonly templateRenderer: TemplateRenderer;
+  private readonly gitState: GitState;
+  private readonly stateDesyncDetector: StateDesyncDetector;
+  private readonly rollbackManager: RollbackManager;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -36,6 +45,9 @@ export class PlaySpecCore {
     this.phaseResolver = new PhaseResolver();
     this.variableResolver = new VariableResolver();
     this.templateRenderer = new TemplateRenderer(workspaceRoot);
+    this.gitState = new GitState(workspaceRoot);
+    this.stateDesyncDetector = new StateDesyncDetector(this.gitState);
+    this.rollbackManager = new RollbackManager(workspaceRoot, taskStore, this.gitState);
   }
 
   async renderNextPrompt(taskId: string): Promise<string> {
@@ -50,6 +62,26 @@ export class PlaySpecCore {
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
+  }
+
+  async checkTaskDesync(taskId: string): Promise<DesyncCheckResult> {
+    const task = await this.taskStore.getTask(taskId);
+    return this.stateDesyncDetector.run(task);
+  }
+
+  async planRollback(taskId: string): Promise<RollbackPlanResult> {
+    const task = await this.taskStore.getTask(taskId);
+    return this.rollbackManager.plan(task);
+  }
+
+  async rollbackStateOnly(taskId: string): Promise<RollbackExecutionResult> {
+    const task = await this.taskStore.getTask(taskId);
+    return this.rollbackManager.rollbackStateOnly(task);
+  }
+
+  async executeGitRollback(taskId: string): Promise<RollbackExecutionResult> {
+    const task = await this.taskStore.getTask(taskId);
+    return this.rollbackManager.executeGitRollback(task);
   }
 
   async completePhase(
@@ -78,6 +110,14 @@ export class PlaySpecCore {
         : undefined;
 
       const nextPhase = this.resolveNextPhaseId(task, workflow, phaseId);
+      const completedAt = new Date().toISOString();
+      const currentGitHead = await this.gitState.getCurrentHead();
+      const rollbackSafePoint = this.buildRollbackSafePoint(
+        phaseId,
+        completedAt,
+        currentGitHead,
+        snapshotFiles
+      );
       const updatedTask = await this.taskStore.completePhase(
         taskId,
         {
@@ -87,6 +127,13 @@ export class PlaySpecCore {
           evidenceFiles,
           snapshotFiles,
           validationTemplate,
+          stateSync: {
+            lastKnownGitHead: currentGitHead,
+            lastCompletedAt: completedAt,
+          },
+          rollback: {
+            lastSafePoint: rollbackSafePoint,
+          },
         }
       );
 
@@ -192,6 +239,22 @@ export class PlaySpecCore {
     return path.join('.playspec', 'templates', templatePath);
   }
 
+  private buildRollbackSafePoint(
+    phaseId: string,
+    createdAt: string,
+    gitHead: string | null,
+    snapshotFiles: string[]
+  ): RollbackSafePoint {
+    return {
+      id: `phase${phaseId}_${createdAt.replace(/[:.]/g, '-')}`,
+      createdAt,
+      phase: phaseId,
+      gitHead,
+      taskSnapshotFile: snapshotFiles[0],
+      promptSnapshotFile: snapshotFiles[1],
+    };
+  }
+
   private getAbsoluteTaskRoot(task: TaskRecord): string {
     return path.join(this.workspaceRoot, task.paths.taskRoot);
   }
@@ -237,10 +300,9 @@ export class PlaySpecCore {
     suffix: string
   ): Promise<string[]> {
     try {
-      const [statusOutput, diffStatOutput, changedFilesOutput] = await Promise.all([
-        this.runGit(['status', '--short', '--branch', '--untracked-files=all']),
-        this.runGit(['diff', '--stat', '--no-ext-diff']),
-        this.runGitStatusNameList(),
+      const [workspaceState, diffStatOutput] = await Promise.all([
+        this.gitState.getWorkspaceState(),
+        this.gitState.getDiffStat(),
       ]);
 
       const evidenceFiles = [
@@ -251,7 +313,7 @@ export class PlaySpecCore {
 
       await writeTextFileAtomic(
         path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[0]),
-        statusOutput
+        workspaceState.branchStatus
       );
       await writeTextFileAtomic(
         path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[1]),
@@ -259,7 +321,7 @@ export class PlaySpecCore {
       );
       await writeTextFileAtomic(
         path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[2]),
-        changedFilesOutput
+        statusEntryPathList(workspaceState.entries)
       );
 
       return evidenceFiles;
@@ -292,26 +354,4 @@ export class PlaySpecCore {
     return reviewFile;
   }
 
-  private async runGit(args: string[]): Promise<string> {
-    const result = await execa('git', args, {
-      cwd: this.workspaceRoot,
-      reject: true,
-    });
-    return result.stdout;
-  }
-
-  private async runGitStatusNameList(): Promise<string> {
-    const statusOutput = await this.runGit([
-      'status',
-      '--porcelain',
-      '--untracked-files=all',
-    ]);
-
-    return statusOutput
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => line.slice(3))
-      .join('\n');
-  }
 }

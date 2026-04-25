@@ -92,6 +92,13 @@ export class YamlTaskStore implements TaskStore {
         FEATURE_SLUG: input.id,
       },
       phaseHistory: [],
+      stateSync: {
+        lastKnownGitHead: null,
+        lastCompletedAt: null,
+      },
+      rollback: {
+        lastSafePoint: null,
+      },
     };
 
     // Create task directory structure
@@ -99,6 +106,9 @@ export class YamlTaskStore implements TaskStore {
     await mkdir(path.join(absoluteTaskRoot, 'outputs'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'reviews'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'prompts'), { recursive: true });
+    await mkdir(path.join(absoluteTaskRoot, 'evidence'), { recursive: true });
+    await mkdir(path.join(absoluteTaskRoot, 'snapshots'), { recursive: true });
+    await mkdir(path.join(absoluteTaskRoot, 'rollback'), { recursive: true });
 
     // Write task.yaml
     await writeTextFile(
@@ -131,7 +141,7 @@ export class YamlTaskStore implements TaskStore {
     input: CompletePhaseInput
   ): Promise<TaskRecord> {
     const existing = await this.getTask(taskId);
-    const now = new Date().toISOString();
+    const now = input.stateSync?.lastCompletedAt ?? new Date().toISOString();
     const phaseHistory = this.buildPhaseHistory(existing.phaseHistory, input, now);
 
     const updated: TaskRecord = {
@@ -140,6 +150,8 @@ export class YamlTaskStore implements TaskStore {
       currentPhase: input.nextPhase,
       updatedAt: now,
       phaseHistory,
+      stateSync: input.stateSync ?? existing.stateSync,
+      rollback: input.rollback ?? existing.rollback,
     };
 
     const validated = TaskRecordSchema.parse(updated);

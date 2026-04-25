@@ -3,6 +3,7 @@ import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { TaskNotActiveError } from '#core/errors.js';
+import { printDesyncResult } from './desync-check.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 
@@ -19,6 +20,13 @@ export async function runNext(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
+  const desync = await core.checkTaskDesync(task.id);
+  if (desync.severity === 'high') {
+    console.log('High desync warning: workspace reality differs from the last safe point.');
+    printDesyncResult(desync);
+    console.log('');
+  }
+
   const prompt = await core.renderNextPrompt(task.id);
 
   console.log(prompt);

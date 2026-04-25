@@ -33,6 +33,26 @@ export interface TaskRecord {
   paths: TaskPaths;
   variables: Record<string, string>;
   phaseHistory: PhaseHistoryEntry[];
+  stateSync?: TaskStateSync;
+  rollback?: TaskRollbackState;
+}
+
+export interface TaskStateSync {
+  lastKnownGitHead: string | null;
+  lastCompletedAt: string | null;
+}
+
+export interface TaskRollbackState {
+  lastSafePoint: RollbackSafePoint | null;
+}
+
+export interface RollbackSafePoint {
+  id: string;
+  createdAt: string;
+  phase: PhaseId;
+  gitHead: string | null;
+  taskSnapshotFile: string;
+  promptSnapshotFile?: string;
 }
 
 export interface TaskSummary {
@@ -78,6 +98,48 @@ export interface CompletePhaseInput {
   evidenceFiles: string[];
   snapshotFiles: string[];
   validationTemplate?: string;
+  stateSync?: TaskStateSync;
+  rollback?: TaskRollbackState;
+}
+
+export type DesyncSeverity = 'none' | 'low' | 'medium' | 'high';
+
+export interface DesyncCheckResult {
+  taskId: TaskId;
+  severity: DesyncSeverity;
+  currentGitHead: string | null;
+  lastKnownGitHead: string | null;
+  changedFiles: string[];
+  deletedFiles: string[];
+  renamedFiles: string[];
+  untrackedFiles: string[];
+  reasons: string[];
+  recommendedAction: string;
+}
+
+export interface RollbackPlanResult {
+  taskId: TaskId;
+  safePoint: RollbackSafePoint;
+  currentGitHead: string | null;
+  lastKnownGitHead: string | null;
+  changedFiles: string[];
+  deletedFiles: string[];
+  renamedFiles: string[];
+  untrackedFiles: string[];
+  affectedCommits: string[];
+  canExecuteGitRollback: boolean;
+  safetyReasons: string[];
+  recommendedAction: string;
+  confirmCommand: string | null;
+}
+
+export interface RollbackExecutionResult {
+  taskId: TaskId;
+  mode: 'state-only' | 'git-only';
+  restoredSnapshotFile?: string;
+  quarantinedFiles?: string[];
+  plan?: RollbackPlanResult;
+  message: string;
 }
 
 export interface EvidenceResult {
