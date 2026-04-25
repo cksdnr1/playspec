@@ -35,6 +35,7 @@ export const TaskSummarySchema = z.object({
 export const PhaseDefinitionSchema = z.object({
   title: z.string(),
   template: z.string(),
+  requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   completion: z.array(z.string()).optional(),
 });

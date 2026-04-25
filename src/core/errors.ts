@@ -65,6 +65,26 @@ export class TemplateNotFoundError extends PlaySpecError {
   }
 }
 
+export class IncludePathOutsideRootError extends PlaySpecError {
+  constructor(includePath: string, resolvedPath: string, rootPath: string) {
+    super(
+      `Include path escapes .playspec root: ${includePath} -> ${resolvedPath}`,
+      `Keep include paths inside ${rootPath}.`
+    );
+    this.name = 'IncludePathOutsideRootError';
+  }
+}
+
+export class IncludeNotFoundError extends PlaySpecError {
+  constructor(includePath: string, filePath: string, parentTemplatePath: string) {
+    super(
+      `Include file not found: ${filePath} (from ${parentTemplatePath}, include: ${includePath})`,
+      'Ensure the included file exists under .playspec and the include path is correct.'
+    );
+    this.name = 'IncludeNotFoundError';
+  }
+}
+
 export class CircularIncludeError extends PlaySpecError {
   constructor(includePath: string, chain: string[]) {
     super(
@@ -76,11 +96,22 @@ export class CircularIncludeError extends PlaySpecError {
 }
 
 export class UnresolvedPlaceholderError extends PlaySpecError {
-  constructor(placeholders: string[]) {
+  constructor(placeholders: string[], templatePath?: string) {
+    const location = templatePath ? ` in ${templatePath}` : '';
     super(
-      `Unresolved template placeholders: ${placeholders.join(', ')}`,
+      `Unresolved template placeholders${location}: ${placeholders.join(', ')}`,
       'Ensure all template variables are defined in the task variables or workflow configuration.'
     );
     this.name = 'UnresolvedPlaceholderError';
+  }
+}
+
+export class MissingRequiredVariablesError extends PlaySpecError {
+  constructor(workflowId: string, phaseId: string, missingVariables: string[]) {
+    super(
+      `Missing required variables for workflow "${workflowId}" phase "${phaseId}": ${missingVariables.join(', ')}`,
+      'Define the missing variables in task variables or remove them from workflow requiredVariables.'
+    );
+    this.name = 'MissingRequiredVariablesError';
   }
 }

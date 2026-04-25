@@ -1,12 +1,67 @@
 import path from 'node:path';
 import Handlebars from 'handlebars';
 import { readTextFile } from '#utils/fs.js';
-import { CircularIncludeError, TemplateNotFoundError, UnresolvedPlaceholderError } from '#core/errors.js';
+import {
+  CircularIncludeError,
+  IncludeNotFoundError,
+  IncludePathOutsideRootError,
+  TemplateNotFoundError,
+  UnresolvedPlaceholderError,
+} from '#core/errors.js';
+import { getPlayspecRoot } from '#utils/paths.js';
 
 const INCLUDE_REGEX = /\{\{include:([^}]+)\}\}/g;
+const UNRESOLVED_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
 
 export class TemplateRenderer {
   constructor(private readonly workspaceRoot: string) {}
+
+  private resolveIncludePath(includePath: string): string {
+    const playspecRoot = getPlayspecRoot(this.workspaceRoot);
+    const resolvedIncludePath = path.resolve(playspecRoot, includePath);
+    const relative = path.relative(playspecRoot, resolvedIncludePath);
+
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new IncludePathOutsideRootError(
+        includePath,
+        resolvedIncludePath,
+        playspecRoot
+      );
+    }
+
+    return resolvedIncludePath;
+  }
+
+  private findMissingTemplateVariables(
+    content: string,
+    variables: Record<string, string>
+  ): string[] {
+    const placeholders = new Set<string>();
+
+    for (const match of content.matchAll(UNRESOLVED_PLACEHOLDER_REGEX)) {
+      const token = match[0];
+      const body = token.slice(2, -2).trim();
+
+      if (
+        body === '' ||
+        body.startsWith('include:') ||
+        body.startsWith('#') ||
+        body.startsWith('/') ||
+        body.startsWith('!') ||
+        body.startsWith('>') ||
+        body === 'else'
+      ) {
+        continue;
+      }
+
+      const variableName = body.split(/\s+/)[0] ?? body;
+      if (!(variableName in variables)) {
+        placeholders.add(token);
+      }
+    }
+
+    return [...placeholders];
+  }
 
   /**
    * Recursively expand {{include:path/to/file.md}} directives.
@@ -25,7 +80,7 @@ export class TemplateRenderer {
     let result = content;
     for (const match of matches) {
       const includePath = match[1].trim();
-      const fullIncludePath = path.join(this.workspaceRoot, '.playspec', includePath);
+      const fullIncludePath = this.resolveIncludePath(includePath);
 
       if (includeChain.includes(fullIncludePath)) {
         throw new CircularIncludeError(includePath, [
@@ -38,7 +93,7 @@ export class TemplateRenderer {
       try {
         includeContent = await readTextFile(fullIncludePath);
       } catch {
-        throw new TemplateNotFoundError(fullIncludePath);
+        throw new IncludeNotFoundError(includePath, fullIncludePath, currentFile);
       }
 
       const expanded = await this.expandIncludes(
@@ -76,25 +131,35 @@ export class TemplateRenderer {
       fullTemplatePath,
     ]);
 
+    const missingTemplateVariables = this.findMissingTemplateVariables(
+      expanded,
+      variables
+    );
+    if (missingTemplateVariables.length > 0) {
+      throw new UnresolvedPlaceholderError(
+        missingTemplateVariables,
+        fullTemplatePath
+      );
+    }
+
     // Step 2: compile and render with Handlebars
     const template = Handlebars.compile(expanded, { noEscape: true });
     const rendered = template(variables);
 
-    // Step 3: check for unresolved {{...}} placeholders
-    // Handlebars leaves unknown variables as empty string in non-strict mode,
-    // so we check the original expanded content for placeholders not in variables.
-    const unresolvedMatches = [...expanded.matchAll(/\{\{([^}#/^!>][^}]*)\}\}/g)];
-    const unresolved: string[] = [];
-    for (const m of unresolvedMatches) {
-      const key = m[1].trim();
-      // Skip Handlebars block helpers (e.g. #if, /if, etc.) — already filtered by regex
-      if (!(key in variables)) {
-        unresolved.push(`{{${key}}}`);
-      }
-    }
+    const unresolvedBeforeRender = [...expanded.matchAll(UNRESOLVED_PLACEHOLDER_REGEX)]
+      .map((match) => match[1].trim())
+      .filter((key) => !(key in variables))
+      .map((key) => `{{${key}}}`);
+
+    const unresolvedAfterRender = [...rendered.matchAll(UNRESOLVED_PLACEHOLDER_REGEX)]
+      .map((match) => `{{${match[1].trim()}}}`);
+
+    const unresolved = [
+      ...new Set([...unresolvedBeforeRender, ...unresolvedAfterRender]),
+    ];
 
     if (unresolved.length > 0) {
-      throw new UnresolvedPlaceholderError(unresolved);
+      throw new UnresolvedPlaceholderError(unresolved, fullTemplatePath);
     }
 
     return rendered;

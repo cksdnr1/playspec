@@ -3,6 +3,8 @@ import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { VariableResolver } from '#template/variable-resolver.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
+import { MissingRequiredVariablesError } from '#core/errors.js';
+import type { PhaseDefinition } from '#core/types.js';
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -25,6 +27,7 @@ export class PlaySpecCore {
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { phaseId, definition } = this.phaseResolver.resolveNextPhase(task, workflow);
     const variables = this.variableResolver.resolve(task, phaseId);
+    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
     return this.templateRenderer.render(definition.template, variables);
   }
 
@@ -33,6 +36,28 @@ export class PlaySpecCore {
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
     const variables = this.variableResolver.resolve(task, phaseId);
+    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
     return this.templateRenderer.render(definition.template, variables);
+  }
+
+  private assertRequiredVariables(
+    workflowId: string,
+    phaseId: string,
+    definition: PhaseDefinition,
+    variables: Record<string, string>
+  ): void {
+    const requiredVariables = definition.requiredVariables ?? [];
+    const missingVariables = requiredVariables.filter((name) => {
+      const value = variables[name];
+      return value === undefined || value === '';
+    });
+
+    if (missingVariables.length > 0) {
+      throw new MissingRequiredVariablesError(
+        workflowId,
+        phaseId,
+        missingVariables
+      );
+    }
   }
 }

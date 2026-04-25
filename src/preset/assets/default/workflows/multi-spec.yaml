@@ -10,15 +10,55 @@ phases:
   "1":
     title: "Phase 1 — Spec & Planning"
     template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "2":
     title: "Phase 2 — Implementation Spec"
     template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "3":
     title: "Phase 3 — Implementation"
     template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "4":
     title: "Phase 4 — Verification"
     template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
   "5":
     title: "Phase 5 — Review"
     template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE

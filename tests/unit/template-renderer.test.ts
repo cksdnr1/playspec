@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import { TemplateRenderer } from '#template/template-renderer.js';
-import { CircularIncludeError, UnresolvedPlaceholderError } from '#core/errors.js';
+import {
+  CircularIncludeError,
+  IncludePathOutsideRootError,
+  UnresolvedPlaceholderError,
+} from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
@@ -54,6 +58,22 @@ describe('TemplateRenderer', () => {
     const renderer = new TemplateRenderer(workspace.dir);
     await expect(renderer.render('test/missing-var.md', {})).rejects.toThrow(
       UnresolvedPlaceholderError
+    );
+  });
+
+  it('throws UnresolvedPlaceholderError when rendered output still contains raw placeholders', async () => {
+    await writeTemplate(workspace, 'test/output-placeholder.md', 'Hello {{VALUE}}');
+    const renderer = new TemplateRenderer(workspace.dir);
+    await expect(
+      renderer.render('test/output-placeholder.md', { VALUE: '{{RAW_TOKEN}}' })
+    ).rejects.toThrow(UnresolvedPlaceholderError);
+  });
+
+  it('rejects include paths that escape the .playspec root', async () => {
+    await writeTemplate(workspace, 'test/escape.md', '{{include:../outside.md}}');
+    const renderer = new TemplateRenderer(workspace.dir);
+    await expect(renderer.render('test/escape.md', {})).rejects.toThrow(
+      IncludePathOutsideRootError
     );
   });
 

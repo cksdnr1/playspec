@@ -6,6 +6,7 @@ import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
+import { MissingRequiredVariablesError } from '#core/errors.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
@@ -93,5 +94,39 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toContain('My Task');
     // PHASE_NUMBER should be resolved to 3
     expect(prompt).toMatch(/Phase 3/);
+  });
+
+  it('fails when a workflow phase requires a missing variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec.yaml'),
+      `id: multi-spec
+mode: linear
+phaseOrder:
+  - "1"
+phases:
+  "1":
+    title: "Phase 1"
+    template: multi-spec/phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - CUSTOM_REQUIRED
+`
+    );
+
+    const taskId = slugify('Missing Variable Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Missing Variable Task',
+      workflowType: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(
+      MissingRequiredVariablesError
+    );
   });
 });

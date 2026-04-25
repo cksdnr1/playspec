@@ -34,7 +34,7 @@ Dev Phase 1 — Core Foundation
 |---|---|---|
 | Dev Phase 0 | Project Bootstrap | 프로젝트 뼈대, 테스트 환경, mock FS 준비 |
 | Dev Phase 1 | Core Foundation | init/create/next/phase 기본 동작 |
-| Dev Phase 1.5 | Minimal Markdown Preview | 아주 단순한 HTML markdown preview |
+| Dev Phase 1.5 | Template Renderer Hardening | next/phase shared render path hardening |
 | Dev Phase 2 | Completion Engine | complete, lock, snapshot, evidence, review |
 | Dev Phase 3 | Reality Safety | desync 감지, safe rollback |
 | Dev Phase 4 | MCP Adapter | Claude Code / Codex / OpenClaw 연동 |
@@ -260,56 +260,13 @@ playspec phase 3
 
 ---
 
-# Dev Phase 1.5 — Minimal Markdown Preview
+# Dev Phase 1.5 Note
 
-## Goal
+초기 초안에 있던 `Minimal Markdown Preview`는 Phase `1.5` 범위에서 제거한다.
 
-초기부터 긴 prompt와 markdown 문서를 브라우저에서 확인할 수 있게 한다.
+viewer/preview 계열 작업은 Dev Phase `9 — Full Markdown Viewer`에서 다룬다.
 
-## Important Risk
-
-여기서 React/Vite/Tailwind를 시작하면 안 된다.
-
-이 단계는 무식할 정도로 단순해야 한다.
-
-## Implementation Direction
-
-- `marked`로 markdown을 HTML로 변환
-- 임시 `preview.html` 생성
-- `open` 라이브러리로 OS 기본 브라우저 열기
-
-## In Scope
-
-- `playspec view`
-- 최근 rendered prompt 보기
-- `task.yaml` 요약 보기
-- `prompts/` 또는 `outputs/` markdown 파일 보기
-- 단일 정적 HTML 생성
-
-## Out of Scope
-
-- React
-- Vite
-- Tailwind
-- archive explorer
-- proposal diff viewer
-- evidence viewer
-- full dashboard
-
-## CLI
-
-```bash
-playspec view
-playspec view --task TASK_ID
-playspec view --file path/to/file.md
-```
-
-## Acceptance Criteria
-
-- `playspec view`가 `preview.html`을 생성한다
-- 브라우저가 자동으로 열린다
-- 최근 prompt markdown을 볼 수 있다
-- 별도의 frontend build step이 없다
+Dev Phase `1.5`의 실제 범위는 위에 정의된 `Template Renderer Hardening`이다.
 
 ---
 
@@ -766,7 +723,7 @@ playspec desync-check
 
 1. Dev Phase 0 — Project Bootstrap
 2. Dev Phase 1 — Core Foundation
-3. Dev Phase 1.5 — Minimal Markdown Preview
+3. Dev Phase 1.5 — Template Renderer Hardening
 4. Dev Phase 2 — Completion Engine
 5. Dev Phase 3 — Reality Safety
 6. Dev Phase 4 — MCP Adapter
