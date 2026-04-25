@@ -83,13 +83,12 @@ It also introduces one safety boundary:
 
 ### Dependencies
 
-- Dev Phase 0 bootstrap work is logically required first: package manager config, TypeScript config, test runner, and project structure
+- Dev Phase 0 bootstrap work is a prerequisite baseline, and the current repo already contains the minimum bootstrap scaffold to start Phase 1: package manager config, TypeScript config, test runner, and project structure
 - `docs/playspec_total_spec.md` task/workflow/template model
 - `docs/playspec_phase_plan.md` Phase 1 milestone boundaries
 
 ### Ambiguities to call out explicitly
 
-- The repository does not contain the Dev Phase 0 bootstrap implementation yet, so Phase 1 cannot be started directly without first creating the baseline project/tooling.
 - The master spec uses `playspec` and `.playspec`, while this repository is named PlaySpec and `AGENTS.md` uses `playspec` and `.playspec`. This Phase 1 spec assumes the repository-local naming is authoritative for implementation: `playspec` CLI and `.playspec` workspace.
 
 ## 3. Phase Outcome at a Glance
@@ -131,12 +130,12 @@ A minimal but real end-to-end workflow engine for single-user CLI operation: ini
 
 ### What is still unclear before deep verification
 
-Because no implementation exists yet, the remaining unknowns are design choices rather than code behavior:
+Because the runtime is currently not yet implemented, the remaining unknowns are implementation details rather than unresolved Phase 1 contracts:
 
 - exact TypeScript file names
 - exact CLI command option shapes
 - exact YAML schema fields to include immediately versus leave optional
-- exact prompt output destination: stdout only, file write under `prompts/`, or both
+- exact optional prompt-persistence file naming under `prompts/` if Phase 1 writes a copy in addition to stdout
 
 ### After this phase, you can
 
@@ -154,7 +153,7 @@ Phase 1 is the first usable slice of the product. It must make the CLI operation
 
 ### What the current implementation likely does at a high level
 
-Nothing operational yet. The current repository contains only product/phase documentation and no source implementation.
+Only bootstrap scaffolding and placeholder modules exist. No operational Phase 1 runtime path is implemented yet.
 
 ### What still needs confirmation from code
 
@@ -251,6 +250,8 @@ src/
   utils/
 ```
 
+The module responsibilities above are mandatory for Phase 1. Exact file names may vary if the dependency direction, testability, and CLI/Core boundary remain intact.
+
 Do not add framework-like abstractions beyond:
 
 - `TaskStore` interface
@@ -327,9 +328,9 @@ Do not add framework-like abstractions beyond:
 
 ### Still needs verification after implementation begins
 
-- whether `current` and `use` keep `HEAD` and `sessions/cli.default.yaml` coherent
+- whether `current` and `use` keep `HEAD` authoritative while leaving `sessions/cli.default.yaml` scaffold-only
 - whether `next` and `phase` share the same render pipeline
-- whether prompt output is observable in a stable place for testing
+- whether prompt output is observable on stdout, with any optional persisted copy matching the same rendered content
 
 ## 12. Use Case Alignment for This Phase
 
@@ -339,7 +340,7 @@ Do not add framework-like abstractions beyond:
 | Create a task for `multi-spec` | blocked | enabled | task folder exists with YAML files and task subdirectories |
 | Inspect active task | blocked | enabled | `playspec current` prints active task id/title or a clear no-active-task error |
 | Switch active task | blocked | enabled | `HEAD` changes and subsequent `current`/`next` use the new task |
-| Render next phase prompt | blocked | enabled | `playspec next` prints or writes a fully rendered prompt for the next workflow phase |
+| Render next phase prompt | blocked | enabled | `playspec next` prints a fully rendered prompt for the next workflow phase to stdout |
 | Render explicit phase prompt | blocked | enabled | `playspec phase 3` resolves that phase and renders it |
 | Complete a phase | out-of-phase | deferred | not available in Phase 1 |
 | Rollback/archive/evidence | out-of-phase | deferred | not available in Phase 1 |
@@ -398,6 +399,8 @@ src/
     fs.ts
 ```
 
+This module list locks responsibilities, not literal filenames. Small file-layout adjustments are acceptable if the same dependency direction is preserved: CLI -> Core -> storage/workflow/template/preset/utils, with Core never depending on CLI.
+
 ### Core data files to create
 
 ```text
@@ -411,20 +414,12 @@ src/
       {taskId}/
         task.yaml
         memory.yaml
-        outputs/
-        reviews/
-        prompts/
-        proposals/
-        evidence/
-        snapshots/
-        rollback/
-        human-edits/
   workflows/
   templates/
   rules/
 ```
 
-Archive-related directories can remain absent in Phase 1 if not required by the preset or tests.
+`prompts/` may be created lazily only if prompt persistence is enabled. Future-phase directories such as `evidence/`, `snapshots/`, `rollback/`, and `human-edits/` are out of scope for Phase 1 and should not be required in the initial task layout.
 
 ### Core interfaces and responsibilities
 
@@ -459,7 +454,6 @@ Responsibilities:
 Responsibilities:
 
 - resolve from explicit `taskId` first
-- resolve from session when requested
 - allow CLI `HEAD` fallback only in CLI flows
 - return explicit failure when nothing is resolvable
 
@@ -468,7 +462,8 @@ Responsibilities:
 Responsibilities:
 
 - load `.playspec/sessions/cli.default.yaml`
-- store the current human CLI task reference if Phase 1 chooses to keep session state alongside `HEAD`
+- provide scaffold-only session defaults for later phases
+- do not become a second current-task authority in Phase 1
 
 #### `WorkflowLoader` and `PhaseResolver`
 
@@ -476,7 +471,8 @@ Responsibilities:
 
 - load `.playspec/workflows/{workflowType}.yaml`
 - validate `phaseOrder`
-- resolve `next` from current task state
+- resolve `next` from the first entry in `phaseOrder` when the task has no explicit current or pending phase marker
+- allow an explicit current or pending phase marker in `task.yaml` to override the first-phase default if Phase 1 needs deterministic resume behavior
 - resolve explicit phase by id
 - fail with clear file-path-rich errors on unknown workflow or phase
 
@@ -521,10 +517,10 @@ Core responsibilities:
 
 ### Observable output decision
 
-Phase 1 should choose one stable observable output mode for `next` and `phase`:
+Phase 1 requires one stable observable output mode for `next` and `phase`:
 
-- print rendered prompt to stdout, and optionally
-- persist a copy under `{taskRoot}/prompts/`
+- print the rendered prompt to stdout
+- optionally persist the same rendered content under `{taskRoot}/prompts/`
 
 If both are implemented, the same rendered content must be used. Do not create separate render paths.
 
@@ -538,8 +534,8 @@ If both are implemented, the same rendered content must be used. Do not create s
 | Create task | `playspec create multi-spec "Feature Name"` | initialized workspace | slugged task folder, `task.yaml`, `memory.yaml`, task directories, `HEAD` updated | not yet testable in current repo | no |
 | Show current task | `playspec current` | initialized workspace with active task | prints current task | not yet testable in current repo | no |
 | Switch active task | `playspec use TASK_ID` | initialized workspace with multiple tasks | `HEAD` changes and `current` reflects it | not yet testable in current repo | no |
-| Resolve next phase | `playspec next` | active task with workflow and current phase state | rendered prompt for computed next phase | not yet testable in current repo | no |
-| Resolve explicit phase | `playspec phase 3` | active task with workflow | rendered prompt for phase `3` | not yet testable in current repo | no |
+| Resolve next phase | `playspec next` | active task with workflow and no explicit current/pending phase marker | rendered prompt for the first workflow phase is printed to stdout | not yet testable in current repo | no |
+| Resolve explicit phase | `playspec phase 3` | active task with workflow | rendered prompt for phase `3` is printed to stdout | not yet testable in current repo | no |
 | Variable resolution | Core variable resolver unit test | task/workflow fixture | `FEATURE_SLUG` and phase file variables resolve deterministically | not yet testable in current repo | no |
 | Template include success | Core template renderer unit test | template + include fixtures | include expansion succeeds | not yet testable in current repo | no |
 | Template include cycle failure | Core template renderer unit test | cyclic include fixtures | explicit circular-include error | not yet testable in current repo | no |
@@ -574,12 +570,6 @@ If both are implemented, the same rendered content must be used. Do not create s
 
 ### Narrow maintainability risks
 
-- blocker: naming drift between `playspec/.playspec` in master docs and `playspec/.playspec` in repo docs
-  Smallest safe fix: standardize implementation on `playspec` and `.playspec`, and document the divergence in code comments or setup docs once code is added.
-
-- medium risk: `HEAD` and `sessions/cli.default.yaml` can become duplicate sources of truth
-  Smallest safe fix: define one authoritative current-task source for human CLI in Phase 1. Recommended: `HEAD` is the command fallback source, session file is initialized for future compatibility and updated only if used consistently.
-
 - medium risk: direct file writes from CLI create a bypass around `TaskStore`
   Smallest safe fix: require CLI command handlers to call Core/service methods for all task mutations.
 
@@ -588,14 +578,12 @@ If both are implemented, the same rendered content must be used. Do not create s
 
 ### Open questions
 
-- Should Phase 1 write rendered prompts into `prompts/` or only print to stdout?
-- Should `currentPhase` be absent until first completion, or should `next` track a pending/current phase marker in `task.yaml` during rendering?
-- Should `sessions/cli.default.yaml` be a real Phase 1 source of current task context, or only be scaffolded for later phases?
+No architecture/spec-level open questions remain.
 
 ## 17. Current Implementation vs Proposed Direction Summary
 
-Current state is docs-only, so every Phase 1 runtime path is still missing. The proposed direction is to add only the smallest project/bootstrap and layered modules needed to make `init/create/list/current/use/next/phase` work coherently, with `HEAD` confined to the CLI boundary and all actual task/workflow/template logic in Core plus `YamlTaskStore`.
+Current state is bootstrap scaffolding plus placeholders, so every operational Phase 1 runtime path is still missing. The proposed direction is to add only the smallest layered modules needed to make `init/create/list/current/use/next/phase` work coherently, with `HEAD` confined to the CLI boundary and all actual task/workflow/template logic in Core plus `YamlTaskStore`.
 
 ## 18. Use Case and Testability Summary
 
-Phase 1 should unlock one real workflow: initialize the workspace, create/select a task, and render next or explicit phase prompts from preset-installed workflow assets. Today none of those paths are testable because no code exists; at end of phase they must be testable through both focused unit tests and one end-to-end CLI demo flow.
+Phase 1 should unlock one real workflow: initialize the workspace, create/select a task, and render next or explicit phase prompts from preset-installed workflow assets. Today none of those paths are testable because no operational code exists; at end of phase they must be testable through both focused unit tests and one end-to-end CLI demo flow.
