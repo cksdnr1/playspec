@@ -374,6 +374,109 @@ phases:
     expect(result.stdout).toContain('Git rollback executed from the last safe point');
   });
 
+  // Phase 3.5: Context Header and Task Visibility
+
+  it('prints compact Context Header before prompt output on next', async () => {
+    await createActiveTask('Feature Name');
+
+    const result = await runCli(['next'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    const taskLineIndex = result.stdout.indexOf('Task: Feature Name');
+    const phaseLineIndex = result.stdout.indexOf('Phase:');
+    const promptBodyIndex = result.stdout.indexOf('Global Rules');
+    expect(taskLineIndex).toBeGreaterThanOrEqual(0);
+    expect(phaseLineIndex).toBeGreaterThan(taskLineIndex);
+    expect(taskLineIndex).toBeLessThan(promptBodyIndex);
+  });
+
+  it('suppresses Context Header with --quiet on next', async () => {
+    await createActiveTask('Feature Name');
+
+    const result = await runCli(['next', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Task: Feature Name');
+    expect(result.stdout).not.toMatch(/^Phase:/m);
+    expect(result.stdout).toContain('Global Rules');
+  });
+
+  it('prints compact Context Header before completion output on complete', async () => {
+    await createActiveTask('CLI Header Complete Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    const taskLineIndex = result.stdout.indexOf('Task: CLI Header Complete Task');
+    const completedLineIndex = result.stdout.indexOf('Completed phase');
+    expect(taskLineIndex).toBeGreaterThanOrEqual(0);
+    expect(taskLineIndex).toBeLessThan(completedLineIndex);
+  });
+
+  it('suppresses Context Header with --quiet on complete', async () => {
+    await createActiveTask('CLI Quiet Complete Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Task: CLI Quiet Complete Task');
+    expect(result.stdout).not.toMatch(/^Phase:/m);
+    expect(result.stdout).toContain('Completed phase');
+  });
+
+  it('status command exists and shows compact header plus fuller task detail', async () => {
+    await createActiveTask('CLI Status Task');
+
+    const result = await runCli(['status'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Task: CLI Status Task');
+    expect(result.stdout).toMatch(/^Phase:/m);
+    expect(result.stdout).toContain('ID:');
+    expect(result.stdout).toContain('Workflow:');
+    expect(result.stdout).toContain('Status:');
+  });
+
+  it('status --quiet suppresses header but keeps task detail', async () => {
+    await createActiveTask('CLI Status Quiet Task');
+
+    const result = await runCli(['status', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Task: CLI Status Quiet Task');
+    expect(result.stdout).not.toMatch(/^Phase:/m);
+    expect(result.stdout).toContain('ID:');
+    expect(result.stdout).toContain('Workflow:');
+  });
+
+  it('--quiet does not suppress high desync warning on next', async () => {
+    await createActiveTask('CLI Quiet Desync Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+    await execa('git', ['add', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'source change'], { cwd: workspace.dir });
+
+    const result = await runCli(['next', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('High desync warning');
+    expect(result.stdout).not.toContain('Task: CLI Quiet Desync Task');
+  });
+
+  it('status omits Target and Context lines when not present in task state', async () => {
+    await createActiveTask('CLI Status No Extras Task');
+
+    const result = await runCli(['status'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Target:');
+    expect(result.stdout).not.toContain('Context:');
+  });
+
   it('rejects HEAD-based phase rendering for completed tasks via the CLI', async () => {
     const taskId = await createActiveTask('Completed Phase Task');
     const store = new YamlTaskStore(workspace.dir);

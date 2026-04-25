@@ -482,6 +482,15 @@ playspec complete           # Context Header + completion flow
 - `--quiet` 플래그가 Context Header를 억제한다.
 - Header는 `task.yaml`에서만 파생한다.
 - project-level state를 도입하지 않는다.
+
+## Implementation Status
+
+- `src/cli/context-header.ts`의 공유 `formatContextHeader()` 헬퍼 기준 완료
+- `playspec next`, `playspec complete`, `playspec status` 모두 동일 헬퍼 사용
+- `--quiet`는 Context Header만 억제하며 desync 경고·완료 결과·에러는 그대로 출력
+- `status` command 신규 등록; `current`는 legacy 경로로 유지 (충돌 없음)
+- task schema에 신규 필드 없음; `target`/`contextRefs`/attempt 표시는 Phase 3.6+ 위임
+
 ---
 
 # Dev Phase 3.6 — Task Relay and Smart Context Binding
