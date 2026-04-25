@@ -1,10 +1,26 @@
+import path from 'node:path';
+import { execa } from 'execa';
+import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { VariableResolver } from '#template/variable-resolver.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
-import { MissingRequiredVariablesError } from '#core/errors.js';
-import type { PhaseDefinition } from '#core/types.js';
+import {
+  MissingRequiredVariablesError,
+  TaskNotActiveError,
+  GitEvidenceCollectionError,
+  PhaseNotFoundError,
+} from '#core/errors.js';
+import type {
+  PhaseDefinition,
+  TaskRecord,
+  WorkflowDefinition,
+  CompletionResult,
+  EvidenceResult,
+  SnapshotResult,
+} from '#core/types.js';
+import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -25,19 +41,96 @@ export class PlaySpecCore {
   async renderNextPrompt(taskId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     const workflow = await this.workflowLoader.load(task.workflowType);
-    const { phaseId, definition } = this.phaseResolver.resolveNextPhase(task, workflow);
-    const variables = this.variableResolver.resolve(task, phaseId);
-    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
-    return this.templateRenderer.render(definition.template, variables);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    return this.renderResolvedPhase(task, workflow, phaseId, definition);
   }
 
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
-    const variables = this.variableResolver.resolve(task, phaseId);
-    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
-    return this.templateRenderer.render(definition.template, variables);
+    return this.renderResolvedPhase(task, workflow, phaseId, definition);
+  }
+
+  async completePhase(
+    taskId: string,
+    options: { withReview?: boolean } = {}
+  ): Promise<CompletionResult> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+
+    const workflow = await this.workflowLoader.load(task.workflowType);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+    const validationTemplate = this.resolveValidationTemplate(definition);
+
+    return withWriteLock(taskRoot, async () => {
+      const snapshotFiles = await this.writeSnapshots(
+        task,
+        phaseId,
+        promptSnapshot,
+        'completion'
+      );
+      const evidenceFiles = await this.writeEvidence(task, phaseId, '');
+      const reviewFile = options.withReview
+        ? await this.writeReview(task, phaseId, validationTemplate)
+        : undefined;
+
+      const nextPhase = this.resolveNextPhaseId(task, workflow, phaseId);
+      const updatedTask = await this.taskStore.completePhase(
+        taskId,
+        {
+          phaseId,
+          nextPhase,
+          reviewFile,
+          evidenceFiles,
+          snapshotFiles,
+          validationTemplate,
+        }
+      );
+
+      return {
+        taskId: updatedTask.id,
+        completedPhase: phaseId,
+        nextPhase: updatedTask.currentPhase,
+        status: updatedTask.status,
+        evidenceFiles,
+        snapshotFiles,
+        reviewFile,
+      };
+    });
+  }
+
+  async collectEvidence(taskId: string): Promise<EvidenceResult> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+
+    const workflow = await this.workflowLoader.load(task.workflowType);
+    const { phaseId } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+
+    return withWriteLock(taskRoot, async () => ({
+      taskId: task.id,
+      phaseId,
+      evidenceFiles: await this.writeEvidence(task, phaseId, '_manual'),
+    }));
+  }
+
+  async createSnapshot(taskId: string): Promise<SnapshotResult> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+
+    const workflow = await this.workflowLoader.load(task.workflowType);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+
+    return withWriteLock(taskRoot, async () => ({
+      taskId: task.id,
+      phaseId,
+      snapshotFiles: await this.writeSnapshots(task, phaseId, promptSnapshot, 'manual'),
+    }));
   }
 
   private assertRequiredVariables(
@@ -59,5 +152,166 @@ export class PlaySpecCore {
         missingVariables
       );
     }
+  }
+
+  private async renderResolvedPhase(
+    task: TaskRecord,
+    workflow: WorkflowDefinition,
+    phaseId: string,
+    definition: PhaseDefinition
+  ): Promise<string> {
+    const variables = this.variableResolver.resolve(task, phaseId);
+    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
+    return this.templateRenderer.render(definition.template, variables);
+  }
+
+  private resolveNextPhaseId(
+    task: TaskRecord,
+    workflow: WorkflowDefinition,
+    currentPhaseId: string
+  ): string | null {
+    try {
+      const { phaseId } = this.phaseResolver.resolveNextPhase(
+        { ...task, currentPhase: currentPhaseId },
+        workflow
+      );
+      return phaseId;
+    } catch (error) {
+      if (error instanceof PhaseNotFoundError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private resolveValidationTemplate(definition: PhaseDefinition): string | undefined {
+    const templatePath = definition.completion?.validationTemplate;
+    if (!templatePath) {
+      return undefined;
+    }
+    return path.join('.playspec', 'templates', templatePath);
+  }
+
+  private getAbsoluteTaskRoot(task: TaskRecord): string {
+    return path.join(this.workspaceRoot, task.paths.taskRoot);
+  }
+
+  private assertTaskIsActive(task: TaskRecord): void {
+    if (task.status !== 'active') {
+      throw new TaskNotActiveError(task.id, task.status);
+    }
+  }
+
+  private async writeSnapshots(
+    task: TaskRecord,
+    phaseId: string,
+    prompt: string,
+    mode: 'completion' | 'manual'
+  ): Promise<string[]> {
+    const taskSnapshotFile =
+      mode === 'completion'
+        ? `snapshots/phase${phaseId}_before_complete.yaml`
+        : `snapshots/phase${phaseId}_manual_task.yaml`;
+
+    await writeTextFileAtomic(
+      path.join(this.getAbsoluteTaskRoot(task), taskSnapshotFile),
+      stringifyYaml(task)
+    );
+
+    if (mode === 'manual') {
+      return [taskSnapshotFile];
+    }
+
+    const promptSnapshotFile = `snapshots/phase${phaseId}_prompt.md`;
+    await writeTextFileAtomic(
+      path.join(this.getAbsoluteTaskRoot(task), promptSnapshotFile),
+      prompt
+    );
+
+    return [taskSnapshotFile, promptSnapshotFile];
+  }
+
+  private async writeEvidence(
+    task: TaskRecord,
+    phaseId: string,
+    suffix: string
+  ): Promise<string[]> {
+    try {
+      const [statusOutput, diffStatOutput, changedFilesOutput] = await Promise.all([
+        this.runGit(['status', '--short', '--branch', '--untracked-files=all']),
+        this.runGit(['diff', '--stat', '--no-ext-diff']),
+        this.runGitStatusNameList(),
+      ]);
+
+      const evidenceFiles = [
+        `evidence/phase${phaseId}${suffix}_git_status.txt`,
+        `evidence/phase${phaseId}${suffix}_git_diff_stat.txt`,
+        `evidence/phase${phaseId}${suffix}_changed_files.txt`,
+      ];
+
+      await writeTextFileAtomic(
+        path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[0]),
+        statusOutput
+      );
+      await writeTextFileAtomic(
+        path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[1]),
+        diffStatOutput
+      );
+      await writeTextFileAtomic(
+        path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[2]),
+        changedFilesOutput
+      );
+
+      return evidenceFiles;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new GitEvidenceCollectionError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async writeReview(
+    task: TaskRecord,
+    phaseId: string,
+    validationTemplate?: string
+  ): Promise<string> {
+    const reviewFile = `reviews/phase${phaseId}_review.yaml`;
+    const reviewRecord = {
+      phase: phaseId,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+      validationTemplate,
+    };
+
+    await writeTextFileAtomic(
+      path.join(this.getAbsoluteTaskRoot(task), reviewFile),
+      stringifyYaml(reviewRecord)
+    );
+
+    return reviewFile;
+  }
+
+  private async runGit(args: string[]): Promise<string> {
+    const result = await execa('git', args, {
+      cwd: this.workspaceRoot,
+      reject: true,
+    });
+    return result.stdout;
+  }
+
+  private async runGitStatusNameList(): Promise<string> {
+    const statusOutput = await this.runGit([
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+    ]);
+
+    return statusOutput
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.slice(3))
+      .join('\n');
   }
 }

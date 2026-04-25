@@ -7,6 +7,24 @@ export interface ResolvedPhase {
 }
 
 export class PhaseResolver {
+  resolveCurrentPhase(task: TaskRecord, workflow: WorkflowDefinition): ResolvedPhase {
+    const { phaseOrder, phases } = workflow;
+
+    if (task.currentPhase === null) {
+      const firstId = phaseOrder[0];
+      if (!firstId) {
+        throw new PhaseNotFoundError('(first)', workflow.id);
+      }
+      const definition = phases[firstId];
+      if (!definition) {
+        throw new PhaseNotFoundError(firstId, workflow.id);
+      }
+      return { phaseId: firstId, definition };
+    }
+
+    return this.resolveExplicitPhase(task.currentPhase, workflow);
+  }
+
   /**
    * Returns the next phase for a task.
    * If currentPhase is null, returns the first phase from phaseOrder.

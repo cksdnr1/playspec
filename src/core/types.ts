@@ -15,6 +15,10 @@ export interface PhaseHistoryEntry {
   phase: PhaseId;
   status: 'active' | 'completed';
   completedAt?: string;
+  reviewFile?: string;
+  evidenceFiles?: string[];
+  snapshotFiles?: string[];
+  validationTemplate?: string;
 }
 
 export interface TaskRecord {
@@ -49,7 +53,9 @@ export interface PhaseDefinition {
   template: string;
   requiredVariables?: string[];
   outputs?: string[];
-  completion?: string[];
+  completion?: {
+    validationTemplate?: string;
+  };
 }
 
 export interface WorkflowDefinition {
@@ -63,4 +69,35 @@ export interface SessionRecord {
   sessionId: string;
   adapter: string;
   currentTaskId: TaskId | null;
+}
+
+export interface CompletePhaseInput {
+  phaseId: PhaseId;
+  nextPhase: PhaseId | null;
+  reviewFile?: string;
+  evidenceFiles: string[];
+  snapshotFiles: string[];
+  validationTemplate?: string;
+}
+
+export interface EvidenceResult {
+  taskId: TaskId;
+  phaseId: PhaseId;
+  evidenceFiles: string[];
+}
+
+export interface SnapshotResult {
+  taskId: TaskId;
+  phaseId: PhaseId;
+  snapshotFiles: string[];
+}
+
+export interface CompletionResult {
+  taskId: TaskId;
+  completedPhase: PhaseId;
+  nextPhase: PhaseId | null;
+  status: TaskStatus;
+  evidenceFiles: string[];
+  snapshotFiles: string[];
+  reviewFile?: string;
 }

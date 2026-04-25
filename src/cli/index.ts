@@ -12,6 +12,9 @@ import { runCurrent } from './commands/current.js';
 import { runUse } from './commands/use.js';
 import { runNext } from './commands/next.js';
 import { runPhase } from './commands/phase.js';
+import { runComplete } from './commands/complete.js';
+import { runEvidence } from './commands/evidence.js';
+import { runSnapshot } from './commands/snapshot.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -123,6 +126,46 @@ program
   .action(async (phaseId: string, opts: { task?: string }) => {
     try {
       await runPhase(process.cwd(), phaseId, opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// complete
+program
+  .command('complete')
+  .description('Complete the current workflow phase for the active task')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--with-review', 'Persist a review record', false)
+  .action(async (opts: { task?: string; withReview: boolean }) => {
+    try {
+      await runComplete(process.cwd(), opts.task, opts.withReview);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// evidence
+program
+  .command('evidence')
+  .description('Collect git evidence for the current workflow phase')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .action(async (opts: { task?: string }) => {
+    try {
+      await runEvidence(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// snapshot
+program
+  .command('snapshot')
+  .description('Create task and prompt snapshots for the current workflow phase')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .action(async (opts: { task?: string }) => {
+    try {
+      await runSnapshot(process.cwd(), opts.task);
     } catch (err) {
       handleError(err);
     }

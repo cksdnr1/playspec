@@ -1879,12 +1879,13 @@ Scope:
 - auto evidence collect
 
 - snapshot
-
-- rollback safe point
+- completion state persistence
 
 Acceptance:
 
-phase 완료 시 evidence, review, snapshot, rollback point가 저장된다.
+phase 완료 시 evidence, review, snapshot이 저장된다.
+
+현재 구현 기준으로 active completion path는 완료되었고, safe rollback은 Phase 3에서 다룬다.
 
   
 

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
+import { TaskNotActiveError } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 
@@ -13,6 +14,9 @@ export async function runNext(
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
+  if (!taskIdOption && task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
+  }
 
   const core = new PlaySpecCore(workspaceRoot, store);
   const prompt = await core.renderNextPrompt(task.id);
