@@ -13,6 +13,7 @@ export default defineConfig({
       '#template': path.resolve(__dirname, 'src/template'),
       '#preset': path.resolve(__dirname, 'src/preset'),
       '#utils': path.resolve(__dirname, 'src/utils'),
+      '#mcp': path.resolve(__dirname, 'src/mcp'),
     },
   },
   test: {

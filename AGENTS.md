@@ -9,7 +9,7 @@ PlaySpec is a TypeScript CLI/MCP workflow engine for managing LLM development ta
 ## Golden Rules
 
 - Do not implement future phases unless explicitly requested.
-- Do not add MCP before Phase 4.
+- MCP is implemented in `src/mcp/` (Phase 4 complete). MCP context resolution must use `resolveMcpTaskId()` and must never call `ActiveTaskResolver` or read `.playspec/HEAD`.
 - Do not add viewer before Phase 10.
 - Do not couple Core logic to CLI.
 - Do not rely on global HEAD inside Core.
@@ -18,7 +18,7 @@ PlaySpec is a TypeScript CLI/MCP workflow engine for managing LLM development ta
 - Do not perform destructive git operations.
 - Do not delete files outside `.playspec`.
 - Do not hardcode absolute paths (e.g. `path.resolve('/some/absolute/path')`). Derive paths dynamically using `process.cwd()` or `import.meta.url`.
-- Use path aliases for all cross-module imports. Never use `../../` relative paths to cross a module boundary. Use `#core/*.js`, `#storage/*.js`, `#workflow/*.js`, `#template/*.js`, `#preset/*.js`, or `#utils/*.js`. Sibling imports within the same folder (e.g. `./utils.js`) are fine as-is.
+- Use path aliases for all cross-module imports. Never use `../../` relative paths to cross a module boundary. Use `#core/*.js`, `#storage/*.js`, `#workflow/*.js`, `#template/*.js`, `#preset/*.js`, `#utils/*.js`, or `#mcp/*.js`. Sibling imports within the same folder (e.g. `./utils.js`) are fine as-is.
 
 ## Phase 1 Scope
 
