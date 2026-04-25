@@ -12,6 +12,12 @@ import {
   GitEvidenceCollectionError,
   PhaseNotFoundError,
   MissingContextRefError,
+  MissingResultError,
+  InvalidResultError,
+  MissingResultMappingError,
+  InvalidRoutingTargetError,
+  LoopGuardError,
+  UnexpectedResultError,
 } from '#core/errors.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
@@ -90,16 +96,27 @@ export class PlaySpecCore {
 
   async completePhase(
     taskId: string,
-    options: { withReview?: boolean } = {}
+    options: { withReview?: boolean; result?: string } = {}
   ): Promise<CompletionResult> {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
     const workflow = await this.workflowLoader.load(task.workflowType);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
-    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
     const taskRoot = this.getAbsoluteTaskRoot(task);
     const validationTemplate = this.resolveValidationTemplate(definition);
+
+    // Phase 3.7: validate routing and compute visit count before any artifact writes
+    const { nextPhase, result, visitCount } = this.resolveRoutedCompletion(
+      task,
+      workflow,
+      phaseId,
+      definition,
+      options.result
+    );
+
+    // Render prompt snapshot only after routing validation passes
+    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
 
     return withWriteLock(taskRoot, async () => {
       const snapshotFiles = await this.writeSnapshots(
@@ -113,7 +130,6 @@ export class PlaySpecCore {
         ? await this.writeReview(task, phaseId, validationTemplate)
         : undefined;
 
-      const nextPhase = this.resolveNextPhaseId(task, workflow, phaseId);
       const completedAt = new Date().toISOString();
       const currentGitHead = await this.gitState.getCurrentHead();
       const rollbackSafePoint = this.buildRollbackSafePoint(
@@ -138,6 +154,8 @@ export class PlaySpecCore {
           rollback: {
             lastSafePoint: rollbackSafePoint,
           },
+          result,
+          visitCount,
         }
       );
 
@@ -151,6 +169,67 @@ export class PlaySpecCore {
         reviewFile,
       };
     });
+  }
+
+  private resolveRoutedCompletion(
+    task: TaskRecord,
+    workflow: WorkflowDefinition,
+    phaseId: string,
+    definition: PhaseDefinition,
+    inputResult: string | undefined
+  ): { nextPhase: string | null; result: string | undefined; visitCount: number | undefined } {
+    const { results, nextByResult, maxVisits } = definition;
+
+    if (!results || results.length === 0) {
+      // Non-routed phase: reject unexpected result to prevent stale state
+      if (inputResult !== undefined) {
+        throw new UnexpectedResultError(phaseId);
+      }
+      return {
+        nextPhase: this.resolveNextPhaseId(task, workflow, phaseId),
+        result: undefined,
+        visitCount: undefined,
+      };
+    }
+
+    // Routed phase: result is required
+    if (inputResult === undefined) {
+      throw new MissingResultError(phaseId, results);
+    }
+
+    // Validate result is in allowed list
+    if (!results.includes(inputResult)) {
+      throw new InvalidResultError(phaseId, inputResult, results);
+    }
+
+    // Validate mapping exists
+    if (!nextByResult || !(inputResult in nextByResult)) {
+      throw new MissingResultMappingError(phaseId, inputResult);
+    }
+
+    const targetPhaseId = nextByResult[inputResult];
+
+    // Validate the mapped target phase exists in the workflow
+    if (!workflow.phases[targetPhaseId]) {
+      throw new InvalidRoutingTargetError(phaseId, inputResult, targetPhaseId, workflow.id);
+    }
+
+    // Calculate visit count from prior completed entries for this phase
+    const priorCompleted = task.phaseHistory.filter(
+      (e) => e.phase === phaseId && e.status === 'completed'
+    );
+    const nextVisitCount = priorCompleted.length + 1;
+
+    // Enforce maxVisits before any mutation
+    if (maxVisits !== undefined && nextVisitCount > maxVisits) {
+      throw new LoopGuardError(phaseId, maxVisits, nextVisitCount);
+    }
+
+    return {
+      nextPhase: targetPhaseId,
+      result: inputResult,
+      visitCount: nextVisitCount,
+    };
   }
 
   async collectEvidence(taskId: string): Promise<EvidenceResult> {

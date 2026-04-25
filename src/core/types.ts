@@ -29,6 +29,8 @@ export interface PhaseHistoryEntry {
   evidenceFiles?: string[];
   snapshotFiles?: string[];
   validationTemplate?: string;
+  result?: string;
+  visitCount?: number;
 }
 
 export interface TaskRecord {
@@ -90,6 +92,9 @@ export interface PhaseDefinition {
   completion?: {
     validationTemplate?: string;
   };
+  results?: string[];
+  nextByResult?: Record<string, PhaseId>;
+  maxVisits?: number;
 }
 
 export interface WorkflowDefinition {
@@ -114,6 +119,8 @@ export interface CompletePhaseInput {
   validationTemplate?: string;
   stateSync?: TaskStateSync;
   rollback?: TaskRollbackState;
+  result?: string;
+  visitCount?: number;
 }
 
 export type DesyncSeverity = 'none' | 'low' | 'medium' | 'high';

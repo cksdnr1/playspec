@@ -225,3 +225,63 @@ export class PlanningContextNotFoundError extends PlaySpecError {
     this.name = 'PlanningContextNotFoundError';
   }
 }
+
+export class MissingResultError extends PlaySpecError {
+  constructor(phaseId: string, allowedValues: string[]) {
+    super(
+      `Phase "${phaseId}" requires a result. Allowed values: ${allowedValues.join(', ')}`,
+      'Use --result <value> in non-interactive mode or run interactively to select from the menu.'
+    );
+    this.name = 'MissingResultError';
+  }
+}
+
+export class InvalidResultError extends PlaySpecError {
+  constructor(phaseId: string, given: string, allowedValues: string[]) {
+    super(
+      `Invalid result "${given}" for phase "${phaseId}". Allowed values: ${allowedValues.join(', ')}`,
+      'Pass one of the allowed result values with --result <value>.'
+    );
+    this.name = 'InvalidResultError';
+  }
+}
+
+export class MissingResultMappingError extends PlaySpecError {
+  constructor(phaseId: string, result: string) {
+    super(
+      `No nextByResult mapping found for result "${result}" in phase "${phaseId}".`,
+      'Add the result mapping to the workflow YAML under nextByResult.'
+    );
+    this.name = 'MissingResultMappingError';
+  }
+}
+
+export class InvalidRoutingTargetError extends PlaySpecError {
+  constructor(phaseId: string, result: string, targetPhaseId: string, workflowId: string) {
+    super(
+      `nextByResult mapping for result "${result}" in phase "${phaseId}" targets unknown phase "${targetPhaseId}" in workflow "${workflowId}".`,
+      'Ensure the target phase ID exists in the workflow phases definition.'
+    );
+    this.name = 'InvalidRoutingTargetError';
+  }
+}
+
+export class LoopGuardError extends PlaySpecError {
+  constructor(phaseId: string, maxVisits: number, visitCount: number) {
+    super(
+      `Phase "${phaseId}" has reached its maximum visit count (maxVisits: ${maxVisits}, current: ${visitCount}).`,
+      'The loop guard has been triggered. Review the workflow routing or override maxVisits in the workflow YAML.'
+    );
+    this.name = 'LoopGuardError';
+  }
+}
+
+export class UnexpectedResultError extends PlaySpecError {
+  constructor(phaseId: string) {
+    super(
+      `Phase "${phaseId}" does not declare allowed results but a result was provided.`,
+      'Remove --result from the command or add a results declaration to the workflow phase.'
+    );
+    this.name = 'UnexpectedResultError';
+  }
+}
