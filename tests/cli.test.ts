@@ -214,6 +214,166 @@ phases:
     expect(snapshotFiles.some((file) => file.startsWith('phase1'))).toBe(true);
   });
 
+  it('reports desync details via the CLI', async () => {
+    const taskId = await createActiveTask('CLI Desync Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Task: ${taskId}`);
+    expect(result.stdout).toContain('Severity: medium');
+    expect(result.stdout).toContain('src/app.ts');
+  });
+
+  it('reports untracked files through desync-check', async () => {
+    await createActiveTask('CLI Untracked Desync Task');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'untracked.ts'), 'export const value = 1;\n');
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Severity: medium');
+    expect(result.stdout).toContain('Untracked files: src/untracked.ts');
+  });
+
+  it('prints a high desync warning before next prompt output', async () => {
+    await createActiveTask('CLI Next Desync Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+    await execa('git', ['add', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'source change'], { cwd: workspace.dir });
+
+    const result = await runCli(['next'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('High desync warning');
+    expect(result.stdout.indexOf('High desync warning')).toBeLessThan(
+      result.stdout.indexOf('Phase 2')
+    );
+  });
+
+  it('restores task state with rollback --state-only and leaves source files untouched', async () => {
+    const taskId = await createActiveTask('CLI Rollback Task');
+    const sourcePath = path.join(workspace.dir, 'src', 'app.ts');
+    await writeTextFile(sourcePath, 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await runCli(['snapshot'], workspace.dir);
+
+    const result = await runCli(['rollback', '--state-only'], workspace.dir);
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask(taskId);
+    const activeSnapshots = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'snapshots')
+    );
+    const quarantineRoot = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      taskId,
+      'rollback'
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('State-only rollback restored task.yaml');
+    expect(task.currentPhase).toBeNull();
+    expect(task.phaseHistory).toEqual([]);
+    expect(task.stateSync?.lastKnownGitHead).toEqual(task.rollback?.lastSafePoint?.gitHead);
+    expect(task.stateSync?.lastCompletedAt).toEqual(task.rollback?.lastSafePoint?.createdAt);
+    await expect(access(sourcePath)).resolves.not.toThrow();
+    expect(activeSnapshots).not.toContain('phase2_manual_task.yaml');
+    await expect(
+      access(path.join(quarantineRoot, task.rollback?.lastSafePoint?.id ?? '', 'snapshots', 'phase2_manual_task.yaml'))
+    ).resolves.not.toThrow();
+  });
+
+  it('blocks confirmed git rollback when tracked source files are dirty', async () => {
+    await createActiveTask('CLI Dirty Rollback Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+
+    const result = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Git rollback is blocked');
+    expect(result.stderr).toContain('state-only');
+  });
+
+  it('prints rollback preview output by default and with --git-only', async () => {
+    await createActiveTask('CLI Rollback Preview Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+
+    const defaultPreview = await runCli(['rollback'], workspace.dir);
+    const gitOnlyPreview = await runCli(['rollback', '--git-only'], workspace.dir);
+
+    for (const result of [defaultPreview, gitOnlyPreview]) {
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Safe point:');
+      expect(result.stdout).toContain('Git rollback eligible: yes');
+      expect(result.stdout).toContain('Confirm command: playspec rollback --git-only --confirm');
+    }
+  });
+
+  it('blocks confirmed git rollback when new commits exist after the safe point', async () => {
+    await createActiveTask('CLI New Commit Rollback Task');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'new-commit.ts'), 'export const value = 1;\n');
+    await execa('git', ['add', 'src/new-commit.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'new commit after safe point'], { cwd: workspace.dir });
+
+    const result = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Git rollback is blocked');
+    expect(result.stderr).toContain('New commits exist after the rollback safe point.');
+  });
+
+  it('blocks confirmed git rollback when untracked files conflict with rollback targets', async () => {
+    await createActiveTask('CLI Untracked Rollback Task');
+    const sourcePath = path.join(workspace.dir, 'src', 'app.ts');
+    await writeTextFile(sourcePath, 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await execa('git', ['rm', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'delete tracked file after safe point'], { cwd: workspace.dir });
+    await writeTextFile(sourcePath, 'export const value = 2;\n');
+
+    const result = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Git rollback is blocked');
+    expect(result.stderr).toContain('Untracked files conflict with rollback target files and will not be deleted.');
+  });
+
+  it('executes confirmed git rollback when safety gates pass', async () => {
+    await createActiveTask('CLI Clean Git Rollback Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+
+    const preview = await runCli(['rollback', '--git-only'], workspace.dir);
+    const result = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(preview.exitCode).toBe(0);
+    expect(preview.stdout).toContain('Confirm command: playspec rollback --git-only --confirm');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Git rollback executed from the last safe point');
+  });
+
   it('rejects HEAD-based phase rendering for completed tasks via the CLI', async () => {
     const taskId = await createActiveTask('Completed Phase Task');
     const store = new YamlTaskStore(workspace.dir);

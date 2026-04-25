@@ -19,6 +19,24 @@ export const PhaseCompletionSchema = z.object({
   validationTemplate: z.string().optional(),
 });
 
+export const TaskStateSyncSchema = z.object({
+  lastKnownGitHead: z.string().nullable(),
+  lastCompletedAt: z.string().nullable(),
+});
+
+export const RollbackSafePointSchema = z.object({
+  id: z.string(),
+  createdAt: z.string(),
+  phase: z.string(),
+  gitHead: z.string().nullable(),
+  taskSnapshotFile: z.string(),
+  promptSnapshotFile: z.string().optional(),
+});
+
+export const TaskRollbackStateSchema = z.object({
+  lastSafePoint: RollbackSafePointSchema.nullable(),
+});
+
 export const TaskRecordSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -31,6 +49,8 @@ export const TaskRecordSchema = z.object({
   paths: TaskPathsSchema,
   variables: z.record(z.string()),
   phaseHistory: z.array(PhaseHistoryEntrySchema),
+  stateSync: TaskStateSyncSchema.optional(),
+  rollback: TaskRollbackStateSchema.optional(),
 });
 
 export const TaskSummarySchema = z.object({

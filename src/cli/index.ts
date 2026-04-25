@@ -15,6 +15,8 @@ import { runPhase } from './commands/phase.js';
 import { runComplete } from './commands/complete.js';
 import { runEvidence } from './commands/evidence.js';
 import { runSnapshot } from './commands/snapshot.js';
+import { runDesyncCheck } from './commands/desync-check.js';
+import { runRollback } from './commands/rollback.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -166,6 +168,40 @@ program
   .action(async (opts: { task?: string }) => {
     try {
       await runSnapshot(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// desync-check
+program
+  .command('desync-check')
+  .description('Check task state against the current git workspace')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .action(async (opts: { task?: string }) => {
+    try {
+      await runDesyncCheck(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// rollback
+program
+  .command('rollback')
+  .description('Preview or perform safe rollback for the active task')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--state-only', 'Restore PlaySpec task state only', false)
+  .option('--git-only', 'Preview or confirm Git rollback only', false)
+  .option('--confirm', 'Confirm a safe Git rollback execution', false)
+  .action(async (opts: {
+    task?: string;
+    stateOnly?: boolean;
+    gitOnly?: boolean;
+    confirm?: boolean;
+  }) => {
+    try {
+      await runRollback(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }
