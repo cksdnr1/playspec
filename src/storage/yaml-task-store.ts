@@ -1,12 +1,12 @@
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { TaskRecordSchema } from '../core/schemas.js';
-import { TaskNotFoundError } from '../core/errors.js';
+import { TaskRecordSchema } from '#core/schemas.js';
+import { TaskNotFoundError } from '#core/errors.js';
 import type { TaskStore } from './task-store.js';
-import type { TaskRecord, TaskSummary, CreateTaskInput } from '../core/types.js';
-import { readTextFile, writeTextFile } from '../utils/fs.js';
-import { getTasksRoot, getTaskRoot } from '../utils/paths.js';
+import type { TaskRecord, TaskSummary, CreateTaskInput } from '#core/types.js';
+import { readTextFile, writeTextFile } from '#utils/fs.js';
+import { getTasksRoot, getTaskRoot } from '#utils/paths.js';
 
 export class YamlTaskStore implements TaskStore {
   private readonly tasksRoot: string;

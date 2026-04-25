@@ -1,5 +1,5 @@
-import { PhaseNotFoundError } from '../core/errors.js';
-import type { TaskRecord, WorkflowDefinition, PhaseDefinition } from '../core/types.js';
+import { PhaseNotFoundError } from '#core/errors.js';
+import type { TaskRecord, WorkflowDefinition, PhaseDefinition } from '#core/types.js';
 
 export interface ResolvedPhase {
   phaseId: string;

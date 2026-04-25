@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import chalk from 'chalk';
-import { PlaySpecError } from '../core/errors.js';
+import { PlaySpecError } from '#core/errors.js';
 import { runInit } from './commands/init.js';
 import { runCreate } from './commands/create.js';
 import { runList } from './commands/list.js';

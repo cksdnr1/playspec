@@ -1,8 +1,8 @@
 import { NoActiveTaskError } from './errors.js';
 import type { TaskRecord } from './types.js';
-import type { TaskStore } from '../storage/task-store.js';
-import { readTextFile } from '../utils/fs.js';
-import { getHeadPath } from '../utils/paths.js';
+import type { TaskStore } from '#storage/task-store.js';
+import { readTextFile } from '#utils/fs.js';
+import { getHeadPath } from '#utils/paths.js';
 
 export class ActiveTaskResolver {
   constructor(

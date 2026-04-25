@@ -1,8 +1,8 @@
-import { WorkflowLoader } from '../workflow/workflow-loader.js';
-import { PhaseResolver } from '../workflow/phase-resolver.js';
-import { VariableResolver } from '../template/variable-resolver.js';
-import { TemplateRenderer } from '../template/template-renderer.js';
-import type { TaskStore } from '../storage/task-store.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { PhaseResolver } from '#workflow/phase-resolver.js';
+import { VariableResolver } from '#template/variable-resolver.js';
+import { TemplateRenderer } from '#template/template-renderer.js';
+import type { TaskStore } from '#storage/task-store.js';
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;

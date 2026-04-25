@@ -2,8 +2,8 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { SessionRecordSchema } from './schemas.js';
 import type { SessionRecord } from './types.js';
-import { readTextFile } from '../utils/fs.js';
-import { getPlayspecRoot } from '../utils/paths.js';
+import { readTextFile } from '#utils/fs.js';
+import { getPlayspecRoot } from '#utils/paths.js';
 
 export class SessionResolver {
   constructor(private readonly workspaceRoot: string) {}

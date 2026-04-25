@@ -1,8 +1,8 @@
 import { cp, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getPlayspecRoot, getHeadPath } from '../utils/paths.js';
-import { writeTextFile } from '../utils/fs.js';
+import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
+import { writeTextFile } from '#utils/fs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

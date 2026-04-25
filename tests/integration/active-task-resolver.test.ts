@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import { ActiveTaskResolver } from '../../src/core/active-task-resolver.js';
-import { YamlTaskStore } from '../../src/storage/yaml-task-store.js';
-import { NoActiveTaskError, TaskNotFoundError } from '../../src/core/errors.js';
-import { writeTextFile } from '../../src/utils/fs.js';
-import { getHeadPath, getPlayspecRoot } from '../../src/utils/paths.js';
+import { ActiveTaskResolver } from '#core/active-task-resolver.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { NoActiveTaskError, TaskNotFoundError } from '#core/errors.js';
+import { writeTextFile } from '#utils/fs.js';
+import { getHeadPath, getPlayspecRoot } from '#utils/paths.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 

@@ -1,6 +1,6 @@
-import { TemplateNotFoundError } from '../core/errors.js';
-import { readTextFile } from '../utils/fs.js';
-import { getTemplatePath } from '../utils/paths.js';
+import { TemplateNotFoundError } from '#core/errors.js';
+import { readTextFile } from '#utils/fs.js';
+import { getTemplatePath } from '#utils/paths.js';
 
 export class TemplateLoader {
   constructor(private readonly workspaceRoot: string) {}

@@ -1,4 +1,4 @@
-import type { TaskRecord, TaskSummary, CreateTaskInput } from '../core/types.js';
+import type { TaskRecord, TaskSummary, CreateTaskInput } from '#core/types.js';
 
 export interface TaskStore {
   getTask(taskId: string): Promise<TaskRecord>;

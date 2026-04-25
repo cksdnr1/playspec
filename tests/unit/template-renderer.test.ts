@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
-import { TemplateRenderer } from '../../src/template/template-renderer.js';
-import { CircularIncludeError, UnresolvedPlaceholderError } from '../../src/core/errors.js';
-import { writeTextFile } from '../../src/utils/fs.js';
+import { TemplateRenderer } from '#template/template-renderer.js';
+import { CircularIncludeError, UnresolvedPlaceholderError } from '#core/errors.js';
+import { writeTextFile } from '#utils/fs.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 

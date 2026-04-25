@@ -1,9 +1,9 @@
 import { access } from 'node:fs/promises';
-import { WorkspaceNotInitializedError } from '../../core/errors.js';
-import { YamlTaskStore } from '../../storage/yaml-task-store.js';
-import { slugify } from '../../utils/slug.js';
-import { getPlayspecRoot, getHeadPath } from '../../utils/paths.js';
-import { writeTextFile } from '../../utils/fs.js';
+import { WorkspaceNotInitializedError } from '#core/errors.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { slugify } from '#utils/slug.js';
+import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
+import { writeTextFile } from '#utils/fs.js';
 
 export async function runCreate(
   workspaceRoot: string,

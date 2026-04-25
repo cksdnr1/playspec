@@ -1,7 +1,7 @@
 import path from 'node:path';
 import Handlebars from 'handlebars';
-import { readTextFile } from '../utils/fs.js';
-import { CircularIncludeError, TemplateNotFoundError, UnresolvedPlaceholderError } from '../core/errors.js';
+import { readTextFile } from '#utils/fs.js';
+import { CircularIncludeError, TemplateNotFoundError, UnresolvedPlaceholderError } from '#core/errors.js';
 
 const INCLUDE_REGEX = /\{\{include:([^}]+)\}\}/g;
 

@@ -1,9 +1,9 @@
 import { parse as parseYaml } from 'yaml';
 import { WorkflowDefinitionSchema } from './workflow-schema.js';
-import { WorkflowNotFoundError } from '../core/errors.js';
-import type { WorkflowDefinition } from '../core/types.js';
-import { readTextFile } from '../utils/fs.js';
-import { getWorkflowPath } from '../utils/paths.js';
+import { WorkflowNotFoundError } from '#core/errors.js';
+import type { WorkflowDefinition } from '#core/types.js';
+import { readTextFile } from '#utils/fs.js';
+import { getWorkflowPath } from '#utils/paths.js';
 
 export class WorkflowLoader {
   constructor(private readonly workspaceRoot: string) {}

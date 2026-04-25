@@ -3,12 +3,12 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
-import { PresetManager } from '../../src/preset/preset-manager.js';
-import { YamlTaskStore } from '../../src/storage/yaml-task-store.js';
-import { PlaySpecCore } from '../../src/core/playspec-core.js';
-import { slugify } from '../../src/utils/slug.js';
-import { writeTextFile } from '../../src/utils/fs.js';
-import { getHeadPath } from '../../src/utils/paths.js';
+import { PresetManager } from '#preset/preset-manager.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { PlaySpecCore } from '#core/playspec-core.js';
+import { slugify } from '#utils/slug.js';
+import { writeTextFile } from '#utils/fs.js';
+import { getHeadPath } from '#utils/paths.js';
 
 let workspace: TempWorkspace;
 

@@ -1,5 +1,5 @@
-import { slugify } from '../utils/slug.js';
-import type { TaskRecord } from '../core/types.js';
+import { slugify } from '#utils/slug.js';
+import type { TaskRecord } from '#core/types.js';
 
 export interface ResolvedVariables {
   FEATURE_SLUG: string;

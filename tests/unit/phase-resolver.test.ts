@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { PhaseResolver } from '../../src/workflow/phase-resolver.js';
-import { PhaseNotFoundError } from '../../src/core/errors.js';
-import type { TaskRecord, WorkflowDefinition } from '../../src/core/types.js';
+import { PhaseResolver } from '#workflow/phase-resolver.js';
+import { PhaseNotFoundError } from '#core/errors.js';
+import type { TaskRecord, WorkflowDefinition } from '#core/types.js';
 
 const workflow: WorkflowDefinition = {
   id: 'multi-spec',

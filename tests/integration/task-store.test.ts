@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { YamlTaskStore } from '../../src/storage/yaml-task-store.js';
-import { TaskNotFoundError } from '../../src/core/errors.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { TaskNotFoundError } from '#core/errors.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 

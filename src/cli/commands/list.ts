@@ -1,4 +1,4 @@
-import { YamlTaskStore } from '../../storage/yaml-task-store.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
 
 export async function runList(workspaceRoot: string): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);

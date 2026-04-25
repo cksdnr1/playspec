@@ -1,5 +1,5 @@
-import { YamlTaskStore } from '../../storage/yaml-task-store.js';
-import { ActiveTaskResolver } from '../../core/active-task-resolver.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 
 export async function runCurrent(workspaceRoot: string): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);

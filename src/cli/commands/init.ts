@@ -1,4 +1,4 @@
-import { PresetManager } from '../../preset/preset-manager.js';
+import { PresetManager } from '#preset/preset-manager.js';
 
 export async function runInit(
   workspaceRoot: string,

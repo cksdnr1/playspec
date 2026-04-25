@@ -1,9 +1,9 @@
 import path from 'node:path';
-import { YamlTaskStore } from '../../storage/yaml-task-store.js';
-import { ActiveTaskResolver } from '../../core/active-task-resolver.js';
-import { PlaySpecCore } from '../../core/playspec-core.js';
-import { writeTextFile } from '../../utils/fs.js';
-import { getTaskRoot } from '../../utils/paths.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { ActiveTaskResolver } from '#core/active-task-resolver.js';
+import { PlaySpecCore } from '#core/playspec-core.js';
+import { writeTextFile } from '#utils/fs.js';
+import { getTaskRoot } from '#utils/paths.js';
 
 export async function runNext(
   workspaceRoot: string,

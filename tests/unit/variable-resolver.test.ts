@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { VariableResolver } from '../../src/template/variable-resolver.js';
-import type { TaskRecord } from '../../src/core/types.js';
+import { VariableResolver } from '#template/variable-resolver.js';
+import type { TaskRecord } from '#core/types.js';
 
 const baseTask: TaskRecord = {
   id: 'feature_name',

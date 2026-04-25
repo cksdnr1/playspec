@@ -1,6 +1,6 @@
-import { YamlTaskStore } from '../../storage/yaml-task-store.js';
-import { ActiveTaskResolver } from '../../core/active-task-resolver.js';
-import { PlaySpecCore } from '../../core/playspec-core.js';
+import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { ActiveTaskResolver } from '#core/active-task-resolver.js';
+import { PlaySpecCore } from '#core/playspec-core.js';
 
 export async function runPhase(
   workspaceRoot: string,

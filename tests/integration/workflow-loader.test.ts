@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { WorkflowLoader } from '../../src/workflow/workflow-loader.js';
-import { WorkflowNotFoundError } from '../../src/core/errors.js';
-import { PresetManager } from '../../src/preset/preset-manager.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { WorkflowNotFoundError } from '#core/errors.js';
+import { PresetManager } from '#preset/preset-manager.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 
