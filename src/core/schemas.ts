@@ -1,3 +1,53 @@
-// Phase 0 skeleton — Zod schemas implemented fully in Phase 1
-// import { z } from 'zod';
-export {};
+import { z } from 'zod';
+
+export const TaskPathsSchema = z.object({
+  taskRoot: z.string(),
+  projectDocRoot: z.string(),
+});
+
+export const PhaseHistoryEntrySchema = z.object({
+  phase: z.string(),
+  status: z.enum(['active', 'completed']),
+  completedAt: z.string().optional(),
+});
+
+export const TaskRecordSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  workflowType: z.string(),
+  status: z.enum(['active', 'completed', 'archived']),
+  workflowMode: z.enum(['linear']),
+  currentPhase: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  paths: TaskPathsSchema,
+  variables: z.record(z.string()),
+  phaseHistory: z.array(PhaseHistoryEntrySchema),
+});
+
+export const TaskSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(['active', 'completed', 'archived']),
+  currentPhase: z.string().nullable(),
+});
+
+export const PhaseDefinitionSchema = z.object({
+  title: z.string(),
+  template: z.string(),
+  outputs: z.array(z.string()).optional(),
+  completion: z.array(z.string()).optional(),
+});
+
+export const WorkflowDefinitionSchema = z.object({
+  id: z.string(),
+  mode: z.enum(['linear']),
+  phaseOrder: z.array(z.string()),
+  phases: z.record(PhaseDefinitionSchema),
+});
+
+export const SessionRecordSchema = z.object({
+  sessionId: z.string(),
+  adapter: z.string(),
+  currentTaskId: z.string().nullable(),
+});

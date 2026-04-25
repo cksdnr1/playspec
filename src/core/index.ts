@@ -1,4 +1,6 @@
-// Phase 0 placeholder — Core module
-// Business logic implemented in Phase 1
-
-export {};
+export * from './types.js';
+export * from './errors.js';
+export * from './schemas.js';
+export { PlaySpecCore } from './playspec-core.js';
+export { ActiveTaskResolver } from './active-task-resolver.js';
+export { SessionResolver } from './session-resolver.js';
