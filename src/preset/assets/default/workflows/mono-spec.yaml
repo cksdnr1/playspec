@@ -1,40 +1,129 @@
 id: mono-spec
 mode: linear
 phaseOrder:
-  - "1"
-  - "2"
-  - "3"
+  - tech_spec_draft
+  - tech_spec_validate
+  - tech_spec_patch
+  - implementation_plan_create
+  - implementation_plan_validate
+  - implementation_plan_patch
+  - implementation
+  - focused_tests
+  - safe_refactor
+  - pr_prepare
 phases:
-  "1":
-    title: "Phase 1 — Spec & Planning"
-    template: mono-spec/phase_template.md
+  tech_spec_draft:
+    title: "1. 기술 명세서 업데이트"
+    template: mono-spec/tech_spec_draft.md
     requiredVariables:
       - FEATURE_SLUG
-      - PHASE_NUMBER
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
       - PHASE_SPEC_FILE
       - PHASE_HANDOFF_FILE
-      - TASK_ID
-      - TASK_TITLE
-      - WORKFLOW_TYPE
-  "2":
-    title: "Phase 2 — Implementation"
-    template: mono-spec/phase_template.md
+  tech_spec_validate:
+    title: "2. 기술 교차 검증"
+    template: mono-spec/tech_spec_validate.md
     requiredVariables:
       - FEATURE_SLUG
-      - PHASE_NUMBER
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
       - PHASE_SPEC_FILE
       - PHASE_HANDOFF_FILE
-      - TASK_ID
-      - TASK_TITLE
-      - WORKFLOW_TYPE
-  "3":
-    title: "Phase 3 — Review"
-    template: mono-spec/phase_template.md
+  tech_spec_patch:
+    title: "3. 기술 명세서 업데이트"
+    template: mono-spec/tech_spec_patch.md
     requiredVariables:
       - FEATURE_SLUG
-      - PHASE_NUMBER
+      - TASK_TITLE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
       - PHASE_SPEC_FILE
       - PHASE_HANDOFF_FILE
-      - TASK_ID
+    results:
+      - approved
+      - needs_revision
+    nextByResult:
+      approved: implementation_plan_create
+      needs_revision: tech_spec_validate
+  implementation_plan_create:
+    title: "4. 구현 계획서 생성"
+    template: mono-spec/implementation_plan_create.md
+    requiredVariables:
+      - FEATURE_SLUG
       - TASK_TITLE
-      - WORKFLOW_TYPE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - IMPLEMENTATION_PLAN_FILE
+  implementation_plan_validate:
+    title: "5. 구현 계획서 교차 검증"
+    template: mono-spec/implementation_plan_validate.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - IMPLEMENTATION_PLAN_FILE
+  implementation_plan_patch:
+    title: "6. 구현 계획서 업데이트"
+    template: mono-spec/implementation_plan_patch.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - IMPLEMENTATION_PLAN_FILE
+    results:
+      - approved
+      - needs_revision
+    nextByResult:
+      approved: implementation
+      needs_revision: implementation_plan_validate
+  implementation:
+    title: "7. 기술 구현"
+    template: mono-spec/implementation.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - MASTER_SPEC_FILE
+      - MASTER_PHASE_FILE
+      - PHASE_SPEC_FILE
+      - PHASE_HANDOFF_FILE
+      - IMPLEMENTATION_PLAN_FILE
+      - IMPLEMENTATION_RESULT_FILE
+  focused_tests:
+    title: "8. 테스트"
+    template: mono-spec/focused_tests.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - IMPLEMENTATION_PLAN_FILE
+      - IMPLEMENTATION_RESULT_FILE
+      - TEST_RESULT_FILE
+  safe_refactor:
+    title: "9. 리팩토링"
+    template: mono-spec/safe_refactor.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TARGET_BRANCH
+      - IMPLEMENTATION_PLAN_FILE
+      - IMPLEMENTATION_RESULT_FILE
+      - TEST_RESULT_FILE
+  pr_prepare:
+    title: "10. PR 준비"
+    template: mono-spec/pr_prepare.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TARGET_BRANCH
+      - IMPLEMENTATION_PLAN_FILE
+      - IMPLEMENTATION_RESULT_FILE
+      - TEST_RESULT_FILE
+      - PR_BODY_FILE

@@ -8,7 +8,7 @@ import type { TempWorkspace } from './helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
-import { writeTextFile } from '#utils/fs.js';
+import { readTextFile, writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -74,6 +74,62 @@ describe('CLI placeholder', () => {
     expect(result.stdout).toContain('Phase 1');
     expect(result.stdout).toContain('Global Rules');
     expect(result.stdout).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+
+  it('creates a mono-spec task from a source file and stores an internal markdown source', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'problem.md'), '# Problem\n\nMigration bug details.\n');
+
+    const result = await runCli(
+      ['create', 'mono-spec', 'Migration Bug Fix', '--from-file', 'problem.md'],
+      workspace.dir
+    );
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask('migration_bug_fix');
+    const sourcePath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'migration_bug_fix',
+      'sources',
+      'source_problem.md'
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Source problem stored: .playspec/tasks/active/migration_bug_fix/sources/source_problem.md');
+    expect(task.variables.SOURCE_PROBLEM_FILE).toBe('.playspec/tasks/active/migration_bug_fix/sources/source_problem.md');
+    expect(task.contextRefs).toContainEqual({
+      path: '.playspec/tasks/active/migration_bug_fix/sources/source_problem.md',
+      role: 'source-problem',
+      source: 'create',
+    });
+    await expect(access(sourcePath)).resolves.not.toThrow();
+    expect(await readTextFile(sourcePath)).toContain('Migration bug details.');
+  });
+
+  it('creates a mono-spec task from stdin source text', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await execa(
+      'npx',
+      ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create', 'mono-spec', 'Pasted Source Task', '--stdin'],
+      { cwd: workspace.dir, reject: false, input: 'Pasted problem text\n' }
+    );
+    const sourcePath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'pasted_source_task',
+      'sources',
+      'source_problem.md'
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(await readTextFile(sourcePath)).toBe('Pasted problem text\n');
   });
 
   it('renders an explicit phase prompt via the CLI', async () => {

@@ -12,7 +12,7 @@ export interface TaskTarget {
 
 export interface TaskContextRef {
   path: string;
-  role: 'planning-context';
+  role: 'planning-context' | 'source-problem';
   source: TaskId;
 }
 
@@ -81,6 +81,7 @@ export interface CreateTaskInput {
   id: TaskId;
   title: string;
   workflowType: WorkflowType;
+  variables?: Record<string, string>;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
 }

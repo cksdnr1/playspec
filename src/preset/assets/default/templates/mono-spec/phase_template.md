@@ -1,15 +1,6 @@
-# Phase {{PHASE_NUMBER}} — {{TASK_TITLE}}
+# {{TASK_TITLE}} — {{FEATURE_SLUG}}
 
-**Task:** {{TASK_ID}}
-**Feature:** {{FEATURE_SLUG}}
-**Workflow:** {{WORKFLOW_TYPE}}
-
-## Phase Spec Reference
-- Spec file: `{{PHASE_SPEC_FILE}}`
-- Handoff file: `{{PHASE_HANDOFF_FILE}}`
+This directory contains phase-specific mono-spec prompt templates. The active
+workflow renders one of the step templates named in `.playspec/workflows/mono-spec.yaml`.
 
 {{include:rules/global_rules.md}}
-
-## Instructions
-
-Implement phase {{PHASE_NUMBER}} for {{FEATURE_SLUG}}.

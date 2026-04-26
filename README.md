@@ -74,7 +74,7 @@ playspec status
 Available workflows in the default preset:
 
 - `multi-spec` — five-phase feature/spec workflow
-- `mono-spec` — three-phase compact feature workflow
+- `mono-spec` — ten-step spec, validation, implementation, test, refactor, and PR workflow
 - `simple-bug` — two-phase bug workflow
 - `phase-execution` — five-phase execution workflow for implementing a numbered phase from prior planning context
 
@@ -87,6 +87,9 @@ Only the `default` preset is present in this repository.
 ```bash
 playspec init --preset default
 playspec create <workflowType> "<title>"
+playspec create mono-spec "Migration Bug Fix"
+playspec create mono-spec "Migration Bug Fix" --from-file ./problem.md
+cat problem.md | playspec create mono-spec "Migration Bug Fix" --stdin
 playspec list
 playspec current
 playspec status
@@ -95,6 +98,37 @@ playspec use <taskId>
 ```
 
 `playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
+
+`--from-file` and `--stdin` store the provided problem text as an internal markdown source file under the task directory and link it as task context. The task title remains generic; `"Migration Bug Fix"` above is only an example.
+
+### Mono-Spec Workflow
+
+`mono-spec` is the default compact workflow for a complete implementation pass:
+
+1. 기술 명세서 업데이트
+2. 기술 교차 검증
+3. 기술 명세서 업데이트
+4. 구현 계획서 생성
+5. 구현 계획서 교차 검증
+6. 구현 계획서 업데이트
+7. 기술 구현
+8. 테스트
+9. 리팩토링
+10. PR 준비
+
+The two approval gates use existing routed completion results:
+
+```bash
+# After step 3
+playspec complete --result approved        # continue to implementation plan creation
+playspec complete --result needs_revision  # return to technical spec validation
+
+# After step 6
+playspec complete --result approved        # continue to implementation
+playspec complete --result needs_revision  # return to implementation plan validation
+```
+
+Refactor and PR preparation prompts require `TARGET_BRANCH` and default it to `origin/master` during rendering. Those prompts instruct the agent to compare the current branch against `TARGET_BRANCH`, not stale local assumptions.
 
 ### Prompt Rendering
 

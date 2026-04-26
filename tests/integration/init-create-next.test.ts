@@ -133,6 +133,34 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toBeTruthy();
   });
 
+  it('renders mono-spec prompts with validation criteria and target branch guidance', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Migration Bug Fix');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Migration Bug Fix',
+      workflowType: 'mono-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const validationPrompt = await core.renderExplicitPhasePrompt(taskId, 'tech_spec_validate');
+    expect(validationPrompt).toContain('해결 가능한 이슈');
+    expect(validationPrompt).toContain('아직 남는 blocker');
+    expect(validationPrompt).toContain('Do not treat method, helper, interface, callback, or data-structure existence');
+    expect(validationPrompt).toContain('active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior');
+
+    const refactorPrompt = await core.renderExplicitPhasePrompt(taskId, 'safe_refactor');
+    expect(refactorPrompt).toContain('TARGET_BRANCH=`origin/master`');
+    expect(refactorPrompt).toContain('Compare against `origin/master`, not stale local assumptions.');
+
+    const prPrompt = await core.renderExplicitPhasePrompt(taskId, 'pr_prepare');
+    expect(prPrompt).toContain('TARGET_BRANCH=`origin/master`');
+    expect(prPrompt).toContain('Current branch diff compared against `origin/master`');
+  });
+
   it('fails when a workflow phase requires a missing variable', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

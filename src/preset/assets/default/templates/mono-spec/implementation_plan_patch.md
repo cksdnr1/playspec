@@ -1,0 +1,33 @@
+# 6. 구현 계획서 업데이트 — {{TASK_TITLE}}
+
+Task:
+Patch the implementation plan minimally based on the validation result.
+
+Variables:
+- FEATURE_SLUG=`{{FEATURE_SLUG}}`
+- TASK_TITLE=`{{TASK_TITLE}}`
+- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
+
+Source of truth:
+- `{{IMPLEMENTATION_PLAN_FILE}}`
+- Latest implementation plan validation output.
+- Current repository code only where needed to verify a disputed plan point.
+
+Scope rules:
+- Patch the existing plan in place.
+- Keep changes minimal, code-anchored, and execution-ready.
+- Do not broaden scope beyond the approved spec.
+- Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
+- Preserve active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior checks in the plan.
+
+Output requirements:
+- Update `{{IMPLEMENTATION_PLAN_FILE}}`.
+- Record resolved validation findings and remaining risks.
+- Leave clear implementation steps and focused test targets.
+
+Approval/gate handling:
+- After this step, complete with one explicit result:
+- `playspec complete --result approved` routes to technical implementation.
+- `playspec complete --result needs_revision` routes back to implementation plan cross-validation.
+
+{{include:rules/global_rules.md}}

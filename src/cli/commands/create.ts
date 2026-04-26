@@ -5,12 +5,14 @@ import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningConte
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
-import { writeTextFile } from '#utils/fs.js';
+import { readTextFile, writeTextFile } from '#utils/fs.js';
 import type { TaskContextRef, TaskTarget } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
   from?: string;
+  fromFile?: string;
+  stdin?: boolean;
 }
 
 export async function runCreate(
@@ -27,14 +29,34 @@ export async function runCreate(
   }
 
   if (!options.phase) {
-    // Original create path — unchanged
     const taskId = slugify(title);
+    const source = await resolveSourceProblem(workspaceRoot, taskId, options);
     const store = new YamlTaskStore(workspaceRoot);
-    const task = await store.createTask({ id: taskId, title, workflowType });
+    const task = await store.createTask({
+      id: taskId,
+      title,
+      workflowType,
+      variables: source
+        ? { SOURCE_PROBLEM_FILE: source.relativePath }
+        : undefined,
+      contextRefs: source
+        ? [{ path: source.relativePath, role: 'source-problem', source: 'create' }]
+        : undefined,
+    });
+    if (source) {
+      await writeTextFile(path.join(workspaceRoot, source.relativePath), source.content);
+    }
     await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
     console.log(`Created task "${task.id}" (${title})`);
+    if (source) {
+      console.log(`Source problem stored: ${source.relativePath}`);
+    }
     console.log(`HEAD set to: ${task.id}`);
     return;
+  }
+
+  if (options.fromFile || options.stdin) {
+    throw new Error('--from-file and --stdin are only supported for normal task creation, not --phase execution tasks.');
   }
 
   // Phase-execution flow
@@ -123,6 +145,41 @@ export async function runCreate(
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function resolveSourceProblem(
+  workspaceRoot: string,
+  taskId: string,
+  options: CreateOptions
+): Promise<{ relativePath: string; content: string } | undefined> {
+  if (options.fromFile && options.stdin) {
+    throw new Error('Use only one source input option: --from-file or --stdin.');
+  }
+
+  let content: string | undefined;
+  if (options.fromFile) {
+    const sourcePath = path.resolve(workspaceRoot, options.fromFile);
+    content = await readTextFile(sourcePath);
+  } else if (options.stdin) {
+    content = await readStdin();
+  }
+
+  if (content === undefined) {
+    return undefined;
+  }
+
+  return {
+    relativePath: path.join('.playspec', 'tasks', 'active', taskId, 'sources', 'source_problem.md'),
+    content: content.endsWith('\n') ? content : `${content}\n`,
+  };
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function normalizeExecutionTitle(baseTitle: string, phaseNumber: string): string {
