@@ -57,9 +57,24 @@ describe('VariableResolver', () => {
   });
 
   it('resolves mono-spec standard file variables', () => {
-    const vars = resolver.resolve(baseTask, 'safe_refactor');
+    const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
+    const vars = resolver.resolve(monoTask, 'safe_refactor');
     expect(vars.TARGET_BRANCH).toBe('origin/master');
     expect(vars.SOURCE_PROBLEM_FILE).toBe('(not provided)');
+    expect(vars.CONTEXT_FILES).toBe('(none)');
+    expect(vars.CONTEXT_REFS_DETAIL).toBe('(none)');
+    expect(vars.SPEC_FILE).toBe('docs/features/feature_name/spec.md');
+    expect(vars.PLAN_FILE).toBe('docs/features/feature_name/plan.md');
+    expect(vars.RESULT_FILE).toBe('docs/features/feature_name/result.md');
+    expect(vars.PR_FILE).toBe('docs/features/feature_name/pr.md');
+    expect(vars.IMPLEMENTATION_PLAN_FILE).toBe('docs/features/feature_name/plan.md');
+    expect(vars.IMPLEMENTATION_RESULT_FILE).toBe('docs/features/feature_name/result.md');
+    expect(vars.TEST_RESULT_FILE).toBe('docs/features/feature_name/result.md');
+    expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/pr.md');
+  });
+
+  it('keeps legacy phase-based file variables available for non-mono workflows', () => {
+    const vars = resolver.resolve(baseTask, 'safe_refactor');
     expect(vars.MASTER_SPEC_FILE).toBe('docs/features/feature_name/feature_name_master_spec.md');
     expect(vars.MASTER_PHASE_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
     expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
@@ -72,7 +87,7 @@ describe('VariableResolver', () => {
     expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/feature_name_pr_body.md');
   });
 
-  it('uses mono-spec step number and step id for generated phase files', () => {
+  it('uses mono-spec step metadata without changing stable document files', () => {
     const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
     const definition: PhaseDefinition = {
       title: '기술 명세서 업데이트',
@@ -87,16 +102,13 @@ describe('VariableResolver', () => {
     expect(vars.STEP_NUMBER).toBe('3');
     expect(vars.STEP_ID).toBe('tech_spec_patch');
     expect(vars.STEP_TITLE).toBe('기술 명세서 업데이트');
-    expect(vars.PHASE_SPEC_FILE).toBe(
-      'docs/feature_name/feature_name_step3_tech_spec_patch_implementation_spec.md'
-    );
-    expect(vars.PHASE_HANDOFF_FILE).toBe(
-      'docs/feature_name/feature_name_step3_tech_spec_patch_handoff.md'
-    );
-    expect(vars.PHASE_SPEC_FILE).not.toContain('phasetech_spec_patch');
+    expect(vars.SPEC_FILE).toBe('docs/features/feature_name/spec.md');
+    expect(vars.PLAN_FILE).toBe('docs/features/feature_name/plan.md');
+    expect(vars.RESULT_FILE).toBe('docs/features/feature_name/result.md');
+    expect(vars.PR_FILE).toBe('docs/features/feature_name/pr.md');
   });
 
-  it('uses mono-spec artifact producer step number and step id for shared implementation files', () => {
+  it('uses stable mono-spec files across implementation and review steps', () => {
     const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
     const definition: PhaseDefinition = {
       title: '구현 계획서 업데이트',
@@ -108,16 +120,85 @@ describe('VariableResolver', () => {
     const vars = resolver.resolve(monoTask, 'implementation_plan_patch', definition);
 
     expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
-      'docs/feature_name/feature_name_step4_implementation_plan_create_implementation_plan.md'
+      'docs/features/feature_name/plan.md'
     );
     expect(vars.IMPLEMENTATION_RESULT_FILE).toBe(
-      'docs/feature_name/feature_name_step7_implementation_implementation_result.md'
+      'docs/features/feature_name/result.md'
     );
     expect(vars.TEST_RESULT_FILE).toBe(
-      'docs/feature_name/feature_name_step8_focused_tests_test_result.md'
+      'docs/features/feature_name/result.md'
     );
     expect(vars.PR_BODY_FILE).toBe(
-      'docs/feature_name/feature_name_step10_pr_prepare_pr_body.md'
+      'docs/features/feature_name/pr.md'
+    );
+  });
+
+  it('uses a source-problem context ref as SOURCE_PROBLEM_FILE', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      contextRefs: [
+        { path: 'docs/features/feature_name/notes.md', role: 'planning-context', source: 'manual' },
+        { path: 'docs/features/feature_name/problem.md', role: 'source-problem', source: 'manual' },
+      ],
+    };
+
+    const vars = resolver.resolve(task, '1');
+
+    expect(vars.SOURCE_PROBLEM_FILE).toBe('docs/features/feature_name/problem.md');
+    expect(vars.CONTEXT_FILES).toContain('- `docs/features/feature_name/notes.md`');
+    expect(vars.CONTEXT_FILES).toContain('- `docs/features/feature_name/problem.md`');
+    expect(vars.CONTEXT_REFS_DETAIL).toContain(
+      '- `docs/features/feature_name/problem.md` (role: source-problem, source: manual)'
+    );
+  });
+
+  it('uses a stdin context ref when there is no source-problem ref', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      contextRefs: [
+        { path: 'docs/features/feature_name/manual.md', role: 'planning-context', source: 'manual' },
+        { path: '.playspec/tasks/active/feature_name/sources/source_problem.md', role: 'planning-context', source: 'stdin' },
+      ],
+    };
+
+    const vars = resolver.resolve(task, '1');
+
+    expect(vars.SOURCE_PROBLEM_FILE).toBe(
+      '.playspec/tasks/active/feature_name/sources/source_problem.md'
+    );
+  });
+
+  it('uses the only context ref as SOURCE_PROBLEM_FILE', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      contextRefs: [
+        { path: 'cross_project_cli_import_alias_bug.md', role: 'planning-context', source: 'manual' },
+      ],
+    };
+
+    const vars = resolver.resolve(task, '1');
+
+    expect(vars.SOURCE_PROBLEM_FILE).toBe('cross_project_cli_import_alias_bug.md');
+    expect(vars.CONTEXT_FILES).toBe('- `cross_project_cli_import_alias_bug.md`');
+    expect(vars.CONTEXT_REFS_DETAIL).toBe(
+      '- `cross_project_cli_import_alias_bug.md` (role: planning-context, source: manual)'
+    );
+  });
+
+  it('does not choose a source file silently when multiple context refs have no priority match', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      contextRefs: [
+        { path: 'docs/features/feature_name/a.md', role: 'planning-context', source: 'manual' },
+        { path: 'docs/features/feature_name/b.md', role: 'planning-context', source: 'manual' },
+      ],
+    };
+
+    const vars = resolver.resolve(task, '1');
+
+    expect(vars.SOURCE_PROBLEM_FILE).toBe('(multiple context refs)');
+    expect(vars.CONTEXT_FILES).toBe(
+      '- `docs/features/feature_name/a.md`\n- `docs/features/feature_name/b.md`'
     );
   });
 });

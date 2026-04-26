@@ -1,7 +1,7 @@
 # {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
-Create a repository-specific, code-anchored implementation plan from the existing spec, phase plan, handoff, and actual code.
+Create a repository-specific, code-anchored implementation plan from the existing spec and actual code.
 
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
@@ -9,17 +9,13 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{PHASE_SPEC_FILE}}`
-- `{{PHASE_HANDOFF_FILE}}`
-- `{{MASTER_SPEC_FILE}}`
-- `{{MASTER_PHASE_FILE}}`
+- `{{SPEC_FILE}}`
 - Current repository code.
 
 Scope rules:
@@ -30,7 +26,7 @@ Scope rules:
 - For every planned behavior, trace active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior.
 
 Output requirements:
-- Write or update `{{IMPLEMENTATION_PLAN_FILE}}`.
+- Write or update `{{PLAN_FILE}}`.
 - Include ordered implementation steps, files to edit, tests to add/update, risks, rollback notes, and completion criteria.
 - Identify old paths, bypass paths, and partial migration risks the implementation must close.
 

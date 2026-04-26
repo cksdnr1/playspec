@@ -9,17 +9,14 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
-- IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{IMPLEMENTATION_PLAN_FILE}}`
-- `{{PHASE_SPEC_FILE}}`
-- `{{PHASE_HANDOFF_FILE}}`
+- `{{PLAN_FILE}}`
+- `{{SPEC_FILE}}`
 - Current repository code.
 
 Scope rules:
@@ -31,7 +28,7 @@ Scope rules:
 
 Output requirements:
 - Apply the implementation.
-- Update `{{IMPLEMENTATION_RESULT_FILE}}` with files changed, behavior implemented, verification performed, and remaining risks.
+- Update `{{RESULT_FILE}}` with files changed, behavior implemented, verification performed, and remaining risks.
 - Keep documentation changes readable and scoped.
 
 Approval/gate handling:

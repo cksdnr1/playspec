@@ -9,13 +9,14 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
-- IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`
-- TEST_RESULT_FILE=`{{TEST_RESULT_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{IMPLEMENTATION_PLAN_FILE}}`
-- `{{IMPLEMENTATION_RESULT_FILE}}`
+- `{{PLAN_FILE}}`
+- `{{RESULT_FILE}}`
 - Current repository code and existing test conventions.
 
 Scope rules:
@@ -27,7 +28,7 @@ Scope rules:
 Output requirements:
 - Add or update focused tests.
 - Run the relevant test command.
-- Write `{{TEST_RESULT_FILE}}` with tests changed, commands run, results, failures, and remaining gaps.
+- Update `{{RESULT_FILE}}` with tests changed, commands run, results, failures, and remaining gaps.
 
 Approval/gate handling:
 - No approval result is required for this step. Complete normally after tests and result notes are done.

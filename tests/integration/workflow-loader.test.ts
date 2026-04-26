@@ -81,6 +81,20 @@ describe('WorkflowLoader', () => {
     });
     expect(workflow.phases['safe_refactor']?.requiredVariables).toContain('TARGET_BRANCH');
     expect(workflow.phases['pr_prepare']?.requiredVariables).toContain('TARGET_BRANCH');
+
+    const monoRequiredVariables = workflow.phaseOrder.flatMap(
+      (phaseId) => workflow.phases[phaseId]?.requiredVariables ?? []
+    );
+    expect(monoRequiredVariables).toEqual(expect.arrayContaining([
+      'SPEC_FILE',
+      'PLAN_FILE',
+      'RESULT_FILE',
+      'PR_FILE',
+    ]));
+    expect(monoRequiredVariables).not.toContain('MASTER_SPEC_FILE');
+    expect(monoRequiredVariables).not.toContain('MASTER_PHASE_FILE');
+    expect(monoRequiredVariables).not.toContain('PHASE_SPEC_FILE');
+    expect(monoRequiredVariables).not.toContain('PHASE_HANDOFF_FILE');
   });
 
   it('throws WorkflowNotFoundError for unknown workflow type', async () => {

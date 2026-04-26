@@ -14,6 +14,12 @@ export interface ResolvedVariables {
   WORKFLOW_TYPE: string;
   TARGET_BRANCH: string;
   SOURCE_PROBLEM_FILE: string;
+  CONTEXT_FILES: string;
+  CONTEXT_REFS_DETAIL: string;
+  SPEC_FILE: string;
+  PLAN_FILE: string;
+  RESULT_FILE: string;
+  PR_FILE: string;
   MASTER_SPEC_FILE: string;
   MASTER_PHASE_FILE: string;
   IMPLEMENTATION_PLAN_FILE: string;
@@ -42,22 +48,15 @@ export class VariableResolver {
       ? `docs/${featureSlug}/${stepFilePrefix}_handoff.md`
       : `docs/${featureSlug}/${featureSlug}_phase${phaseNumber}_handoff.md`;
     const projectDocRoot = task.paths.projectDocRoot;
-    const implementationPlanPrefix = `${featureSlug}_step4_implementation_plan_create`;
-    const implementationResultPrefix = `${featureSlug}_step7_implementation`;
-    const testResultPrefix = `${featureSlug}_step8_focused_tests`;
-    const prBodyPrefix = `${featureSlug}_step10_pr_prepare`;
-    const defaultImplementationPlanFile = isMonoSpec
-      ? `docs/${featureSlug}/${implementationPlanPrefix}_implementation_plan.md`
-      : `${projectDocRoot}/${featureSlug}_implementation_plan.md`;
-    const defaultImplementationResultFile = isMonoSpec
-      ? `docs/${featureSlug}/${implementationResultPrefix}_implementation_result.md`
-      : `${projectDocRoot}/${featureSlug}_implementation_result.md`;
-    const defaultTestResultFile = isMonoSpec
-      ? `docs/${featureSlug}/${testResultPrefix}_test_result.md`
-      : `${projectDocRoot}/${featureSlug}_test_result.md`;
-    const defaultPrBodyFile = isMonoSpec
-      ? `docs/${featureSlug}/${prBodyPrefix}_pr_body.md`
-      : `${projectDocRoot}/${featureSlug}_pr_body.md`;
+    const defaultSpecFile = `${projectDocRoot}/spec.md`;
+    const defaultPlanFile = `${projectDocRoot}/plan.md`;
+    const defaultResultFile = `${projectDocRoot}/result.md`;
+    const defaultPrFile = `${projectDocRoot}/pr.md`;
+    const specFile = task.variables['SPEC_FILE'] ?? defaultSpecFile;
+    const planFile = task.variables['PLAN_FILE'] ?? defaultPlanFile;
+    const resultFile = task.variables['RESULT_FILE'] ?? defaultResultFile;
+    const prFile = task.variables['PR_FILE'] ?? defaultPrFile;
+    const contextVariables = resolveContextVariables(task);
 
     return {
       ...task.variables,
@@ -72,7 +71,13 @@ export class VariableResolver {
       TASK_TITLE: task.title,
       WORKFLOW_TYPE: task.workflowType,
       TARGET_BRANCH: task.variables['TARGET_BRANCH'] ?? 'origin/master',
-      SOURCE_PROBLEM_FILE: task.variables['SOURCE_PROBLEM_FILE'] ?? '(not provided)',
+      SOURCE_PROBLEM_FILE: contextVariables.SOURCE_PROBLEM_FILE,
+      CONTEXT_FILES: contextVariables.CONTEXT_FILES,
+      CONTEXT_REFS_DETAIL: contextVariables.CONTEXT_REFS_DETAIL,
+      SPEC_FILE: specFile,
+      PLAN_FILE: planFile,
+      RESULT_FILE: resultFile,
+      PR_FILE: prFile,
       MASTER_SPEC_FILE:
         task.variables['MASTER_SPEC_FILE'] ??
         `${projectDocRoot}/${featureSlug}_master_spec.md`,
@@ -81,16 +86,52 @@ export class VariableResolver {
         `${projectDocRoot}/${featureSlug}_phase_plan.md`,
       IMPLEMENTATION_PLAN_FILE:
         task.variables['IMPLEMENTATION_PLAN_FILE'] ??
-        defaultImplementationPlanFile,
+        (isMonoSpec ? planFile : `${projectDocRoot}/${featureSlug}_implementation_plan.md`),
       IMPLEMENTATION_RESULT_FILE:
         task.variables['IMPLEMENTATION_RESULT_FILE'] ??
-        defaultImplementationResultFile,
+        (isMonoSpec ? resultFile : `${projectDocRoot}/${featureSlug}_implementation_result.md`),
       TEST_RESULT_FILE:
         task.variables['TEST_RESULT_FILE'] ??
-        defaultTestResultFile,
+        (isMonoSpec ? resultFile : `${projectDocRoot}/${featureSlug}_test_result.md`),
       PR_BODY_FILE:
         task.variables['PR_BODY_FILE'] ??
-        defaultPrBodyFile,
+        (isMonoSpec ? prFile : `${projectDocRoot}/${featureSlug}_pr_body.md`),
     };
   }
+}
+
+function resolveContextVariables(task: TaskRecord): Pick<
+  ResolvedVariables,
+  'SOURCE_PROBLEM_FILE' | 'CONTEXT_FILES' | 'CONTEXT_REFS_DETAIL'
+> {
+  const contextRefs = task.contextRefs ?? [];
+  const contextFiles = contextRefs.length > 0
+    ? contextRefs.map((ref) => `- \`${ref.path}\``).join('\n')
+    : '(none)';
+  const contextRefsDetail = contextRefs.length > 0
+    ? contextRefs
+        .map((ref) => `- \`${ref.path}\` (role: ${ref.role}, source: ${ref.source})`)
+        .join('\n')
+    : '(none)';
+
+  if (contextRefs.length === 0) {
+    return {
+      SOURCE_PROBLEM_FILE: task.variables['SOURCE_PROBLEM_FILE'] ?? '(not provided)',
+      CONTEXT_FILES: contextFiles,
+      CONTEXT_REFS_DETAIL: contextRefsDetail,
+    };
+  }
+
+  const sourceProblemRef = contextRefs.find((ref) => ref.role === 'source-problem');
+  const stdinRef = contextRefs.find((ref) => ref.source === 'stdin');
+  const sourceProblemFile =
+    sourceProblemRef?.path ??
+    stdinRef?.path ??
+    (contextRefs.length === 1 ? contextRefs[0].path : '(multiple context refs)');
+
+  return {
+    SOURCE_PROBLEM_FILE: sourceProblemFile,
+    CONTEXT_FILES: contextFiles,
+    CONTEXT_REFS_DETAIL: contextRefsDetail,
+  };
 }

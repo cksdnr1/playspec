@@ -9,10 +9,13 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{IMPLEMENTATION_PLAN_FILE}}`
+- `{{PLAN_FILE}}`
 - Latest implementation plan validation output.
 - Current repository code only where needed to verify a disputed plan point.
 
@@ -24,7 +27,7 @@ Scope rules:
 - Preserve active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior checks in the plan.
 
 Output requirements:
-- Update `{{IMPLEMENTATION_PLAN_FILE}}`.
+- Update `{{PLAN_FILE}}`.
 - Record resolved validation findings and remaining risks.
 - Leave clear implementation steps and focused test targets.
 

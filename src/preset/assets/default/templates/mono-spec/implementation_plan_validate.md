@@ -9,16 +9,14 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{IMPLEMENTATION_PLAN_FILE}}`
-- `{{PHASE_SPEC_FILE}}`
-- `{{PHASE_HANDOFF_FILE}}`
+- `{{PLAN_FILE}}`
+- `{{SPEC_FILE}}`
 - Current repository code.
 
 Scope rules:
@@ -29,6 +27,7 @@ Scope rules:
 - Explicitly identify old paths, bypass paths, partial migrations, hidden coupling, ownership/lifetime problems, callback propagation gaps, and reset/clear asymmetry.
 
 Output requirements:
+- Update the validation/risk ledger in `{{PLAN_FILE}}`.
 - List blockers, medium risks, low risks, and recommended minimal patches to the plan.
 - Separately list unresolved blockers after considering valid proposed fixes.
 - State whether the next update step should be completed as `approved` or `needs_revision`.

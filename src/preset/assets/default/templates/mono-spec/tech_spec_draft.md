@@ -10,10 +10,14 @@ Variables:
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
 - SOURCE_PROBLEM_FILE=`{{SOURCE_PROBLEM_FILE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
+- CONTEXT_FILES:
+{{CONTEXT_FILES}}
+- CONTEXT_REFS_DETAIL:
+{{CONTEXT_REFS_DETAIL}}
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
 - Start from the task title, linked source problem file when present, and current repository code.
@@ -30,8 +34,7 @@ Scope rules:
 - Explicitly identify old paths, bypass paths, alternate active paths, and partial migrations.
 
 Output requirements:
-- Update `{{PHASE_SPEC_FILE}}` with the initial technical spec.
-- Update `{{PHASE_HANDOFF_FILE}}` with feature summary, locked file set, verified facts, control flow, constraints, active entry points, bypasses, open questions, and next phase goal.
+- Update `{{SPEC_FILE}}` with the initial technical spec.
 - Include sections for Scope, Use Case alignment, high-level current implementation summary, relevant files reviewed, active entry points and bypasses, current architecture, verified behavior, problems, proposed direction, file-by-file plan, risks/open questions, and reader aids.
 - Clearly separate verified code behavior, inferred behavior, and open questions.
 - Include Mermaid diagrams only when they improve understanding and label proposed flow separately from verified flow.

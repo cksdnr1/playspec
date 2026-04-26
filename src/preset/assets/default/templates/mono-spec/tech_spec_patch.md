@@ -9,14 +9,13 @@ Variables:
 - STEP_NUMBER=`{{STEP_NUMBER}}`
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
-- `{{PHASE_SPEC_FILE}}`
-- `{{PHASE_HANDOFF_FILE}}`
+- `{{SPEC_FILE}}`
 - Latest technical validation output.
 - Current repository code for directly related verification only.
 
@@ -28,8 +27,7 @@ Scope rules:
 - Verify active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior before marking a path complete.
 
 Output requirements:
-- Update `{{PHASE_SPEC_FILE}}`.
-- Update `{{PHASE_HANDOFF_FILE}}`.
+- Update `{{SPEC_FILE}}`.
 - Record which validation issues were resolved, downgraded, or remain blockers.
 - Keep markdown readable for the implementation planner.
 

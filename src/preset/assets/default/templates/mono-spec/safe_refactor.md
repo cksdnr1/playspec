@@ -10,15 +10,15 @@ Variables:
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
 - TARGET_BRANCH=`{{TARGET_BRANCH}}`
-- IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
-- IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`
-- TEST_RESULT_FILE=`{{TEST_RESULT_FILE}}`
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
 - Current branch diff compared against `{{TARGET_BRANCH}}`.
-- `{{IMPLEMENTATION_PLAN_FILE}}`
-- `{{IMPLEMENTATION_RESULT_FILE}}`
-- `{{TEST_RESULT_FILE}}`
+- `{{PLAN_FILE}}`
+- `{{RESULT_FILE}}`
 
 Scope rules:
 - Compare against `{{TARGET_BRANCH}}`, not stale local assumptions.
@@ -31,7 +31,7 @@ Scope rules:
 Output requirements:
 - Apply only safe local refactors when they are clearly justified.
 - Run focused verification after refactoring.
-- Record what changed, what was intentionally skipped, and why the cleanup stayed in scope.
+- Update `{{RESULT_FILE}}` with what changed, what was intentionally skipped, and why the cleanup stayed in scope.
 
 Approval/gate handling:
 - No approval result is required for this step. Complete normally after verification.

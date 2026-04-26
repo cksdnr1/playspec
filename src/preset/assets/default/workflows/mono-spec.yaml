@@ -21,10 +21,10 @@ phases:
       - FEATURE_SLUG
       - TASK_TITLE
       - SOURCE_PROBLEM_FILE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   tech_spec_validate:
     title: "기술 교차 검증"
     stepNumber: "2"
@@ -34,10 +34,10 @@ phases:
       - FEATURE_SLUG
       - TASK_TITLE
       - SOURCE_PROBLEM_FILE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   tech_spec_patch:
     title: "기술 명세서 업데이트"
     stepNumber: "3"
@@ -46,10 +46,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
     gate:
       results:
         - approved
@@ -65,11 +65,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
-      - IMPLEMENTATION_PLAN_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   implementation_plan_validate:
     title: "구현 계획서 교차 검증"
     stepNumber: "5"
@@ -78,11 +77,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
-      - IMPLEMENTATION_PLAN_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   implementation_plan_patch:
     title: "구현 계획서 업데이트"
     stepNumber: "6"
@@ -91,7 +89,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - IMPLEMENTATION_PLAN_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
     gate:
       results:
         - approved
@@ -107,12 +108,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - MASTER_SPEC_FILE
-      - MASTER_PHASE_FILE
-      - PHASE_SPEC_FILE
-      - PHASE_HANDOFF_FILE
-      - IMPLEMENTATION_PLAN_FILE
-      - IMPLEMENTATION_RESULT_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   focused_tests:
     title: "테스트"
     stepNumber: "8"
@@ -121,9 +120,10 @@ phases:
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
-      - IMPLEMENTATION_PLAN_FILE
-      - IMPLEMENTATION_RESULT_FILE
-      - TEST_RESULT_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   safe_refactor:
     title: "리팩토링"
     stepNumber: "9"
@@ -133,9 +133,10 @@ phases:
       - FEATURE_SLUG
       - TASK_TITLE
       - TARGET_BRANCH
-      - IMPLEMENTATION_PLAN_FILE
-      - IMPLEMENTATION_RESULT_FILE
-      - TEST_RESULT_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
   pr_prepare:
     title: "PR 준비"
     stepNumber: "10"
@@ -145,7 +146,7 @@ phases:
       - FEATURE_SLUG
       - TASK_TITLE
       - TARGET_BRANCH
-      - IMPLEMENTATION_PLAN_FILE
-      - IMPLEMENTATION_RESULT_FILE
-      - TEST_RESULT_FILE
-      - PR_BODY_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE

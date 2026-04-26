@@ -10,15 +10,18 @@ Variables:
 - STEP_ID=`{{STEP_ID}}`
 - STEP_TITLE=`{{STEP_TITLE}}`
 - SOURCE_PROBLEM_FILE=`{{SOURCE_PROBLEM_FILE}}`
-- MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
-- MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
-- PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
-- PHASE_HANDOFF_FILE=`{{PHASE_HANDOFF_FILE}}`
+- CONTEXT_FILES:
+{{CONTEXT_FILES}}
+- CONTEXT_REFS_DETAIL:
+{{CONTEXT_REFS_DETAIL}}
+- SPEC_FILE=`{{SPEC_FILE}}`
+- PLAN_FILE=`{{PLAN_FILE}}`
+- RESULT_FILE=`{{RESULT_FILE}}`
+- PR_FILE=`{{PR_FILE}}`
 
 Source of truth:
 - Current repository code.
-- `{{PHASE_SPEC_FILE}}`
-- `{{PHASE_HANDOFF_FILE}}`
+- `{{SPEC_FILE}}`
 - Linked source problem file when present: `{{SOURCE_PROBLEM_FILE}}`
 
 Scope rules:
@@ -33,6 +36,7 @@ Scope rules:
 - Recommend handling for Inferred items and Open Questions.
 
 Output requirements:
+- Update the validation/risk ledger in `{{SPEC_FILE}}`.
 Use exactly these top-level sections:
 - 해결 가능한 이슈
 - 아직 남는 blocker

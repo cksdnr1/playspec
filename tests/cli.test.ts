@@ -115,6 +115,25 @@ describe('CLI placeholder', () => {
     expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual_task)`);
   });
 
+  it('renders a manually linked context file in next prompt variables', async () => {
+    const taskId = await createActiveTask('Manual Context Prompt Task', 'mono-spec');
+    const contextPath = 'cross_project_cli_import_alias_bug.md';
+    await writeTextFile(path.join(workspace.dir, contextPath), '# Bug\n');
+
+    const addContext = await runCli(['add-context', contextPath, '--task', taskId], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const currentTask = await runCli(['current-task'], workspace.dir);
+    const next = await runCli(['next'], workspace.dir);
+
+    expect(addContext.exitCode).toBe(0);
+    expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual)`);
+    expect(next.exitCode).toBe(0);
+    expect(next.stdout).toContain(`SOURCE_PROBLEM_FILE=\`${contextPath}\``);
+    expect(next.stdout).toContain(`- \`${contextPath}\``);
+    expect(next.stdout).toContain(`- \`${contextPath}\` (role: planning-context, source: manual)`);
+  });
+
   it('rejects non-interactive add-context without --task before mutation', async () => {
     const taskId = await createActiveTask('Add Context Non Interactive Task');
     const contextPath = 'docs/add_context_non_interactive_task/notes.md';
@@ -203,6 +222,18 @@ describe('CLI placeholder', () => {
 
     expect(result.exitCode).toBe(0);
     expect(await readTextFile(sourcePath)).toBe('Pasted problem text\n');
+    const task = await new YamlTaskStore(workspace.dir).getTask('pasted_source_task');
+    expect(task.contextRefs).toContainEqual({
+      path: '.playspec/tasks/active/pasted_source_task/sources/source_problem.md',
+      role: 'source-problem',
+      source: 'stdin',
+    });
+
+    const next = await runCli(['next'], workspace.dir);
+    expect(next.exitCode).toBe(0);
+    expect(next.stdout).toContain(
+      'SOURCE_PROBLEM_FILE=`.playspec/tasks/active/pasted_source_task/sources/source_problem.md`'
+    );
   });
 
   it('renders an explicit phase prompt via the CLI', async () => {

@@ -40,7 +40,7 @@ export async function runCreate(
         ? { SOURCE_PROBLEM_FILE: source.relativePath }
         : undefined,
       contextRefs: source
-        ? [{ path: source.relativePath, role: 'source-problem', source: 'create' }]
+        ? [{ path: source.relativePath, role: 'source-problem', source: options.stdin ? 'stdin' : 'create' }]
         : undefined,
     });
     if (source) {

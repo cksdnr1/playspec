@@ -150,10 +150,14 @@ describe('init → create → next (end-to-end)', () => {
     expect(validationPrompt).toContain('해결 가능한 이슈');
     expect(validationPrompt).toContain('STEP_NUMBER=`2`');
     expect(validationPrompt).toContain('STEP_ID=`tech_spec_validate`');
-    expect(validationPrompt).toContain(
-      'migration_bug_fix_step2_tech_spec_validate_implementation_spec.md'
-    );
-    expect(validationPrompt).not.toContain('phasetech_spec_validate');
+    expect(validationPrompt).toContain('SPEC_FILE=`docs/features/migration_bug_fix/spec.md`');
+    expect(validationPrompt).toContain('PLAN_FILE=`docs/features/migration_bug_fix/plan.md`');
+    expect(validationPrompt).toContain('RESULT_FILE=`docs/features/migration_bug_fix/result.md`');
+    expect(validationPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
+    expect(validationPrompt).not.toContain('MASTER_SPEC_FILE');
+    expect(validationPrompt).not.toContain('MASTER_PHASE_FILE');
+    expect(validationPrompt).not.toContain('PHASE_SPEC_FILE');
+    expect(validationPrompt).not.toContain('PHASE_HANDOFF_FILE');
     expect(validationPrompt).toContain('아직 남는 blocker');
     expect(validationPrompt).toContain('Do not treat method, helper, interface, callback, or data-structure existence');
     expect(validationPrompt).toContain('active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior');
@@ -165,6 +169,8 @@ describe('init → create → next (end-to-end)', () => {
     const prPrompt = await core.renderExplicitPhasePrompt(taskId, 'pr_prepare');
     expect(prPrompt).toContain('TARGET_BRANCH=`origin/master`');
     expect(prPrompt).toContain('Current branch diff compared against `origin/master`');
+    expect(prPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
+    expect(prPrompt).toContain('Update `docs/features/migration_bug_fix/result.md`');
   });
 
   it('fails when a workflow phase requires a missing variable', async () => {
