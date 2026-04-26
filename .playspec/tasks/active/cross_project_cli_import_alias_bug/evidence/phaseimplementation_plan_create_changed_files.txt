@@ -1,2 +1,0 @@
-.playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_create_before_complete.yaml
-.playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_create_prompt.md
