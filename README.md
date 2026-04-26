@@ -1,197 +1,341 @@
 # PlaySpec
 
-**A local workflow engine for LLM-assisted development — with state, safety, and memory.**
+PlaySpec is a local TypeScript CLI and MCP workflow engine for managing LLM-assisted development tasks.
 
----
+It keeps task state in `.playspec/`, renders phase-specific prompts from workflow templates, records completion evidence, detects drift against Git state, and exposes the same core workflow operations to MCP clients without relying on global CLI `HEAD`.
 
-## What is PlaySpec?
+## Current Status
 
-When you use an LLM to build software, you quickly hit the same wall: the AI has no memory of what it did last phase, no awareness that you refactored over the weekend, and no way to roll back when it breaks something.
+Implemented through Phase 4.1. The repository currently includes:
 
-PlaySpec solves this by treating your LLM development work as structured, stateful tasks. It tracks where you are, renders the right prompt for each phase, collects evidence when work is done, and rolls back safely when things go wrong.
+- CLI workspace setup and task management.
+- YAML-backed task storage.
+- Default workflow preset.
+- Prompt rendering with required variable validation.
+- Phase completion with snapshots, Git evidence, and optional review records.
+- Routed phase completion support through workflow `results` and `nextByResult`.
+- Compact context headers for CLI workflow commands.
+- Git state desync checks and safe rollback planning/state rollback.
+- MCP stdio server with explicit `taskId` or `sessionId` context resolution.
+- Migration plan validation, review/dry-run/auto execution, backups, reports, and optional archive actions.
 
-**Who it is for:** developers who use LLMs (Claude Code, Codex, or similar tools) to build features and want structured, repeatable workflows instead of ad-hoc prompting.
+The current code does not register `playspec view`, `playspec close`, harness automation, or evolution proposal commands. Migration is exposed through `playspec migrate`; MCP-specific migration tools are not registered.
 
----
+## Requirements
 
-## Core Concepts
+- Node.js `>=22`
+- pnpm `9`
+- Git repository for evidence, desync, and rollback features
 
-| Concept | What it means |
-|---|---|
-| **Task** | One unit of work — a feature, bug fix, or spec. Each task has its own isolated folder. |
-| **Phase** | A numbered step inside a task (e.g. spec writing, implementation, review). PlaySpec tracks which phase you are on. |
-| **Workflow** | A YAML definition of the phase sequence for a task type (e.g. `multi-spec`, `simple-bug`). |
-| **Evidence** | Automatically collected artifacts after each phase — git diff, test results, lint output. No manual copy-paste. |
-| **Rollback** | If a phase goes wrong, `playspec rollback` reverts state and optionally the git working tree — safely, with your approval. |
-| **Evolution** | PlaySpec records patterns in your corrections. When the same fix appears repeatedly, it proposes a template or rule improvement. You approve it before it applies. |
+## Install And Build
 
----
+```bash
+corepack enable
+pnpm install
+pnpm build
+```
 
-## Why PlaySpec is Different
+During local development you can run the CLI without building:
 
-**Compared to prompt-only workflows:**
-- Your prompts carry full task context automatically — phase history, target files, relevant rules.
-- You never manually copy git diffs or test logs into a prompt again.
-- Phase state is preserved across sessions. Closing your terminal does not lose context.
+```bash
+pnpm dev -- --help
+pnpm dev -- init --preset default
+```
 
-**Compared to ad-hoc AI coding:**
-- Each phase has a defined output. The AI knows exactly what it should produce.
-- Completion is not just moving on — evidence is collected, a snapshot is saved, a rollback point is created.
-- If the codebase changes between sessions (e.g. a weekend refactor), PlaySpec detects the drift and warns you before generating the next prompt.
+After `pnpm build`, the package exposes:
 
-**Key properties:**
-- **State management** — Task state lives in `.playspec/`, versioned alongside your code.
-- **Safety** — Dangerous operations (git rollback, evolution apply) require explicit user approval.
-- **Repeatability** — Presets give you a working workflow from the first command.
-- **Evolution** — Workflows improve over time based on what the AI gets wrong and what you fix.
-
----
-
-## Features
-
-### Developer UX
-- `playspec next` — render the next phase prompt for the active task. No arguments needed.
-- `playspec complete` — mark a phase done, collect evidence, create a snapshot and rollback point.
-- `playspec view` — open a markdown preview of the current task state in your browser.
-- HEAD pointer lets CLI users work without specifying task IDs every time.
-
-### Safety
-- **State desync detection** — if significant code changes happened since the last completed phase, PlaySpec warns you before generating the next prompt.
-- **Safe rollback** — rolls back task state only, or optionally reverts git changes. Never runs destructive git operations on a dirty working tree without asking.
-- **File locking** — all write operations are locked. Concurrent agents cannot corrupt task state.
-
-### Automation
-- **Harness mode** — run phases automatically with retry budgets and circuit breakers.
-- **Severity-aware circuit breaker** — lint failures are treated differently from build failures. High-severity repeated failures stop automation before costs accumulate.
-- **Failure signatures** — repeated failures are detected by pattern, not raw log comparison.
-
-### AI Integration
-- **MCP adapter** — Claude Code and Codex can call PlaySpec tools directly (Phase 4+).
-- **Token optimizer** — long-running tasks use context tiering so prompts stay within token limits (Phase 8+).
-- All MCP calls require an explicit `taskId` or `sessionId`. No global state leaks across agents.
-
-### Long-term Knowledge
-- **Archive** — completed tasks are moved to `archived/{YYYY-MM}/{task_id}/` with full history intact.
-- **Human edit learner** — diffs between AI output and your manual corrections are recorded as learning signals.
-- **Evolution proposals** — when correction patterns repeat, PlaySpec proposes a template or rule patch. You review and apply it.
-
----
+```bash
+playspec --help
+playspec-mcp
+```
 
 ## Quick Start
 
 ```bash
-# Install dependencies and build
-pnpm install
-pnpm build
-
-# Initialize a new PlaySpec workspace with the default preset
+# Initialize .playspec with the default preset
 playspec init --preset default
 
-# Create a new task
+# Create a task and set .playspec/HEAD for human CLI use
 playspec create multi-spec "My Feature"
 
-# Render the next phase prompt
+# Render the active task's next prompt
 playspec next
 
-# After the AI completes the phase, mark it done
+# Save the rendered prompt under the task prompts/ directory
+playspec next --write
+
+# Complete the current phase, collecting snapshots and Git evidence
 playspec complete
 
-# If something went wrong, roll back
-playspec rollback
-
-# Preview task state in your browser
-playspec view
+# Inspect task state
+playspec status
 ```
 
-Available presets: `default`, `cpp-vulkan`, `react-frontend`, `python-api`, `nestjs-backend`
+Available workflows in the default preset:
 
----
+- `multi-spec` — five-phase feature/spec workflow
+- `mono-spec` — three-phase compact feature workflow
+- `simple-bug` — two-phase bug workflow
+- `phase-execution` — five-phase execution workflow for implementing a numbered phase from prior planning context
 
-## Project Structure
+Only the `default` preset is present in this repository.
 
-```
-.playspec/
-  HEAD                        # active task pointer (CLI only)
-  config.yaml
-  sessions/                   # per-client session context
-  tasks/
-    active/{task_id}/
-      task.yaml               # task state
-      memory.yaml
-      prompts/                # rendered prompts per phase
-      evidence/               # git diffs, test/lint results
-      snapshots/              # state snapshots
-      rollback/               # rollback points
-      human-edits/            # AI-vs-human diff records
-    archived/{YYYY-MM}/{task_id}/
-  workflows/                  # phase sequence definitions
-  templates/                  # prompt templates (Handlebars)
-  rules/                      # global and phase-specific rules
-  presets/                    # preset bundles
-```
+## CLI Usage
 
----
-
-## CLI Reference
+### Workspace And Tasks
 
 ```bash
-playspec init --preset <name>         # initialize workspace
-playspec create <workflow> "<title>"  # create a new task
-playspec list                         # list active tasks
-playspec list --archived              # list archived tasks
-playspec current                      # show active task
-playspec use <task_id>                # switch active task
-
-playspec next                         # render next phase prompt
-playspec phase <n>                    # render a specific phase prompt
-playspec complete                     # complete current phase
-playspec complete --with-review       # complete with validation prompt
-
-playspec evidence                     # collect evidence manually
-playspec desync-check                 # check for codebase drift
-
-playspec rollback                     # rollback to last safe point
-playspec rollback --state-only        # rollback task state only
-playspec rollback --git-only          # rollback git changes only
-
-playspec close                        # close a task
-playspec close --archive              # close and archive
-playspec view                         # open markdown preview
-playspec view --archived <task_id>    # view an archived task
+playspec init --preset default
+playspec create <workflowType> "<title>"
+playspec list
+playspec current
+playspec status
+playspec status --task <taskId>
+playspec use <taskId>
 ```
 
----
+`playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
+
+### Prompt Rendering
+
+```bash
+playspec next
+playspec next --task <taskId>
+playspec next --write
+playspec next --quiet
+playspec phase <phaseId>
+playspec phase <phaseId> --task <taskId>
+```
+
+`next` renders the current workflow phase. `phase` renders a specific phase without advancing task state.
+
+### Phase Completion
+
+```bash
+playspec complete
+playspec complete --task <taskId>
+playspec complete --with-review
+playspec complete --quiet
+playspec complete --result <result>
+```
+
+Completion writes:
+
+- `snapshots/phase<N>_before_complete.yaml`
+- `snapshots/phase<N>_prompt.md`
+- `evidence/phase<N>_git_status.txt`
+- `evidence/phase<N>_git_diff_stat.txt`
+- `evidence/phase<N>_changed_files.txt`
+- `reviews/phase<N>_review.yaml` when `--with-review` is used
+
+For routed workflow phases that declare allowed `results`, non-interactive usage must pass `--result <result>`. Interactive terminals are prompted to choose a result.
+
+### Evidence And Snapshots
+
+```bash
+playspec evidence
+playspec evidence --task <taskId>
+playspec snapshot
+playspec snapshot --task <taskId>
+```
+
+`evidence` manually collects Git evidence for the current phase. `snapshot` manually writes the current task snapshot for the current phase.
+
+### Desync And Rollback
+
+```bash
+playspec desync-check
+playspec desync-check --task <taskId>
+
+playspec rollback
+playspec rollback --task <taskId>
+playspec rollback --state-only
+playspec rollback --git-only --confirm
+```
+
+`rollback` without flags prints a rollback plan. `--state-only` restores PlaySpec task state from the last safe point. Git rollback execution requires `--git-only --confirm` and only runs when the computed rollback plan is eligible.
+
+### Migration
+
+```bash
+playspec migrate
+playspec migrate --mode review
+playspec migrate --mode dry-run
+playspec migrate --mode auto
+playspec migrate --source docs/
+playspec migrate --task <taskId>
+playspec migrate --plan <plan.yaml>
+playspec migrate --target-total-spec docs/playspec_total_spec.md
+playspec migrate --target-phase-plan docs/playspec_phase_plan.md
+playspec migrate --mode auto --with-archive
+```
+
+`playspec migrate` promotes historical markdown documents into structured task context. It resolves the target task from `--task` or CLI `HEAD`, then either loads an external YAML `MigrationPlan` through `--plan` or generates a simple plan from markdown files discovered through `--source`, `--target-total-spec`, and `--target-phase-plan`.
+
+Generated plans currently propose `add_context_ref` actions for markdown files that are not already linked in `task.yaml`. External plans may use the full migration action schema:
+
+- `update_file`
+- `append_section`
+- `replace_section`
+- `update_task_state`
+- `add_context_ref`
+- `remove_context_ref`
+- `archive_file`
+
+`delete_file` is intentionally unsupported.
+
+Migration modes:
+
+- `review` prompts before actions where `requiresReview: true`.
+- `dry-run` validates and persists the plan/report without mutating files.
+- `auto` applies only actions allowed by the runner; review-required actions are skipped unless their matching state promotion confidence is `deterministic`.
+
+`archive_file` actions require `--with-archive`. Plans are always written before mutation, reports are written after execution, and backups are created for backup-required actions when the target exists.
+
+## Phase Execution Tasks
+
+Use `phase-execution` when a completed planning task already produced the canonical planning files for a feature:
+
+```bash
+playspec create phase-execution "My Feature" --phase 4 --from <planningTaskId>
+```
+
+This creates a task titled like `My Feature Phase 4 Execution`, records `target.phaseNumber`, and links planning context refs to:
+
+- `<projectDocRoot>/<featureSlug>_total_spec.md`
+- `<projectDocRoot>/<featureSlug>_phase_plan.md`
+
+When `--from` is omitted, PlaySpec searches completed planning tasks with a matching title. If multiple matches exist in a non-interactive environment, pass `--from <planningTaskId>`.
+
+## MCP Usage
+
+Build first:
+
+```bash
+pnpm build
+```
+
+Run the stdio MCP server from the workspace root:
+
+```bash
+playspec-mcp
+```
+
+Example MCP client command configuration:
+
+```json
+{
+  "mcpServers": {
+    "playspec": {
+      "command": "playspec-mcp",
+      "cwd": "/path/to/your/repo"
+    }
+  }
+}
+```
+
+If the package is not globally linked, point the client at the built file:
+
+```json
+{
+  "mcpServers": {
+    "playspec": {
+      "command": "node",
+      "args": ["dist/mcp/index.js"],
+      "cwd": "/path/to/your/repo"
+    }
+  }
+}
+```
+
+Registered MCP tools:
+
+- `playspec_list_tasks`
+- `playspec_get_task`
+- `playspec_use_session_task`
+- `playspec_get_session_task`
+- `playspec_render_next_prompt`
+- `playspec_render_phase_prompt`
+- `playspec_complete_phase`
+- `playspec_collect_evidence`
+- `playspec_run_state_desync_check`
+- `playspec_rollback_state`
+
+MCP calls that operate on a task require either `taskId` or `sessionId`. If both are supplied, explicit `taskId` wins. MCP context resolution never reads `.playspec/HEAD`; `HEAD` is CLI-only.
+
+Typical MCP flow:
+
+```text
+playspec_list_tasks
+playspec_use_session_task({ "sessionId": "codex-main", "taskId": "my_feature", "adapter": "codex" })
+playspec_render_next_prompt({ "sessionId": "codex-main" })
+playspec_complete_phase({ "sessionId": "codex-main" })
+```
+
+## Phase 4.1 Migration Notes
+
+The Phase 4.1 spec in `docs/playspec_phase4.1_implementation_spec.md` is implemented as a CLI migration runner. A Claude/Codex MCP client can still assist by reading legacy docs and producing an external YAML plan, then you can run:
+
+```bash
+playspec migrate --plan migration_plan.yaml --mode review
+```
+
+The CLI-generated migration path is intentionally conservative: it discovers markdown files and adds missing `contextRefs`. Higher-risk state promotion should be supplied as a reviewed external plan.
+
+## `.playspec` Layout
+
+```text
+.playspec/
+  HEAD
+  config.yaml
+  sessions/
+    <sessionId>.yaml
+  migrations/
+    plans/
+      <migrationId>.yaml
+    reports/
+      <migrationId>_report.yaml
+    backups/
+      <migrationId>/
+    archived/
+  tasks/
+    active/
+      <taskId>/
+        task.yaml
+        memory.yaml
+        prompts/
+        evidence/
+        snapshots/
+        rollback/
+        reviews/
+    completed/
+      <taskId>/
+  workflows/
+  templates/
+  rules/
+```
 
 ## Architecture
 
-PlaySpec separates concerns cleanly:
+- `src/core/` contains task workflow behavior and must receive explicit task IDs where possible.
+- `src/cli/` is the human CLI adapter and may resolve `.playspec/HEAD`.
+- `src/mcp/` is the MCP adapter and must use `resolveMcpTaskId()`.
+- `src/migration/` validates and applies migration plans.
+- `src/storage/` contains the `TaskStore` interface and YAML implementation.
+- `src/workflow/` loads and resolves workflow phases.
+- `src/template/` resolves variables and renders templates.
+- `src/preset/` copies preset assets into `.playspec/`.
 
-- **Core** — pure business logic, no CLI or UI dependencies. All functions accept explicit `taskId`.
-- **CLI adapter** — resolves HEAD for human convenience, then calls Core.
-- **MCP adapter** — exposes Core as MCP tools for Claude Code, Codex, and OpenClaw. Always requires explicit task context.
-- **TaskStore** — currently YAML-backed. Interface is abstract; SQLite backend is planned for multi-agent scenarios.
+Cross-module imports use path aliases such as `#core/*.js`, `#storage/*.js`, `#workflow/*.js`, `#template/*.js`, `#preset/*.js`, `#utils/*.js`, `#mcp/*.js`, and `#migration/*.js`.
 
----
+## Development
 
-## Development Status
+```bash
+pnpm test
+pnpm build
+```
 
-PlaySpec is being built in phases:
-
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Project bootstrap | Done |
-| 1 | Core + CLI + Preset + HEAD + TaskStore | In progress |
-| 2 | Completion engine (lock, snapshot, evidence) | Planned |
-| 3 | State desync detector + safe rollback | Planned |
-| 4 | MCP adapter | Planned |
-| 5 | Archive system | Planned |
-| 6 | Evolution system + human edit learner | Planned |
-| 7 | Harness safety (retry budget, circuit breaker) | Planned |
-| 8 | Token optimizer + workflow editing | Planned |
-| 9 | Full markdown viewer | Planned |
-| 10 | Future DAG preparation | Planned |
-
----
+The test suite uses Vitest and includes unit and integration coverage for slug generation, variable resolution, phase resolution, template rendering, task creation/use/current flows, completion/evidence, desync/rollback behavior, routing, migration, and MCP server context handling.
 
 ## License
 

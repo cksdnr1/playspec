@@ -1,136 +1,148 @@
-# Dev Phase 4.1 — Implementation Result
+# PlaySpec Dev Phase 4.1 Implementation Result — MCP-Driven Context Migration
 
 ## Phase Summary
 
-Phase 4.1 adds the `playspec migrate` command that converts historical project markdown documents into guarded PlaySpec state. Claude/MCP proposes; PlaySpec validates, previews, backs up, and applies only authorized plan actions.
+Dev Phase 4.1 adds a migration runner for promoting historical markdown documents into structured PlaySpec task state. The CLI command is registered as `playspec migrate`.
 
-## Intended Scope vs Actual Scope
+The implementation keeps the high-risk analysis boundary explicit: Claude/Codex may read legacy docs and produce a YAML `MigrationPlan`, while PlaySpec validates, persists, previews, backs up, and applies only supported plan actions.
 
-**Intended:** `playspec migrate` with review/dry-run/auto modes, MigrationPlan schema/Zod validation, plan/report persistence under `.playspec/migrations/`, backup before mutation, guarded task state/contextRefs promotion, archive gated by `--with-archive`, no `delete_file` action type.
+## Implemented Surface
 
-**Actual:** Exactly the intended scope. No expansion into later-phase work (archive system, evolution, viewer, DAG, Project/Stage).
+### CLI
 
-## Changed Files
+```bash
+playspec migrate
+playspec migrate --mode review
+playspec migrate --mode dry-run
+playspec migrate --mode auto
+playspec migrate --source docs/
+playspec migrate --task TASK_ID
+playspec migrate --plan migration_plan.yaml
+playspec migrate --target-total-spec docs/playspec_total_spec.md
+playspec migrate --target-phase-plan docs/playspec_phase_plan.md
+playspec migrate --mode auto --with-archive
+```
 
-| File | Change |
-|---|---|
-| `src/migration/types.ts` | New — migration DTOs and discriminated action union |
-| `src/migration/schemas.ts` | New — Zod schemas for MigrationPlan, actions, state promotions |
-| `src/migration/migration-store.ts` | New — plan/report/backup persistence under `.playspec/migrations/` |
-| `src/migration/migration-runner.ts` | New — validate, preview, apply actions with mode/archive enforcement |
-| `src/cli/commands/migrate.ts` | New — CLI option parsing, source discovery, auto-plan generation, user interaction |
-| `src/cli/index.ts` | Updated — registered `migrate` command |
-| `src/utils/paths.ts` | Updated — added migration path helpers |
-| `tsconfig.json` | Updated — added `#migration` path alias |
-| `vitest.config.ts` | Updated — added `#migration` resolve alias |
-| `tests/integration/migration.test.ts` | New — 16 integration tests |
+Registered in:
 
-## Changed Classes / Functions
+- `src/cli/index.ts`
+- `src/cli/commands/migrate.ts`
 
-- `MigrationRunner.run()` — core execution (dry-run/review/auto dispatch)
-- `MigrationStore.savePlan()` / `saveReport()` / `createBackup()` / `archiveFile()` / `loadPlan()`
-- `runMigrate()` — CLI entry point
-- `generateMigrationId()` — unique plan ID
-- `getMigrationsRoot()` / `getMigrationPlansDir()` / `getMigrationReportsDir()` / `getMigrationBackupsDir()` / `getMigrationArchivedDir()` — path helpers
+### Migration Modules
 
-## Implementation Plan Step Coverage
+- `src/migration/types.ts` — migration plan/report/action types
+- `src/migration/schemas.ts` — Zod validation schemas
+- `src/migration/migration-store.ts` — plan/report persistence, backups, archive storage
+- `src/migration/migration-runner.ts` — dry-run/review/auto execution and action application
 
-Since no `IMPLEMENTATION_PLAN_FILE` existed, implementation followed the spec's §11 (Proposed Implementation Direction) and handoff's Active Entry Points:
+### Persisted Files
 
-| Step | Status |
-|---|---|
-| `src/migration/types.ts` — DTOs | ✅ done |
-| `src/migration/schemas.ts` — Zod validation | ✅ done |
-| `src/migration/migration-store.ts` — persistence | ✅ done |
-| `src/migration/migration-runner.ts` — runner | ✅ done |
-| `src/cli/commands/migrate.ts` — CLI | ✅ done |
-| `src/cli/index.ts` — register migrate | ✅ done |
+Migration files are written under:
 
-## Spec Coverage Before vs After
+```text
+.playspec/migrations/
+  plans/<migrationId>.yaml
+  reports/<migrationId>_report.yaml
+  backups/<migrationId>/
+  archived/
+```
 
-| Requirement | Before | After |
-|---|---|---|
-| `playspec migrate` CLI command | missing | ✅ done |
-| Default review mode | missing | ✅ done |
-| `--mode dry-run` no mutation | missing | ✅ done |
-| `--mode auto` confidence-gated | missing | ✅ done |
-| `MigrationPlan` Zod schema | missing | ✅ done |
-| `delete_file` rejected | missing | ✅ done |
-| `archive_file` gated by `--with-archive` | missing | ✅ done |
-| Plan persisted before mutation | missing | ✅ done |
-| Backup before each mutation | missing | ✅ done |
-| `task.yaml` schema-validated on mutation | missing | ✅ done |
-| Duplicate contextRefs not added | missing | ✅ done |
-| Plans/reports under `.playspec/migrations/` | missing | ✅ done |
-| MCP no-HEAD-fallback preserved | done (Phase 4) | ✅ preserved |
+Plans are saved before mutation. Reports are saved after execution. Backups are created for backup-required actions when the target file exists.
 
-## Build/Compile Validation
+## Supported Action Types
 
-- **Command:** `npx tsc --noEmit`
-- **Target:** full TypeScript project (src/)
-- **Result:** success — zero errors
-- **Blocking:** no
+Implemented action types:
 
-## Test Results
+- `update_file`
+- `append_section`
+- `replace_section`
+- `update_task_state`
+- `add_context_ref`
+- `remove_context_ref`
+- `archive_file`
 
-- **Command:** `npx vitest run`
-- **Before:** 115/115 (all pre-existing)
-- **After (implementation):** 131/131 (115 pre-existing + 16 new Phase 4.1 tests)
-- **After (test follow-up):** 133/133 (+2 additional Phase 4.1 tests)
-- **New test file:** `tests/integration/migration.test.ts`
-- See `docs/playspec_phase4.1_test_result.md` for test follow-up detail
+`delete_file` is intentionally unsupported and rejected by schema validation.
 
-### New Tests
+## Modes
 
-| Test | Scenario |
-|---|---|
-| `MigrationPlanSchema` rejects `delete_file` | schema validation |
-| `MigrationPlanSchema` accepts all valid action types | schema validation |
-| dry-run persists plan/report without mutating task | core dry-run path |
-| dry-run plan path under `.playspec/migrations/plans/` | persistence |
-| dry-run report path under `.playspec/migrations/reports/` | persistence |
-| dry-run marks all actions skipped | report fidelity |
-| review mode applies approved `add_context_ref` + backup | full apply path |
-| review mode rejects action on user rejection | rejection path |
-| duplicate contextRef not added | dedup guard |
-| auto mode skips medium-confidence `update_task_state` | confidence gate |
-| auto mode applies non-requiresReview `add_context_ref` | auto apply path |
-| `archive_file` throws without `--with-archive` | archive gate |
-| `archive_file` succeeds with `--with-archive` | archive path |
-| disallowed `fieldPath` in `update_task_state` fails | whitelist guard |
-| allowed `title` update via `update_task_state` | apply path |
-| migration-added contextRefs accepted by `store.getTask()` | downstream integration |
+### `review`
 
-## End-to-End Validation
+Default mode. Actions with `requiresReview: true` print a preview and ask for approval before applying.
 
-- Active entry point: `src/cli/index.ts` → `migrate` → `runMigrate()` ✅
-- Active path: CLI → `MigrationRunner.run()` → `MigrationStore.savePlan()` → action application → `MigrationStore.saveReport()` ✅
-- Old/bypass paths: no old migration path existed; no bypass was introduced ✅
-- Ownership: migration state is local to `.playspec/migrations/`; task mutation goes through `TaskRecordSchema.parse()` + `writeTextFileAtomic()` ✅
-- MCP HEAD fallback: not introduced; existing `resolveMcpTaskId()` tests still pass ✅
+### `dry-run`
 
-## Remaining Old/Bypass/Partial Path Issues
+Validates and persists the plan/report. All actions are reported as skipped and no files are mutated.
 
-None. There was no pre-existing migration path to migrate away from.
+### `auto`
 
-## Deferred Items
+Applies only actions allowed by the runner. Review-required actions are skipped unless their matching state promotion confidence is `deterministic`.
 
-- MCP migration proposal tool — spec says no new MCP tools in Phase 4.1; CLI-first is sufficient
-- `task.yaml.routing` promotion — no `routing` field on `TaskRecord`; spec says skip unless already supported
-- General archive/knowledge-base system — deferred to Phase 5
-- Evolution proposal application — deferred to Phase 6
-- Markdown viewer — deferred to Phase 9
+## State Promotion Safety
 
-## Open Blockers / Ambiguities
+`update_task_state` is restricted to these task fields:
 
-None.
+- `title`
+- `currentPhase`
+- `target`
 
-## Deviations from Spec
+Task mutations are validated against `TaskRecordSchema` before writing `task.yaml`.
 
-None. Implementation matches the spec exactly.
+Context reference actions mutate `task.yaml.contextRefs` and validate the full task record before write.
 
-## Next-Phase Readiness
+`archive_file` is blocked unless `--with-archive` is passed.
 
-Phase 5 (Archive & Knowledge Base) can start. Phase 4.1 migration-local `archive_file` behavior is explicit, reversible, reported, and not coupled to a general archive model. The `.playspec/migrations/archived/` directory is distinct from the Phase 5 `archived/{YYYY-MM}/{task_id}` layout.
+## Generated Plan Behavior
 
-The existing `playspec create --phase --from` contextRefs path and the new migration contextRefs path are independent; no conflict exists.
+When `--plan` is not provided, `playspec migrate` discovers source markdown files from:
+
+- `--source <path>`
+- `--target-total-spec <file>`
+- `--target-phase-plan <file>`
+
+The built-in generator currently proposes `add_context_ref` actions for discovered markdown files that are not already present in the target task's `contextRefs`.
+
+Higher-risk document rewrites or task state promotions should be provided through an external YAML migration plan and run in `review` mode.
+
+## MCP Boundary
+
+Phase 4.0 MCP tools remain available for task inspection and workflow execution. Phase 4.1 does not add dedicated MCP migration tools. MCP clients can still assist by reading repository documents and producing an external `MigrationPlan` file for the CLI runner.
+
+## Documentation Updates
+
+Updated:
+
+- `README.md`
+- `docs/playspec_phase4.1_implementation_result.md`
+
+The README now documents:
+
+- Implemented `playspec migrate` command and flags.
+- Migration modes.
+- Supported action types.
+- Plan/report/backup/archive locations.
+- MCP-assisted external plan workflow.
+- Current limitation that generated plans only add missing context refs.
+
+## Validation
+
+Commands run:
+
+```bash
+corepack pnpm build
+corepack pnpm test
+```
+
+Results:
+
+- Build: passed
+- Tests: 14 files passed, 133 tests passed
+
+Migration-specific coverage exists in:
+
+- `tests/integration/migration.test.ts`
+
+## Current Limitations
+
+- No dedicated MCP migration tools are registered.
+- Built-in plan generation is conservative and only proposes missing `add_context_ref` actions.
+- Rich document analysis and high-risk state promotion depend on an external plan, typically produced with LLM assistance and reviewed by the user.
