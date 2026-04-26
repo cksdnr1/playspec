@@ -50,6 +50,18 @@ export class PhaseResolver {
       throw new PhaseNotFoundError(task.currentPhase, workflow.id);
     }
 
+    const currentDefinition = phases[task.currentPhase];
+    if (currentDefinition?.next !== undefined) {
+      if (currentDefinition.next === null) {
+        throw new PhaseNotFoundError(`(after ${task.currentPhase})`, workflow.id);
+      }
+      const definition = phases[currentDefinition.next];
+      if (!definition) {
+        throw new PhaseNotFoundError(currentDefinition.next, workflow.id);
+      }
+      return { phaseId: currentDefinition.next, definition };
+    }
+
     const nextId = phaseOrder[currentIndex + 1];
     if (!nextId) {
       throw new PhaseNotFoundError(

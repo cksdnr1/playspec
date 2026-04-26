@@ -1,7 +1,7 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
-import { formatGateRoutes, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
+import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { formatContextRef } from '../cli-utils.js';
 
 export async function runCurrentTask(workspaceRoot: string): Promise<void> {
@@ -15,6 +15,7 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   let phaseLabel = 'Phase';
   let phaseIdDisplay = '';
   let gateRouteLines: string[] = [];
+  let nextRouteLines: string[] = [];
   if (task.currentPhase !== null) {
     try {
       const workflow = await workflowLoader.load(task.workflowType);
@@ -32,6 +33,9 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
         }
         if (definition.stepNumber && gateResults(definition).length > 0) {
           gateRouteLines = formatGateRoutes(workflow, definition);
+        }
+        if (definition.stepNumber && gateResults(definition).length === 0 && definition.next !== undefined) {
+          nextRouteLines = formatNextRoute(workflow, definition);
         }
       }
     } catch {
@@ -52,6 +56,12 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   if (gateRouteLines.length > 0) {
     console.log('Gate:');
     for (const line of gateRouteLines) {
+      console.log(line);
+    }
+  }
+  if (nextRouteLines.length > 0) {
+    console.log('Next:');
+    for (const line of nextRouteLines) {
       console.log(line);
     }
   }

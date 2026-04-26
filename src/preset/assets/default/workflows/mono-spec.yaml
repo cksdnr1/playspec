@@ -38,6 +38,13 @@ phases:
       - PLAN_FILE
       - RESULT_FILE
       - PR_FILE
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: implementation_plan_create
+        needs_revision: tech_spec_patch
   tech_spec_patch:
     title: "기술 명세서 업데이트"
     stepNumber: "3"
@@ -50,13 +57,7 @@ phases:
       - PLAN_FILE
       - RESULT_FILE
       - PR_FILE
-    gate:
-      results:
-        - approved
-        - needs_revision
-      nextByResult:
-        approved: implementation_plan_create
-        needs_revision: tech_spec_validate
+    next: tech_spec_validate
   implementation_plan_create:
     title: "구현 계획서 생성"
     stepNumber: "4"
@@ -81,6 +82,13 @@ phases:
       - PLAN_FILE
       - RESULT_FILE
       - PR_FILE
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: implementation
+        needs_revision: implementation_plan_patch
   implementation_plan_patch:
     title: "구현 계획서 업데이트"
     stepNumber: "6"
@@ -93,13 +101,7 @@ phases:
       - PLAN_FILE
       - RESULT_FILE
       - PR_FILE
-    gate:
-      results:
-        - approved
-        - needs_revision
-      nextByResult:
-        approved: implementation
-        needs_revision: implementation_plan_validate
+    next: implementation_plan_validate
   implementation:
     title: "기술 구현"
     stepNumber: "7"

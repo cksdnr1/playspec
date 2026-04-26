@@ -33,7 +33,13 @@ Output requirements:
 - State whether the next update step should be completed as `approved` or `needs_revision`.
 
 Approval/gate handling:
-- No approval result is required for this validation step.
-- The next plan update step will route with `playspec complete --result approved` or `playspec complete --result needs_revision`.
+- This implementation plan validation step has an approval gate.
+- If the implementation plan is good enough to execute:
+  - run `playspec complete --result approved`
+  - routes to Step 7. 기술 구현
+- If the implementation plan needs revision:
+  - run `playspec complete --result needs_revision`
+  - routes to Step 6. 구현 계획서 업데이트
+- Plain `playspec complete` must not silently choose a route for this gated step.
 
 {{include:rules/global_rules.md}}

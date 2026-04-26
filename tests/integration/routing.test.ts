@@ -363,9 +363,9 @@ phases:
   });
 
   describe('Default mono-spec gate routing', () => {
-    it('routes technical spec patch approved to implementation plan creation', async () => {
+    it('routes technical spec validate approved to implementation plan creation, skipping patch', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
-      await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
       const result = await core.completePhase(taskId, { result: 'approved' });
@@ -373,24 +373,36 @@ phases:
       expect(result.nextPhase).toBe('implementation_plan_create');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('implementation_plan_create');
-      expect(task.currentPhase).not.toBe('implementation_plan_validate');
+      expect(task.currentPhase).not.toBe('tech_spec_patch');
     });
 
-    it('routes technical spec patch needs_revision back to technical validation', async () => {
+    it('routes technical spec validate needs_revision to tech_spec_patch', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+      expect(result.nextPhase).toBe('tech_spec_patch');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_patch');
+    });
+
+    it('routes tech_spec_patch (non-gated) back to tech_spec_validate via explicit next', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
       await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
 
       const core = new PlaySpecCore(workspace.dir, store);
-      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+      const result = await core.completePhase(taskId, {});
 
       expect(result.nextPhase).toBe('tech_spec_validate');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('tech_spec_validate');
     });
 
-    it('routes implementation plan patch approved to implementation', async () => {
+    it('routes implementation plan validate approved to implementation, skipping patch', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
-      await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
       const result = await core.completePhase(taskId, { result: 'approved' });
@@ -400,24 +412,48 @@ phases:
       expect(task.currentPhase).toBe('implementation');
     });
 
-    it('routes implementation plan patch needs_revision back to implementation plan validation', async () => {
+    it('routes implementation plan validate needs_revision to implementation_plan_patch', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+      expect(result.nextPhase).toBe('implementation_plan_patch');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_patch');
+    });
+
+    it('routes implementation_plan_patch (non-gated) back to implementation_plan_validate via explicit next', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
 
       const core = new PlaySpecCore(workspace.dir, store);
-      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+      const result = await core.completePhase(taskId, {});
 
       expect(result.nextPhase).toBe('implementation_plan_validate');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('implementation_plan_validate');
     });
 
-    it('does not silently advance technical spec patch without a result', async () => {
+    it('does not silently advance tech_spec_validate without a result', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      await expect(core.completePhase(taskId, {})).rejects.toThrow(MissingResultError);
+
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_validate');
+      expect(task.phaseHistory).toHaveLength(0);
+    });
+
+    it('rejects --result on non-gated tech_spec_patch with UnexpectedResultError', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
       await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
 
       const core = new PlaySpecCore(workspace.dir, store);
-      await expect(core.completePhase(taskId, {})).rejects.toThrow(MissingResultError);
+      await expect(core.completePhase(taskId, { result: 'approved' })).rejects.toThrow(UnexpectedResultError);
 
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('tech_spec_patch');
