@@ -3,9 +3,9 @@ title: cross_project_cli_import_alias_bug
 workflowType: mono-spec
 status: active
 workflowMode: linear
-currentPhase: pr_prepare
+currentPhase: safe_refactor
 createdAt: 2026-04-26T08:28:31.062Z
-updatedAt: 2026-04-26T09:33:40.376Z
+updatedAt: 2026-04-26T09:33:37.474Z
 paths:
   taskRoot: .playspec/tasks/active/cross_project_cli_import_alias_bug
   projectDocRoot: docs/features/cross_project_cli_import_alias_bug
@@ -96,27 +96,17 @@ phaseHistory:
     snapshotFiles:
       - snapshots/phasefocused_tests_before_complete.yaml
       - snapshots/phasefocused_tests_prompt.md
-  - phase: safe_refactor
-    status: completed
-    completedAt: 2026-04-26T09:33:40.376Z
-    evidenceFiles:
-      - evidence/phasesafe_refactor_git_status.txt
-      - evidence/phasesafe_refactor_git_diff_stat.txt
-      - evidence/phasesafe_refactor_changed_files.txt
-    snapshotFiles:
-      - snapshots/phasesafe_refactor_before_complete.yaml
-      - snapshots/phasesafe_refactor_prompt.md
 stateSync:
   lastKnownGitHead: b091fc241798d34695cc5df3469d158594623f59
-  lastCompletedAt: 2026-04-26T09:33:40.376Z
+  lastCompletedAt: 2026-04-26T09:33:37.474Z
 rollback:
   lastSafePoint:
-    id: phasesafe_refactor_2026-04-26T09-33-40-376Z
-    createdAt: 2026-04-26T09:33:40.376Z
-    phase: safe_refactor
+    id: phasefocused_tests_2026-04-26T09-33-37-474Z
+    createdAt: 2026-04-26T09:33:37.474Z
+    phase: focused_tests
     gitHead: b091fc241798d34695cc5df3469d158594623f59
-    taskSnapshotFile: snapshots/phasesafe_refactor_before_complete.yaml
-    promptSnapshotFile: snapshots/phasesafe_refactor_prompt.md
+    taskSnapshotFile: snapshots/phasefocused_tests_before_complete.yaml
+    promptSnapshotFile: snapshots/phasefocused_tests_prompt.md
 contextRefs:
   - path: cross_project_cli_import_alias_bug.md
     role: planning-context

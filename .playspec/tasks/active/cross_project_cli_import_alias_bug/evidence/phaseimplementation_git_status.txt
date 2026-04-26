@@ -1,0 +1,23 @@
+## master...origin/master
+ M .playspec/tasks/active/cross_project_cli_import_alias_bug/task.yaml
+ M package.json
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_create_changed_files.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_create_git_diff_stat.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_create_git_status.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_patch_changed_files.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_patch_git_diff_stat.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_patch_git_status.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_validate_changed_files.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_validate_git_diff_stat.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/evidence/phaseimplementation_plan_validate_git_status.txt
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/prompts/next-prompt-2026-04-26T09-23-40-787Z.md
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_before_complete.yaml
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_create_before_complete.yaml
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_create_prompt.md
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_patch_before_complete.yaml
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_patch_prompt.md
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_validate_before_complete.yaml
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_plan_validate_prompt.md
+?? .playspec/tasks/active/cross_project_cli_import_alias_bug/snapshots/phaseimplementation_prompt.md
+?? docs/features/cross_project_cli_import_alias_bug/result.md
+?? tests/integration/runtime-bin.test.ts

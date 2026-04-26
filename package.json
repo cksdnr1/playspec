@@ -7,6 +7,16 @@
     "playspec": "dist/cli/index.js",
     "playspec-mcp": "dist/mcp/index.js"
   },
+  "imports": {
+    "#core/*.js": "./dist/core/*.js",
+    "#storage/*.js": "./dist/storage/*.js",
+    "#workflow/*.js": "./dist/workflow/*.js",
+    "#template/*.js": "./dist/template/*.js",
+    "#preset/*.js": "./dist/preset/*.js",
+    "#utils/*.js": "./dist/utils/*.js",
+    "#mcp/*.js": "./dist/mcp/*.js",
+    "#migration/*.js": "./dist/migration/*.js"
+  },
   "scripts": {
     "build": "tsc && tsc-alias && cp -r src/preset/assets dist/preset/assets",
     "test": "vitest run",

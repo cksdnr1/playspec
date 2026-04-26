@@ -3,9 +3,9 @@ title: cross_project_cli_import_alias_bug
 workflowType: mono-spec
 status: active
 workflowMode: linear
-currentPhase: pr_prepare
+currentPhase: focused_tests
 createdAt: 2026-04-26T08:28:31.062Z
-updatedAt: 2026-04-26T09:33:40.376Z
+updatedAt: 2026-04-26T09:33:35.061Z
 paths:
   taskRoot: .playspec/tasks/active/cross_project_cli_import_alias_bug
   projectDocRoot: docs/features/cross_project_cli_import_alias_bug
@@ -86,37 +86,17 @@ phaseHistory:
     snapshotFiles:
       - snapshots/phaseimplementation_before_complete.yaml
       - snapshots/phaseimplementation_prompt.md
-  - phase: focused_tests
-    status: completed
-    completedAt: 2026-04-26T09:33:37.474Z
-    evidenceFiles:
-      - evidence/phasefocused_tests_git_status.txt
-      - evidence/phasefocused_tests_git_diff_stat.txt
-      - evidence/phasefocused_tests_changed_files.txt
-    snapshotFiles:
-      - snapshots/phasefocused_tests_before_complete.yaml
-      - snapshots/phasefocused_tests_prompt.md
-  - phase: safe_refactor
-    status: completed
-    completedAt: 2026-04-26T09:33:40.376Z
-    evidenceFiles:
-      - evidence/phasesafe_refactor_git_status.txt
-      - evidence/phasesafe_refactor_git_diff_stat.txt
-      - evidence/phasesafe_refactor_changed_files.txt
-    snapshotFiles:
-      - snapshots/phasesafe_refactor_before_complete.yaml
-      - snapshots/phasesafe_refactor_prompt.md
 stateSync:
   lastKnownGitHead: b091fc241798d34695cc5df3469d158594623f59
-  lastCompletedAt: 2026-04-26T09:33:40.376Z
+  lastCompletedAt: 2026-04-26T09:33:35.061Z
 rollback:
   lastSafePoint:
-    id: phasesafe_refactor_2026-04-26T09-33-40-376Z
-    createdAt: 2026-04-26T09:33:40.376Z
-    phase: safe_refactor
+    id: phaseimplementation_2026-04-26T09-33-35-061Z
+    createdAt: 2026-04-26T09:33:35.061Z
+    phase: implementation
     gitHead: b091fc241798d34695cc5df3469d158594623f59
-    taskSnapshotFile: snapshots/phasesafe_refactor_before_complete.yaml
-    promptSnapshotFile: snapshots/phasesafe_refactor_prompt.md
+    taskSnapshotFile: snapshots/phaseimplementation_before_complete.yaml
+    promptSnapshotFile: snapshots/phaseimplementation_prompt.md
 contextRefs:
   - path: cross_project_cli_import_alias_bug.md
     role: planning-context
