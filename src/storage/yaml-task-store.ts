@@ -61,6 +61,7 @@ export class YamlTaskStore implements TaskStore {
             title: task.title,
             status: task.status,
             currentPhase: task.currentPhase,
+            workflowType: task.workflowType,
           });
         }
       } catch {
@@ -88,6 +89,7 @@ export class YamlTaskStore implements TaskStore {
             title: task.title,
             status: task.status,
             currentPhase: task.currentPhase,
+            workflowType: task.workflowType,
           });
         }
       } catch {

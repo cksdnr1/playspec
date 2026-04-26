@@ -19,7 +19,7 @@ export class TaskNotFoundError extends PlaySpecError {
   constructor(taskId: string) {
     super(
       `Task not found: ${taskId}`,
-      'Check the task ID with `playspec list` and try again.'
+      'Check the task ID with `playspec list-tasks` and try again.'
     );
     this.name = 'TaskNotFoundError';
   }
@@ -283,5 +283,45 @@ export class UnexpectedResultError extends PlaySpecError {
       'Remove --result from the command or add a results declaration to the workflow phase.'
     );
     this.name = 'UnexpectedResultError';
+  }
+}
+
+export class InvalidCurrentPhaseError extends PlaySpecError {
+  constructor(phaseId: string, workflowId: string, allowedValues: string[]) {
+    super(
+      `Phase "${phaseId}" is not a valid phase in workflow "${workflowId}". Allowed values: ${allowedValues.join(', ')}`,
+      'Fix currentPhase in task.yaml or use `playspec next` to advance naturally.'
+    );
+    this.name = 'InvalidCurrentPhaseError';
+  }
+}
+
+export class AbsoluteContextPathError extends PlaySpecError {
+  constructor(contextPath: string) {
+    super(
+      `Context path must be workspace-relative: ${contextPath}`,
+      'Use a path relative to the workspace root, not an absolute path.'
+    );
+    this.name = 'AbsoluteContextPathError';
+  }
+}
+
+export class ContextPathEscapesWorkspaceError extends PlaySpecError {
+  constructor(contextPath: string) {
+    super(
+      `Context path escapes workspace: ${contextPath}`,
+      'Keep context paths inside the workspace root.'
+    );
+    this.name = 'ContextPathEscapesWorkspaceError';
+  }
+}
+
+export class ContextFileNotFoundError extends PlaySpecError {
+  constructor(contextPath: string) {
+    super(
+      `Context file not found: ${contextPath}`,
+      'Ensure the file exists at the given path before linking it as context.'
+    );
+    this.name = 'ContextFileNotFoundError';
   }
 }
