@@ -40,7 +40,6 @@ Output requirements:
 - Include Mermaid diagrams only when they improve understanding and label proposed flow separately from verified flow.
 
 Approval/gate handling:
-- No approval result is required for this step.
-- Complete normally when `SPEC_FILE` is updated.
+- No approval result is required for this step. Complete normally when the draft and handoff are updated.
 
 {{include:rules/global_rules.md}}

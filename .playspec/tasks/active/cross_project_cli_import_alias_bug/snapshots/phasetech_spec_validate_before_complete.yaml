@@ -1,0 +1,39 @@
+id: cross_project_cli_import_alias_bug
+title: cross_project_cli_import_alias_bug
+workflowType: mono-spec
+status: active
+workflowMode: linear
+currentPhase: tech_spec_validate
+createdAt: 2026-04-26T08:28:31.062Z
+updatedAt: 2026-04-26T08:35:46.376Z
+paths:
+  taskRoot: .playspec/tasks/active/cross_project_cli_import_alias_bug
+  projectDocRoot: docs/features/cross_project_cli_import_alias_bug
+variables:
+  FEATURE_SLUG: cross_project_cli_import_alias_bug
+phaseHistory:
+  - phase: tech_spec_draft
+    status: completed
+    completedAt: 2026-04-26T08:35:46.376Z
+    evidenceFiles:
+      - evidence/phasetech_spec_draft_git_status.txt
+      - evidence/phasetech_spec_draft_git_diff_stat.txt
+      - evidence/phasetech_spec_draft_changed_files.txt
+    snapshotFiles:
+      - snapshots/phasetech_spec_draft_before_complete.yaml
+      - snapshots/phasetech_spec_draft_prompt.md
+stateSync:
+  lastKnownGitHead: 3a85ea985c52c758cd6be0bc6af3d76fee9e54ae
+  lastCompletedAt: 2026-04-26T08:35:46.376Z
+rollback:
+  lastSafePoint:
+    id: phasetech_spec_draft_2026-04-26T08-35-46-376Z
+    createdAt: 2026-04-26T08:35:46.376Z
+    phase: tech_spec_draft
+    gitHead: 3a85ea985c52c758cd6be0bc6af3d76fee9e54ae
+    taskSnapshotFile: snapshots/phasetech_spec_draft_before_complete.yaml
+    promptSnapshotFile: snapshots/phasetech_spec_draft_prompt.md
+contextRefs:
+  - path: cross_project_cli_import_alias_bug.md
+    role: planning-context
+    source: manual

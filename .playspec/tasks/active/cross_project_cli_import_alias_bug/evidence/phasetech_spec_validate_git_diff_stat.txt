@@ -1,0 +1,3 @@
+ .../default/templates/mono-spec/tech_spec_draft.md |   3 +-
+ .../templates/mono-spec/tech_spec_validate.md      | 139 ++++++++++++++++-----
+ 2 files changed, 111 insertions(+), 31 deletions(-)
