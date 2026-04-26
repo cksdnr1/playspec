@@ -40,3 +40,16 @@ export function formatGateRoutes(
     return `- ${result} -> ${targetLabel}`;
   });
 }
+
+export function formatNextRoute(
+  workflow: WorkflowDefinition,
+  definition: PhaseDefinition
+): string[] {
+  if (definition.next === undefined || definition.next === null) return [];
+  const targetId = definition.next;
+  const targetDefinition = workflow.phases[targetId];
+  const targetLabel = targetDefinition
+    ? phaseDisplayInfo(targetId, targetDefinition).label
+    : targetId;
+  return [`- ${targetLabel}`];
+}

@@ -147,19 +147,20 @@ describe('init → create → next (end-to-end)', () => {
 
     const core = new PlaySpecCore(workspace.dir, store);
     const validationPrompt = await core.renderExplicitPhasePrompt(taskId, 'tech_spec_validate');
-    expect(validationPrompt).toContain('해결 가능한 이슈');
+    expect(validationPrompt).toContain('Risks and questions');
     expect(validationPrompt).toContain('STEP_NUMBER=`2`');
     expect(validationPrompt).toContain('STEP_ID=`tech_spec_validate`');
     expect(validationPrompt).toContain('SPEC_FILE=`docs/features/migration_bug_fix/spec.md`');
     expect(validationPrompt).toContain('PLAN_FILE=`docs/features/migration_bug_fix/plan.md`');
     expect(validationPrompt).toContain('RESULT_FILE=`docs/features/migration_bug_fix/result.md`');
     expect(validationPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
+    expect(validationPrompt).toContain('playspec complete --result approved');
     expect(validationPrompt).not.toContain('MASTER_SPEC_FILE');
     expect(validationPrompt).not.toContain('MASTER_PHASE_FILE');
     expect(validationPrompt).not.toContain('PHASE_SPEC_FILE');
     expect(validationPrompt).not.toContain('PHASE_HANDOFF_FILE');
-    expect(validationPrompt).toContain('아직 남는 blocker');
-    expect(validationPrompt).toContain('Do not treat method, helper, interface, callback, or data-structure existence');
+    expect(validationPrompt).toContain('Minimum remaining spec work');
+    expect(validationPrompt).toContain('Do not treat helper, interface, callback, command option, function, or data-structure existence');
     expect(validationPrompt).toContain('active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior');
 
     const refactorPrompt = await core.renderExplicitPhasePrompt(taskId, 'safe_refactor');

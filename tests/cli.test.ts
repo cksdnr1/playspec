@@ -614,6 +614,21 @@ phases:
   it('prints mono-spec step metadata and gate routes on next for gated steps', async () => {
     const taskId = await createActiveTask('Mono Gate Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+    const result = await runCli(['next'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Current step: 2. 기술 교차 검증');
+    expect(result.stdout).toContain('id: tech_spec_validate');
+    expect(result.stdout).toContain('Gate:');
+    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
+    expect(result.stdout).toContain('- needs_revision -> 3. 기술 명세서 업데이트');
+  });
+
+  it('prints mono-spec next route on next for explicit-next steps', async () => {
+    const taskId = await createActiveTask('Mono Next Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
     await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
 
     const result = await runCli(['next'], workspace.dir);
@@ -621,13 +636,28 @@ phases:
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Current step: 3. 기술 명세서 업데이트');
     expect(result.stdout).toContain('id: tech_spec_patch');
-    expect(result.stdout).toContain('Gate:');
-    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
-    expect(result.stdout).toContain('- needs_revision -> 2. 기술 교차 검증');
+    expect(result.stdout).toContain('Next:');
+    expect(result.stdout).toContain('- 2. 기술 교차 검증');
+    expect(result.stdout).not.toContain('Gate:');
   });
 
   it('prints mono-spec step metadata and gate routes on current-task', async () => {
     const taskId = await createActiveTask('Mono Current Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Step:        2. 기술 교차 검증');
+    expect(result.stdout).toContain('Step ID:      tech_spec_validate');
+    expect(result.stdout).toContain('Gate:');
+    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
+    expect(result.stdout).toContain('- needs_revision -> 3. 기술 명세서 업데이트');
+  });
+
+  it('prints mono-spec next route on current-task for explicit-next steps', async () => {
+    const taskId = await createActiveTask('Mono Current Next Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
     await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
 
@@ -636,8 +666,9 @@ phases:
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Step:        3. 기술 명세서 업데이트');
     expect(result.stdout).toContain('Step ID:      tech_spec_patch');
-    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
-    expect(result.stdout).toContain('- needs_revision -> 2. 기술 교차 검증');
+    expect(result.stdout).toContain('Next:');
+    expect(result.stdout).toContain('- 2. 기술 교차 검증');
+    expect(result.stdout).not.toContain('Gate:');
   });
 
   it('prints compact Context Header before completion output on complete', async () => {
@@ -656,16 +687,189 @@ phases:
   it('completes mono-spec gated step with result and prints routed step label', async () => {
     const taskId = await createActiveTask('Mono Complete Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
-    await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
     await initGitRepo();
 
     const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Completed phase 3. 기술 명세서 업데이트');
+    expect(result.stdout).toContain('Completed phase 2. 기술 교차 검증');
     expect(result.stdout).toContain('Next phase: 4. 구현 계획서 생성');
     const task = await store.getTask(taskId);
     expect(task.currentPhase).toBe('implementation_plan_create');
+  });
+
+  describe('mono-spec workflow transitions', () => {
+    async function createMonoTask(title: string) {
+      const taskId = await createActiveTask(title, 'mono-spec');
+      await initGitRepo();
+      return { taskId, store: new YamlTaskStore(workspace.dir) };
+    }
+
+    it('step 1 complete routes to step 2 (tech_spec_draft -> tech_spec_validate)', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step1');
+      // currentPhase is null → resolves to tech_spec_draft (step 1)
+
+      const result = await runCli(['complete'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Completed phase 1. 기술 명세서 업데이트');
+      expect(result.stdout).toContain('Next phase: 2. 기술 교차 검증');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_validate');
+    });
+
+    it('step 2 complete --result approved routes to step 4, skipping step 3', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step2 Approved');
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+      const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Next phase: 4. 구현 계획서 생성');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_create');
+    });
+
+    it('step 2 complete --result needs_revision routes to step 3', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step2 Revision');
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+      const result = await runCli(['complete', '--result', 'needs_revision'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Next phase: 3. 기술 명세서 업데이트');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_patch');
+    });
+
+    it('step 2 plain complete fails in non-interactive mode', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step2 NoResult');
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+
+      const result = await runCli(['complete'], workspace.dir, { env: { ...process.env, PLAY_SPEC_NON_INTERACTIVE: '1' } });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/requires a result|missing.*result/i);
+    });
+
+    it('step 3 complete routes back to step 2 (tech_spec_patch -> tech_spec_validate)', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step3');
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+      const result = await runCli(['complete'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Completed phase 3. 기술 명세서 업데이트');
+      expect(result.stdout).toContain('Next phase: 2. 기술 교차 검증');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_validate');
+    });
+
+    it('step 4 complete routes to step 5 (implementation_plan_create -> implementation_plan_validate)', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step4');
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_create' });
+
+      const result = await runCli(['complete'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Next phase: 5. 구현 계획서 교차 검증');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_validate');
+    });
+
+    it('step 5 complete --result approved routes to step 7, skipping step 6', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step5 Approved');
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
+
+      const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Next phase: 7. 기술 구현');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation');
+    });
+
+    it('step 5 complete --result needs_revision routes to step 6', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step5 Revision');
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
+
+      const result = await runCli(['complete', '--result', 'needs_revision'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Next phase: 6. 구현 계획서 업데이트');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_patch');
+    });
+
+    it('step 5 plain complete fails in non-interactive mode', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step5 NoResult');
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
+
+      const result = await runCli(['complete'], workspace.dir, { env: { ...process.env, PLAY_SPEC_NON_INTERACTIVE: '1' } });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/requires a result|missing.*result/i);
+    });
+
+    it('step 6 complete routes back to step 5 (implementation_plan_patch -> implementation_plan_validate)', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step6');
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
+
+      const result = await runCli(['complete'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Completed phase 6. 구현 계획서 업데이트');
+      expect(result.stdout).toContain('Next phase: 5. 구현 계획서 교차 검증');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_validate');
+    });
+
+    it('step 7 routes to step 8, step 8 to step 9, step 9 to step 10', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Linear');
+
+      for (const [from, toPhase, toLabel] of [
+        ['implementation', 'focused_tests', '8. 테스트'],
+        ['focused_tests', 'safe_refactor', '9. 리팩토링'],
+        ['safe_refactor', 'pr_prepare', '10. PR 준비'],
+      ] as [string, string, string][]) {
+        await store.updateTask(taskId, { currentPhase: from });
+        const result = await runCli(['complete'], workspace.dir);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain(`Next phase: ${toLabel}`);
+        const task = await store.getTask(taskId);
+        expect(task.currentPhase).toBe(toPhase);
+      }
+    });
+
+    it('step 10 complete marks workflow done', async () => {
+      const { taskId, store } = await createMonoTask('Mono Trans Step10');
+      await store.updateTask(taskId, { currentPhase: 'pr_prepare' });
+
+      const result = await runCli(['complete'], workspace.dir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Task status: completed');
+      const task = await store.getTask(taskId);
+      expect(task.status).toBe('completed');
+    });
+
+    it('step numbers are 1 through 10 with no hidden gate phase', async () => {
+      const { store } = await createMonoTask('Mono Step Numbers');
+      const { PresetManager } = await import('#preset/preset-manager.js');
+      const manager = new PresetManager();
+      await manager.initWorkspace(workspace.dir, 'default');
+      const { WorkflowLoader } = await import('#workflow/workflow-loader.js');
+      const loader = new WorkflowLoader(workspace.dir);
+      const workflow = await loader.load('mono-spec');
+
+      const stepNumbers = Object.values(workflow.phases)
+        .map((p) => p.stepNumber)
+        .filter(Boolean)
+        .sort();
+      expect(stepNumbers).toEqual(['1', '10', '2', '3', '4', '5', '6', '7', '8', '9']);
+      expect(workflow.phaseOrder).toHaveLength(10);
+    });
   });
 
   it('suppresses Context Header with --quiet on complete', async () => {

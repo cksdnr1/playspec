@@ -100,6 +100,7 @@ export interface PhaseDefinition {
     results: string[];
     nextByResult: Record<string, PhaseId>;
   };
+  next?: PhaseId | null;
   results?: string[];
   nextByResult?: Record<string, PhaseId>;
   maxVisits?: number;

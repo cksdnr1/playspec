@@ -70,14 +70,18 @@ describe('WorkflowLoader', () => {
       '10',
     ]);
     expect(workflow.phases['tech_spec_patch']?.stepTitle).toBe('기술 명세서 업데이트');
-    expect(workflow.phases['tech_spec_patch']?.gate?.nextByResult).toEqual({
+    expect(workflow.phases['tech_spec_patch']?.gate).toBeUndefined();
+    expect(workflow.phases['tech_spec_patch']?.next).toBe('tech_spec_validate');
+    expect(workflow.phases['tech_spec_validate']?.gate?.nextByResult).toEqual({
       approved: 'implementation_plan_create',
-      needs_revision: 'tech_spec_validate',
+      needs_revision: 'tech_spec_patch',
     });
     expect(workflow.phases['implementation_plan_patch']?.stepTitle).toBe('구현 계획서 업데이트');
-    expect(workflow.phases['implementation_plan_patch']?.gate?.nextByResult).toEqual({
+    expect(workflow.phases['implementation_plan_patch']?.gate).toBeUndefined();
+    expect(workflow.phases['implementation_plan_patch']?.next).toBe('implementation_plan_validate');
+    expect(workflow.phases['implementation_plan_validate']?.gate?.nextByResult).toEqual({
       approved: 'implementation',
-      needs_revision: 'implementation_plan_validate',
+      needs_revision: 'implementation_plan_patch',
     });
     expect(workflow.phases['safe_refactor']?.requiredVariables).toContain('TARGET_BRANCH');
     expect(workflow.phases['pr_prepare']?.requiredVariables).toContain('TARGET_BRANCH');

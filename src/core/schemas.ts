@@ -89,6 +89,7 @@ export const PhaseDefinitionSchema = z.object({
   outputs: z.array(z.string()).optional(),
   completion: PhaseCompletionSchema.optional(),
   gate: PhaseGateSchema.optional(),
+  next: z.string().nullable().optional(),
   results: z.array(z.string()).min(1).optional(),
   nextByResult: z.record(z.string()).optional(),
   maxVisits: z.number().int().positive().optional(),

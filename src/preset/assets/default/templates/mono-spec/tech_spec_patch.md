@@ -32,8 +32,8 @@ Output requirements:
 - Keep markdown readable for the implementation planner.
 
 Approval/gate handling:
-- After this step, complete with one explicit result:
-- `playspec complete --result approved` routes to implementation plan creation.
-- `playspec complete --result needs_revision` routes back to technical spec cross-validation.
+- No approval result is required for this patch step.
+- Complete normally after updating `SPEC_FILE`.
+- `playspec complete` routes back to Step 2. 기술 교차 검증.
 
 {{include:rules/global_rules.md}}

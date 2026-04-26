@@ -32,8 +32,8 @@ Output requirements:
 - Leave clear implementation steps and focused test targets.
 
 Approval/gate handling:
-- After this step, complete with one explicit result:
-- `playspec complete --result approved` routes to technical implementation.
-- `playspec complete --result needs_revision` routes back to implementation plan cross-validation.
+- No approval result is required for this patch step.
+- Complete normally after updating `PLAN_FILE`.
+- `playspec complete` routes back to Step 5. 구현 계획서 교차 검증.
 
 {{include:rules/global_rules.md}}

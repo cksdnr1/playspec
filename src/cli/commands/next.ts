@@ -10,7 +10,7 @@ import { formatContextHeader } from '../context-header.js';
 import { copyToClipboard } from '#utils/clipboard.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
-import { formatGateRoutes, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
+import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { resolveOutputFilePath } from '../cli-utils.js';
 
 export async function runNext(
@@ -49,6 +49,9 @@ export async function runNext(
   const display = phaseDisplayInfo(phaseId, definition);
   const gateRouteLines = definition.stepNumber && gateResults(definition).length > 0
     ? formatGateRoutes(workflow, definition)
+    : [];
+  const nextRouteLines = definition.stepNumber && gateResults(definition).length === 0 && definition.next !== undefined
+    ? formatNextRoute(workflow, definition)
     : [];
   const shouldPrintStepMetadata = definition.stepNumber !== undefined;
   const phaseLine = `Resolved phase: ${display.label}${definition.stepNumber ? ` (id: ${display.id})` : ''}`;
@@ -93,6 +96,12 @@ export async function runNext(
       if (gateRouteLines.length > 0) {
         console.log('Gate:');
         for (const line of gateRouteLines) {
+          console.log(line);
+        }
+      }
+      if (nextRouteLines.length > 0) {
+        console.log('Next:');
+        for (const line of nextRouteLines) {
           console.log(line);
         }
       }
