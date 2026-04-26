@@ -1,4 +1,4 @@
-# 8. 테스트 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Implement focused test coverage for already-implemented phase behavior and record the result.
@@ -6,6 +6,9 @@ Implement focused test coverage for already-implemented phase behavior and recor
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
 - IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`
 - TEST_RESULT_FILE=`{{TEST_RESULT_FILE}}`

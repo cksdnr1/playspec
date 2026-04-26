@@ -11,4 +11,10 @@ export async function runCurrent(workspaceRoot: string): Promise<void> {
   console.log(`Workflow: ${task.workflowType}`);
   console.log(`Status:  ${task.status}`);
   console.log(`Phase:   ${task.currentPhase ?? '(not started)'}`);
+  if (task.contextRefs && task.contextRefs.length > 0) {
+    console.log('Context:');
+    for (const ref of task.contextRefs) {
+      console.log(`- ${ref.path}`);
+    }
+  }
 }

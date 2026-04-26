@@ -1,4 +1,4 @@
-# 4. 구현 계획서 생성 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Create a repository-specific, code-anchored implementation plan from the existing spec, phase plan, handoff, and actual code.
@@ -6,6 +6,9 @@ Create a repository-specific, code-anchored implementation plan from the existin
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
 - MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
 - PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`

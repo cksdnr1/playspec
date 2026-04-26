@@ -1,4 +1,4 @@
-# 1. 기술 명세서 업데이트 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Review the relevant files for the feature and create an initial code-level technical spec.
@@ -6,6 +6,9 @@ Review the relevant files for the feature and create an initial code-level techn
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - SOURCE_PROBLEM_FILE=`{{SOURCE_PROBLEM_FILE}}`
 - MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
 - MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`

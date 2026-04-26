@@ -215,7 +215,9 @@ export class PlaySpecCore {
     definition: PhaseDefinition,
     inputResult: string | undefined
   ): { nextPhase: string | null; result: string | undefined; visitCount: number | undefined } {
-    const { results, nextByResult, maxVisits } = definition;
+    const results = definition.gate?.results ?? definition.results;
+    const nextByResult = definition.gate?.nextByResult ?? definition.nextByResult;
+    const { maxVisits } = definition;
 
     if (!results || results.length === 0) {
       // Non-routed phase: reject unexpected result to prevent stale state
@@ -327,7 +329,7 @@ export class PlaySpecCore {
     phaseId: string,
     definition: PhaseDefinition
   ): Promise<string> {
-    const variables = this.variableResolver.resolve(task, phaseId);
+    const variables = this.variableResolver.resolve(task, phaseId, definition);
     this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
     return this.templateRenderer.render(definition.template, variables);
   }

@@ -1,4 +1,4 @@
-# 5. 구현 계획서 교차 검증 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Validate whether the implementation plan is correct, scoped, code-anchored, non-overengineered, and safe to execute.
@@ -6,6 +6,9 @@ Validate whether the implementation plan is correct, scoped, code-anchored, non-
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
 - MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
 - PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`
