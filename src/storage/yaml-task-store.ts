@@ -119,6 +119,7 @@ export class YamlTaskStore implements TaskStore {
       },
       variables: {
         FEATURE_SLUG: input.id,
+        ...(input.variables ?? {}),
       },
       phaseHistory: [],
       stateSync: {

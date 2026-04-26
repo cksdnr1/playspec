@@ -52,4 +52,20 @@ describe('VariableResolver', () => {
     const vars = resolver.resolve(task, '1');
     expect(vars.FEATURE_SLUG).toBe('feature_name');
   });
+
+  it('resolves mono-spec standard file variables', () => {
+    const vars = resolver.resolve(baseTask, 'safe_refactor');
+    expect(vars.TARGET_BRANCH).toBe('origin/master');
+    expect(vars.SOURCE_PROBLEM_FILE).toBe('(not provided)');
+    expect(vars.MASTER_SPEC_FILE).toBe('docs/features/feature_name/feature_name_master_spec.md');
+    expect(vars.MASTER_PHASE_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
+    expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
+      'docs/features/feature_name/feature_name_implementation_plan.md'
+    );
+    expect(vars.IMPLEMENTATION_RESULT_FILE).toBe(
+      'docs/features/feature_name/feature_name_implementation_result.md'
+    );
+    expect(vars.TEST_RESULT_FILE).toBe('docs/features/feature_name/feature_name_test_result.md');
+    expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/feature_name_pr_body.md');
+  });
 });

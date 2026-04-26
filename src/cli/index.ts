@@ -70,7 +70,9 @@ program
   .description('Create a new task')
   .option('--phase <n>', 'Target workflow phase for phase-execution tasks')
   .option('--from <taskId>', 'Planning task ID to bind context from')
-  .action(async (workflowType: string, title: string, opts: { phase?: string; from?: string }) => {
+  .option('--from-file <path>', 'Seed the task from a problem/source markdown file')
+  .option('--stdin', 'Seed the task from stdin', false)
+  .action(async (workflowType: string, title: string, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean }) => {
     try {
       await runCreate(process.cwd(), workflowType, title, opts);
     } catch (err) {

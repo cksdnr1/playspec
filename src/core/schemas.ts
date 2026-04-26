@@ -45,7 +45,7 @@ export const TaskTargetSchema = z.object({
 
 export const TaskContextRefSchema = z.object({
   path: z.string(),
-  role: z.literal('planning-context'),
+  role: z.enum(['planning-context', 'source-problem']),
   source: z.string(),
 });
 

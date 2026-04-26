@@ -94,6 +94,28 @@ async function initRoutedWorkspace(taskId = 'routed_task') {
   return { store, taskId };
 }
 
+async function initMonoSpecWorkspace(taskId = 'mono_task') {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+
+  const store = new YamlTaskStore(workspace.dir);
+  await store.createTask({
+    id: taskId,
+    title: 'Migration Bug Fix',
+    workflowType: 'mono-spec',
+  });
+
+  await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+
+  await execa('git', ['init'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
+  await execa('git', ['add', '.'], { cwd: workspace.dir });
+  await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
+
+  return { store, taskId };
+}
+
 describe('Phase 3.7 — Simple Conditional Routing', () => {
   describe('Workflow schema accepts routing fields', () => {
     it('loads a workflow with results, nextByResult, and maxVisits', async () => {
@@ -337,6 +359,56 @@ phases:
       expect(exitCode).toBe(1);
       expect(stderr).toContain('approved');
       expect(stderr).toContain('needs_patch');
+    });
+  });
+
+  describe('Default mono-spec gate routing', () => {
+    it('routes technical spec patch approved to implementation plan creation', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'approved' });
+
+      expect(result.nextPhase).toBe('implementation_plan_create');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_create');
+    });
+
+    it('routes technical spec patch needs_revision back to technical validation', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+      expect(result.nextPhase).toBe('tech_spec_validate');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_validate');
+    });
+
+    it('routes implementation plan patch approved to implementation', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'approved' });
+
+      expect(result.nextPhase).toBe('implementation');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation');
+    });
+
+    it('routes implementation plan patch needs_revision back to implementation plan validation', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+      expect(result.nextPhase).toBe('implementation_plan_validate');
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('implementation_plan_validate');
     });
   });
 

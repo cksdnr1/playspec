@@ -40,6 +40,35 @@ describe('WorkflowLoader', () => {
     }
   });
 
+  it('loads mono-spec workflow with validation gates and required variables', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+    const workflow = await loader.load('mono-spec');
+
+    expect(workflow.id).toBe('mono-spec');
+    expect(workflow.phaseOrder).toEqual([
+      'tech_spec_draft',
+      'tech_spec_validate',
+      'tech_spec_patch',
+      'implementation_plan_create',
+      'implementation_plan_validate',
+      'implementation_plan_patch',
+      'implementation',
+      'focused_tests',
+      'safe_refactor',
+      'pr_prepare',
+    ]);
+    expect(workflow.phases['tech_spec_patch']?.nextByResult).toEqual({
+      approved: 'implementation_plan_create',
+      needs_revision: 'tech_spec_validate',
+    });
+    expect(workflow.phases['implementation_plan_patch']?.nextByResult).toEqual({
+      approved: 'implementation',
+      needs_revision: 'implementation_plan_validate',
+    });
+    expect(workflow.phases['safe_refactor']?.requiredVariables).toContain('TARGET_BRANCH');
+    expect(workflow.phases['pr_prepare']?.requiredVariables).toContain('TARGET_BRANCH');
+  });
+
   it('throws WorkflowNotFoundError for unknown workflow type', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);

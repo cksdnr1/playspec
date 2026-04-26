@@ -111,6 +111,37 @@ describe('YamlTaskStore', () => {
     expect(fetched.contextRefs![0].source).toBe('planning');
   });
 
+  it('persists create-time variables and source-problem context refs', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.createTask({
+      id: 'source_task',
+      title: 'Source Task',
+      workflowType: 'mono-spec',
+      variables: {
+        SOURCE_PROBLEM_FILE: '.playspec/tasks/active/source_task/sources/source_problem.md',
+      },
+      contextRefs: [
+        {
+          path: '.playspec/tasks/active/source_task/sources/source_problem.md',
+          role: 'source-problem',
+          source: 'create',
+        },
+      ],
+    });
+
+    expect(task.variables.FEATURE_SLUG).toBe('source_task');
+    expect(task.variables.SOURCE_PROBLEM_FILE).toBe(
+      '.playspec/tasks/active/source_task/sources/source_problem.md'
+    );
+
+    const fetched = await store.getTask('source_task');
+    expect(fetched.contextRefs).toContainEqual({
+      path: '.playspec/tasks/active/source_task/sources/source_problem.md',
+      role: 'source-problem',
+      source: 'create',
+    });
+  });
+
   it('loads task YAML without target or contextRefs', async () => {
     const { writeFile, mkdir } = await import('node:fs/promises');
     const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', 'legacy_task');
