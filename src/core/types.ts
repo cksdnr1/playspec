@@ -74,6 +74,7 @@ export interface TaskSummary {
   title: string;
   status: TaskStatus;
   currentPhase: PhaseId | null;
+  workflowType: WorkflowType;
 }
 
 export interface CreateTaskInput {

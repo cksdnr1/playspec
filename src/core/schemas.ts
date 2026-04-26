@@ -72,6 +72,7 @@ export const TaskSummarySchema = z.object({
   title: z.string(),
   status: z.enum(['active', 'completed', 'archived']),
   currentPhase: z.string().nullable(),
+  workflowType: z.string(),
 });
 
 export const PhaseDefinitionSchema = z.object({

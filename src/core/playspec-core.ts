@@ -18,6 +18,10 @@ import {
   InvalidRoutingTargetError,
   LoopGuardError,
   UnexpectedResultError,
+  InvalidCurrentPhaseError,
+  AbsoluteContextPathError,
+  ContextPathEscapesWorkspaceError,
+  ContextFileNotFoundError,
 } from '#core/errors.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
@@ -25,6 +29,7 @@ import { RollbackManager } from '#core/rollback-manager.js';
 import type {
   PhaseDefinition,
   TaskRecord,
+  TaskContextRef,
   WorkflowDefinition,
   CompletionResult,
   EvidenceResult,
@@ -62,8 +67,40 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.load(task.workflowType);
+    this.validateCurrentPhase(task, workflow);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
+  }
+
+  async addContextRef(taskId: string, contextPath: string): Promise<boolean> {
+    if (path.isAbsolute(contextPath)) {
+      throw new AbsoluteContextPathError(contextPath);
+    }
+    const normalizedPath = path.normalize(contextPath);
+    const resolved = path.resolve(this.workspaceRoot, normalizedPath);
+    if (!resolved.startsWith(path.resolve(this.workspaceRoot) + path.sep) &&
+        resolved !== path.resolve(this.workspaceRoot)) {
+      throw new ContextPathEscapesWorkspaceError(contextPath);
+    }
+    try {
+      await access(resolved);
+    } catch {
+      throw new ContextFileNotFoundError(contextPath);
+    }
+
+    const task = await this.taskStore.getTask(taskId);
+    const existing = task.contextRefs ?? [];
+    if (existing.some((ref) => path.normalize(ref.path) === normalizedPath)) {
+      return false;
+    }
+
+    const newRef: TaskContextRef = {
+      path: normalizedPath,
+      role: 'planning-context',
+      source: 'manual',
+    };
+    await this.taskStore.updateTask(taskId, { contextRefs: [...existing, newRef] });
+    return true;
   }
 
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
@@ -345,6 +382,13 @@ export class PlaySpecCore {
   private assertTaskIsActive(task: TaskRecord): void {
     if (task.status !== 'active') {
       throw new TaskNotActiveError(task.id, task.status);
+    }
+  }
+
+  private validateCurrentPhase(task: TaskRecord, workflow: WorkflowDefinition): void {
+    if (task.currentPhase === null) return;
+    if (!workflow.phaseOrder.includes(task.currentPhase)) {
+      throw new InvalidCurrentPhaseError(task.currentPhase, workflow.id, workflow.phaseOrder);
     }
   }
 

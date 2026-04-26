@@ -8,7 +8,11 @@ import { PlaySpecError } from '#core/errors.js';
 import { runInit } from './commands/init.js';
 import { runCreate } from './commands/create.js';
 import { runList } from './commands/list.js';
+import { runListTasks } from './commands/list-tasks.js';
 import { runCurrent } from './commands/current.js';
+import { runCurrentTask } from './commands/current-task.js';
+import { runGetTask } from './commands/get-task.js';
+import { runAddContext } from './commands/add-context.js';
 import { runUse } from './commands/use.js';
 import { runNext } from './commands/next.js';
 import { runPhase } from './commands/phase.js';
@@ -86,6 +90,18 @@ program
     }
   });
 
+// list-tasks
+program
+  .command('list-tasks')
+  .description('List active tasks with workflow type and phase state')
+  .action(async () => {
+    try {
+      await runListTasks(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
 // current
 program
   .command('current')
@@ -93,6 +109,44 @@ program
   .action(async () => {
     try {
       await runCurrent(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// current-task
+program
+  .command('current-task')
+  .description('Show the current HEAD task with resolved phase title and context ref count')
+  .action(async () => {
+    try {
+      await runCurrentTask(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// get-task
+program
+  .command('get-task')
+  .description('Look up a specific task by ID (no HEAD fallback)')
+  .requiredOption('--task <id>', 'Task ID to look up')
+  .action(async (opts: { task: string }) => {
+    try {
+      await runGetTask(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// add-context
+program
+  .command('add-context <file>')
+  .description('Add a context file reference to a task')
+  .requiredOption('--task <id>', 'Task ID to add context to')
+  .action(async (file: string, opts: { task: string }) => {
+    try {
+      await runAddContext(process.cwd(), file, opts.task);
     } catch (err) {
       handleError(err);
     }
@@ -117,9 +171,10 @@ program
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--write', 'Write prompt to prompts/ directory', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
-  .action(async (opts: { task?: string; write: boolean; quiet: boolean }) => {
+  .option('--copy', 'Copy rendered prompt to clipboard', false)
+  .action(async (opts: { task?: string; write: boolean; quiet: boolean; copy: boolean }) => {
     try {
-      await runNext(process.cwd(), opts.task, opts.write, opts.quiet);
+      await runNext(process.cwd(), opts.task, opts.write, opts.quiet, opts.copy);
     } catch (err) {
       handleError(err);
     }

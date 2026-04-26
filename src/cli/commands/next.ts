@@ -7,12 +7,14 @@ import { printDesyncResult } from './desync-check.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 import { formatContextHeader } from '../context-header.js';
+import { copyToClipboard } from '#utils/clipboard.js';
 
 export async function runNext(
   workspaceRoot: string,
   taskIdOption?: string,
   write?: boolean,
-  quiet?: boolean
+  quiet?: boolean,
+  copy?: boolean
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -36,7 +38,17 @@ export async function runNext(
 
   const prompt = await core.renderNextPrompt(task.id);
 
-  console.log(prompt);
+  if (copy) {
+    const success = await copyToClipboard(prompt);
+    if (success) {
+      console.log('Prompt copied to clipboard.');
+    } else {
+      console.log('Clipboard not available — output printed instead.');
+      console.log(prompt);
+    }
+  } else {
+    console.log(prompt);
+  }
 
   if (write) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
