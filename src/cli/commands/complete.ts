@@ -4,14 +4,15 @@ import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
+import { gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { formatContextHeader } from '../context-header.js';
 import { MissingResultError } from '#core/errors.js';
 
-async function promptResultSelection(phaseId: string, results: string[]): Promise<string> {
+async function promptResultSelection(phaseLabel: string, results: string[]): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   const menu = [
-    `Phase "${phaseId}" complete. Select result:`,
+    `${phaseLabel} complete. Select result:`,
     ...results.map((r, i) => `  ${i + 1}. ${r}`),
     '',
     `Choice [1-${results.length}]: `,
@@ -48,6 +49,8 @@ export async function runComplete(
 
   // Determine if current phase has results declared (for interactive/non-interactive guard)
   let result: string | undefined = resultOption;
+  let completedPhaseLabel: string | undefined;
+  let nextPhaseLabel: string | undefined;
 
   if (result === undefined) {
     // Load the workflow to check if current phase has results
@@ -55,22 +58,41 @@ export async function runComplete(
     const phaseResolver = new PhaseResolver();
     const workflow = await workflowLoader.load(task.workflowType);
     const { phaseId, definition } = phaseResolver.resolveCurrentPhase(task, workflow);
+    const display = phaseDisplayInfo(phaseId, definition);
+    completedPhaseLabel = definition.stepNumber ? display.label : phaseId;
 
-    if (definition.results && definition.results.length > 0) {
+    const results = gateResults(definition);
+    if (results.length > 0) {
       const isInteractive = process.stdin.isTTY === true;
       if (!isInteractive) {
-        throw new MissingResultError(phaseId, definition.results);
+        throw new MissingResultError(phaseId, results);
       }
-      result = await promptResultSelection(phaseId, definition.results);
+      result = await promptResultSelection(completedPhaseLabel, results);
     }
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
   const completionResult = await core.completePhase(task.id, { withReview, result });
+  if (!completedPhaseLabel || (completionResult.nextPhase && !nextPhaseLabel)) {
+    const workflowLoader = new WorkflowLoader(workspaceRoot);
+    const workflow = await workflowLoader.load(task.workflowType);
+    const completedDefinition = workflow.phases[completionResult.completedPhase];
+    if (completedDefinition) {
+      const display = phaseDisplayInfo(completionResult.completedPhase, completedDefinition);
+      completedPhaseLabel = completedDefinition.stepNumber ? display.label : completionResult.completedPhase;
+    }
+    if (completionResult.nextPhase) {
+      const nextDefinition = workflow.phases[completionResult.nextPhase];
+      if (nextDefinition) {
+        const display = phaseDisplayInfo(completionResult.nextPhase, nextDefinition);
+        nextPhaseLabel = nextDefinition.stepNumber ? display.label : completionResult.nextPhase;
+      }
+    }
+  }
 
-  console.log(`Completed phase ${completionResult.completedPhase} for task "${completionResult.taskId}".`);
+  console.log(`Completed phase ${completedPhaseLabel ?? completionResult.completedPhase} for task "${completionResult.taskId}".`);
   if (completionResult.nextPhase) {
-    console.log(`Next phase: ${completionResult.nextPhase}`);
+    console.log(`Next phase: ${nextPhaseLabel ?? completionResult.nextPhase}`);
   } else {
     console.log('Task status: completed');
   }

@@ -1,4 +1,4 @@
-# 7. 기술 구현 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Implement the latest spec for `{{FEATURE_SLUG}}` strictly according to the spec, while preserving reader-friendly documentation quality.
@@ -6,6 +6,9 @@ Implement the latest spec for `{{FEATURE_SLUG}}` strictly according to the spec,
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
 - MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
 - PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`

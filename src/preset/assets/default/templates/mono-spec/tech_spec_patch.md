@@ -1,4 +1,4 @@
-# 3. 기술 명세서 업데이트 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Review only the minimal directly related files needed to verify already-identified risks, then strengthen the existing spec and handoff for `{{FEATURE_SLUG}}` with a finalized risk ledger as a minimal in-place patch set.
@@ -6,6 +6,9 @@ Review only the minimal directly related files needed to verify already-identifi
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - MASTER_SPEC_FILE=`{{MASTER_SPEC_FILE}}`
 - MASTER_PHASE_FILE=`{{MASTER_PHASE_FILE}}`
 - PHASE_SPEC_FILE=`{{PHASE_SPEC_FILE}}`

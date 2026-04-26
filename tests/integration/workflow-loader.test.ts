@@ -57,11 +57,25 @@ describe('WorkflowLoader', () => {
       'safe_refactor',
       'pr_prepare',
     ]);
-    expect(workflow.phases['tech_spec_patch']?.nextByResult).toEqual({
+    expect(workflow.phaseOrder.map((phaseId) => workflow.phases[phaseId]?.stepNumber)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '10',
+    ]);
+    expect(workflow.phases['tech_spec_patch']?.stepTitle).toBe('기술 명세서 업데이트');
+    expect(workflow.phases['tech_spec_patch']?.gate?.nextByResult).toEqual({
       approved: 'implementation_plan_create',
       needs_revision: 'tech_spec_validate',
     });
-    expect(workflow.phases['implementation_plan_patch']?.nextByResult).toEqual({
+    expect(workflow.phases['implementation_plan_patch']?.stepTitle).toBe('구현 계획서 업데이트');
+    expect(workflow.phases['implementation_plan_patch']?.gate?.nextByResult).toEqual({
       approved: 'implementation',
       needs_revision: 'implementation_plan_validate',
     });

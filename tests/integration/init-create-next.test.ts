@@ -148,6 +148,12 @@ describe('init → create → next (end-to-end)', () => {
     const core = new PlaySpecCore(workspace.dir, store);
     const validationPrompt = await core.renderExplicitPhasePrompt(taskId, 'tech_spec_validate');
     expect(validationPrompt).toContain('해결 가능한 이슈');
+    expect(validationPrompt).toContain('STEP_NUMBER=`2`');
+    expect(validationPrompt).toContain('STEP_ID=`tech_spec_validate`');
+    expect(validationPrompt).toContain(
+      'migration_bug_fix_step2_tech_spec_validate_implementation_spec.md'
+    );
+    expect(validationPrompt).not.toContain('phasetech_spec_validate');
     expect(validationPrompt).toContain('아직 남는 blocker');
     expect(validationPrompt).toContain('Do not treat method, helper, interface, callback, or data-structure existence');
     expect(validationPrompt).toContain('active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior');

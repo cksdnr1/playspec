@@ -1,4 +1,4 @@
-# 9. 리팩토링 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Review the current branch diff against `{{TARGET_BRANCH}}`, automatically apply only safe and local refactoring opportunities, then verify that the cleanup did not go beyond the intended scope.
@@ -6,6 +6,9 @@ Review the current branch diff against `{{TARGET_BRANCH}}`, automatically apply 
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - TARGET_BRANCH=`{{TARGET_BRANCH}}`
 - IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
 - IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`

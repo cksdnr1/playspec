@@ -373,6 +373,7 @@ phases:
       expect(result.nextPhase).toBe('implementation_plan_create');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('implementation_plan_create');
+      expect(task.currentPhase).not.toBe('implementation_plan_validate');
     });
 
     it('routes technical spec patch needs_revision back to technical validation', async () => {
@@ -409,6 +410,18 @@ phases:
       expect(result.nextPhase).toBe('implementation_plan_validate');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('implementation_plan_validate');
+    });
+
+    it('does not silently advance technical spec patch without a result', async () => {
+      const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      await expect(core.completePhase(taskId, {})).rejects.toThrow(MissingResultError);
+
+      const task = await store.getTask(taskId);
+      expect(task.currentPhase).toBe('tech_spec_patch');
+      expect(task.phaseHistory).toHaveLength(0);
     });
   });
 

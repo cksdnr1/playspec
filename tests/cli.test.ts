@@ -15,10 +15,16 @@ const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../tsconfig.json');
 
-function runCli(args: string[], cwd?: string) {
+function runCli(
+  args: string[],
+  cwd?: string,
+  options: { env?: NodeJS.ProcessEnv; input?: string } = {}
+) {
   return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
     cwd,
     reject: false,
+    env: options.env,
+    input: options.input,
   });
 }
 let workspace: TempWorkspace;
@@ -74,6 +80,73 @@ describe('CLI placeholder', () => {
     expect(result.stdout).toContain('Phase 1');
     expect(result.stdout).toContain('Global Rules');
     expect(result.stdout).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+
+  it('marks the HEAD task in list and list-tasks output', async () => {
+    await createActiveTask('Head Marker Task');
+
+    const list = await runCli(['list'], workspace.dir);
+    const listTasks = await runCli(['list-tasks'], workspace.dir);
+
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain('head_marker_task [HEAD]');
+    expect(listTasks.exitCode).toBe(0);
+    expect(listTasks.stdout).toContain('head_marker_task [HEAD]');
+  });
+
+  it('shows context paths in current and rich context details in current-task', async () => {
+    const taskId = await createActiveTask('Context Visibility Task');
+    const contextPath = 'docs/context_visibility_task/notes.md';
+    await writeTextFile(path.join(workspace.dir, contextPath), '# Notes\n');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      contextRefs: [{ path: contextPath, role: 'planning-context', source: 'manual_task' }],
+    });
+
+    const current = await runCli(['current'], workspace.dir);
+    const currentTask = await runCli(['current-task'], workspace.dir);
+
+    expect(current.exitCode).toBe(0);
+    expect(current.stdout).toContain('Context:');
+    expect(current.stdout).toContain(`- ${contextPath}`);
+    expect(currentTask.exitCode).toBe(0);
+    expect(currentTask.stdout).toContain('Docs root:');
+    expect(currentTask.stdout).toContain('Context refs detail:');
+    expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual_task)`);
+  });
+
+  it('rejects non-interactive add-context without --task before mutation', async () => {
+    const taskId = await createActiveTask('Add Context Non Interactive Task');
+    const contextPath = 'docs/add_context_non_interactive_task/notes.md';
+    await writeTextFile(path.join(workspace.dir, contextPath), '# Notes\n');
+
+    const result = await runCli(['add-context', contextPath], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const task = await new YamlTaskStore(workspace.dir).getTask(taskId);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('requires --task <id>');
+    expect(task.contextRefs ?? []).toHaveLength(0);
+  });
+
+  it('keeps explicit add-context --task script-safe without confirmation', async () => {
+    const taskId = await createActiveTask('Add Context Explicit Task');
+    const contextPath = 'docs/add_context_explicit_task/notes.md';
+    await writeTextFile(path.join(workspace.dir, contextPath), '# Notes\n');
+
+    const result = await runCli(['add-context', contextPath, '--task', taskId], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const task = await new YamlTaskStore(workspace.dir).getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Context linked.');
+    expect(task.contextRefs).toContainEqual({
+      path: contextPath,
+      role: 'planning-context',
+      source: 'manual',
+    });
   });
 
   it('creates a mono-spec task from a source file and stores an internal markdown source', async () => {
@@ -457,6 +530,85 @@ phases:
     expect(result.stdout).toContain('Global Rules');
   });
 
+  it('writes next --out without printing the full prompt', async () => {
+    await createActiveTask('Next Out Task');
+    const outputPath = 'tmp/prompt.md';
+
+    const result = await runCli(['next', '--out', outputPath], workspace.dir);
+    const written = await readTextFile(path.join(workspace.dir, outputPath));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Prompt written: tmp/prompt.md');
+    expect(result.stdout).not.toContain('Global Rules');
+    expect(written).toContain('Global Rules');
+  });
+
+  it('writes copy fallback file and does not dump prompt when clipboard fails', async () => {
+    const taskId = await createActiveTask('Next Copy Fallback Task');
+
+    const result = await runCli(['next', '--copy'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const promptFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts')
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Clipboard unavailable. Prompt written to: .playspec/tasks/active/next_copy_fallback_task/prompts/next-prompt-');
+    expect(result.stdout).not.toContain('Global Rules');
+    expect(promptFiles.some((file) => file.startsWith('next-prompt-'))).toBe(true);
+  });
+
+  it('writes next --copy --out even when clipboard fails without extra fallback', async () => {
+    const taskId = await createActiveTask('Next Copy Out Task');
+    const outputPath = 'tmp/copy-out.md';
+
+    const result = await runCli(['next', '--copy', '--out', outputPath], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const written = await readTextFile(path.join(workspace.dir, outputPath));
+    const promptFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts')
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Clipboard unavailable. Prompt written to: tmp/copy-out.md');
+    expect(result.stdout).not.toContain('Global Rules');
+    expect(written).toContain('Global Rules');
+    expect(promptFiles.some((file) => file.startsWith('next-prompt-'))).toBe(false);
+  });
+
+  it('prints mono-spec step metadata and gate routes on next for gated steps', async () => {
+    const taskId = await createActiveTask('Mono Gate Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+    const result = await runCli(['next'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Current step: 3. 기술 명세서 업데이트');
+    expect(result.stdout).toContain('id: tech_spec_patch');
+    expect(result.stdout).toContain('Gate:');
+    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
+    expect(result.stdout).toContain('- needs_revision -> 2. 기술 교차 검증');
+  });
+
+  it('prints mono-spec step metadata and gate routes on current-task', async () => {
+    const taskId = await createActiveTask('Mono Current Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Step:        3. 기술 명세서 업데이트');
+    expect(result.stdout).toContain('Step ID:      tech_spec_patch');
+    expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
+    expect(result.stdout).toContain('- needs_revision -> 2. 기술 교차 검증');
+  });
+
   it('prints compact Context Header before completion output on complete', async () => {
     await createActiveTask('CLI Header Complete Task');
     await initGitRepo();
@@ -468,6 +620,21 @@ phases:
     const completedLineIndex = result.stdout.indexOf('Completed phase');
     expect(taskLineIndex).toBeGreaterThanOrEqual(0);
     expect(taskLineIndex).toBeLessThan(completedLineIndex);
+  });
+
+  it('completes mono-spec gated step with result and prints routed step label', async () => {
+    const taskId = await createActiveTask('Mono Complete Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'tech_spec_patch' });
+    await initGitRepo();
+
+    const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Completed phase 3. 기술 명세서 업데이트');
+    expect(result.stdout).toContain('Next phase: 4. 구현 계획서 생성');
+    const task = await store.getTask(taskId);
+    expect(task.currentPhase).toBe('implementation_plan_create');
   });
 
   it('suppresses Context Header with --quiet on complete', async () => {

@@ -30,6 +30,19 @@ const require = createRequire(import.meta.url);
 // Read version from package.json
 const pkg = require('../../package.json') as { version: string };
 
+function installPipeHandlers(): void {
+  const handlePipeError = (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EPIPE') {
+      process.exit(0);
+    }
+    throw error;
+  };
+  process.stdout.on('error', handlePipeError);
+  process.stderr.on('error', handlePipeError);
+}
+
+installPipeHandlers();
+
 function handleError(err: unknown): never {
   if (err instanceof PlaySpecError) {
     console.error(chalk.red(`Error: ${err.message}`));
@@ -145,8 +158,8 @@ program
 program
   .command('add-context <file>')
   .description('Add a context file reference to a task')
-  .requiredOption('--task <id>', 'Task ID to add context to')
-  .action(async (file: string, opts: { task: string }) => {
+  .option('--task <id>', 'Task ID to add context to')
+  .action(async (file: string, opts: { task?: string }) => {
     try {
       await runAddContext(process.cwd(), file, opts.task);
     } catch (err) {
@@ -174,9 +187,10 @@ program
   .option('--write', 'Write prompt to prompts/ directory', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
   .option('--copy', 'Copy rendered prompt to clipboard', false)
-  .action(async (opts: { task?: string; write: boolean; quiet: boolean; copy: boolean }) => {
+  .option('--out <file>', 'Write prompt to a user-selected output file')
+  .action(async (opts: { task?: string; write: boolean; quiet: boolean; copy: boolean; out?: string }) => {
     try {
-      await runNext(process.cwd(), opts.task, opts.write, opts.quiet, opts.copy);
+      await runNext(process.cwd(), opts.task, opts.write, opts.quiet, opts.copy, opts.out);
     } catch (err) {
       handleError(err);
     }

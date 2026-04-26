@@ -1,4 +1,4 @@
-# 10. PR 준비 — {{TASK_TITLE}}
+# {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
 Draft a reviewer-friendly PR message, update phase completion docs, decide whether reusable agent guidance should be documented, push the branch, create a PR, then return to master.
@@ -6,6 +6,9 @@ Draft a reviewer-friendly PR message, update phase completion docs, decide wheth
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
 - TASK_TITLE=`{{TASK_TITLE}}`
+- STEP_NUMBER=`{{STEP_NUMBER}}`
+- STEP_ID=`{{STEP_ID}}`
+- STEP_TITLE=`{{STEP_TITLE}}`
 - TARGET_BRANCH=`{{TARGET_BRANCH}}`
 - IMPLEMENTATION_PLAN_FILE=`{{IMPLEMENTATION_PLAN_FILE}}`
 - IMPLEMENTATION_RESULT_FILE=`{{IMPLEMENTATION_RESULT_FILE}}`

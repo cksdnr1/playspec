@@ -21,6 +21,11 @@ export const PhaseCompletionSchema = z.object({
   validationTemplate: z.string().optional(),
 });
 
+export const PhaseGateSchema = z.object({
+  results: z.array(z.string()).min(1),
+  nextByResult: z.record(z.string()),
+});
+
 export const TaskStateSyncSchema = z.object({
   lastKnownGitHead: z.string().nullable(),
   lastCompletedAt: z.string().nullable(),
@@ -78,9 +83,12 @@ export const TaskSummarySchema = z.object({
 export const PhaseDefinitionSchema = z.object({
   title: z.string(),
   template: z.string(),
+  stepNumber: z.string().optional(),
+  stepTitle: z.string().optional(),
   requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   completion: PhaseCompletionSchema.optional(),
+  gate: PhaseGateSchema.optional(),
   results: z.array(z.string()).min(1).optional(),
   nextByResult: z.record(z.string()).optional(),
   maxVisits: z.number().int().positive().optional(),

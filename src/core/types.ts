@@ -89,10 +89,16 @@ export interface CreateTaskInput {
 export interface PhaseDefinition {
   title: string;
   template: string;
+  stepNumber?: string;
+  stepTitle?: string;
   requiredVariables?: string[];
   outputs?: string[];
   completion?: {
     validationTemplate?: string;
+  };
+  gate?: {
+    results: string[];
+    nextByResult: Record<string, PhaseId>;
   };
   results?: string[];
   nextByResult?: Record<string, PhaseId>;
