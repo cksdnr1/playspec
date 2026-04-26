@@ -86,10 +86,22 @@ Only the `default` preset is present in this repository.
 
 ```bash
 playspec init --preset default
-playspec create <workflowType> "<title>"
-playspec create mono-spec "Migration Bug Fix"
+
+# Interactive wizard — guided flow, no flags needed
+playspec create
+
+# With editor — opens $EDITOR for the source problem
+playspec create mono-spec "Migration Bug Fix" --edit
+
+# From a file — user-friendly shorthand
+playspec create mono-spec "Migration Bug Fix" --from problem.md
+
+# Explicit file flag (equivalent to --from without --phase)
 playspec create mono-spec "Migration Bug Fix" --from-file ./problem.md
+
+# From stdin — for scripts and automation only
 cat problem.md | playspec create mono-spec "Migration Bug Fix" --stdin
+
 playspec list
 playspec current
 playspec status
@@ -99,7 +111,18 @@ playspec use <taskId>
 
 `playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
 
-`--from-file` and `--stdin` store the provided problem text as an internal markdown source file under the task directory and link it as task context. The task title remains generic; `"Migration Bug Fix"` above is only an example.
+#### Source problem input modes
+
+| Mode | Flag | Best for |
+|---|---|---|
+| Interactive wizard | `playspec create` (no args) | First-time or exploratory use |
+| Editor | `--edit` | Writing or editing a problem description in your preferred editor |
+| File | `--from <file>` or `--from-file <file>` | Re-using an existing markdown file |
+| Stdin | `--stdin` | Scripts and automation (heredoc, pipe) |
+
+`--from` without `--phase` is treated as a source problem file path. With `--phase`, `--from` specifies a planning task ID (see Phase Execution Tasks below).
+
+Source problem content is stored as an internal markdown file under the task directory and linked as task context. Non-interactive usage (`PLAY_SPEC_NON_INTERACTIVE=1` or no TTY) must use explicit flags and must not hang waiting for input.
 
 ### Mono-Spec Workflow
 

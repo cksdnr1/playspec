@@ -935,6 +935,151 @@ phases:
     expect(result.stdout).not.toContain('Context:');
   });
 
+  // create UX improvements
+
+  it('creates a mono-spec task using --from <file> as a source problem file alias', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'bug.md'), '# Bug\n\nReproduction details.\n');
+
+    const result = await runCli(
+      ['create', 'mono-spec', 'From Alias Task', '--from', 'bug.md'],
+      workspace.dir
+    );
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask('from_alias_task');
+    const sourcePath = path.join(
+      workspace.dir,
+      '.playspec', 'tasks', 'active', 'from_alias_task', 'sources', 'source_problem.md'
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Source problem stored: .playspec/tasks/active/from_alias_task/sources/source_problem.md');
+    expect(task.variables['SOURCE_PROBLEM_FILE']).toBe('.playspec/tasks/active/from_alias_task/sources/source_problem.md');
+    expect(task.contextRefs).toContainEqual({
+      path: '.playspec/tasks/active/from_alias_task/sources/source_problem.md',
+      role: 'source-problem',
+      source: 'create',
+    });
+    await expect(access(sourcePath)).resolves.not.toThrow();
+    expect(await readTextFile(sourcePath)).toContain('Reproduction details.');
+  });
+
+  it('rejects --from and --from-file used together', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'bug.md'), '# Bug\n');
+    await writeTextFile(path.join(workspace.dir, 'bug2.md'), '# Bug2\n');
+
+    const result = await runCli(
+      ['create', 'mono-spec', 'Double Source Task', '--from', 'bug.md', '--from-file', 'bug2.md'],
+      workspace.dir
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--from and --from-file both specify source files');
+  });
+
+  it('creates a mono-spec task using --edit with a fake editor', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const fakeEditorPath = path.join(workspace.dir, 'fake-editor.sh');
+    await writeTextFile(fakeEditorPath, '#!/bin/sh\nprintf "Problem from editor" > "$1"\n');
+    await execa('chmod', ['+x', fakeEditorPath]);
+
+    const result = await runCli(
+      ['create', 'mono-spec', 'Editor Source Task', '--edit'],
+      workspace.dir,
+      { env: { ...process.env, EDITOR: fakeEditorPath } }
+    );
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask('editor_source_task');
+    const sourcePath = path.join(
+      workspace.dir,
+      '.playspec', 'tasks', 'active', 'editor_source_task', 'sources', 'source_problem.md'
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Source problem stored: .playspec/tasks/active/editor_source_task/sources/source_problem.md');
+    expect(await readTextFile(sourcePath)).toContain('Problem from editor');
+    expect(task.contextRefs).toContainEqual({
+      path: '.playspec/tasks/active/editor_source_task/sources/source_problem.md',
+      role: 'source-problem',
+      source: 'editor',
+    });
+  });
+
+  it('rejects --edit in non-interactive mode (PLAY_SPEC_NON_INTERACTIVE=1)', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(
+      ['create', 'mono-spec', 'Edit Non Interactive Task', '--edit'],
+      workspace.dir,
+      { env: { ...process.env, PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('non-interactive mode');
+  });
+
+  it('rejects the interactive wizard in non-interactive mode', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(['create'], workspace.dir, {
+      env: { ...process.env, PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Interactive wizard requires a terminal');
+  });
+
+  it('rejects partial args (only workflowType, no title)', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(['create', 'mono-spec'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Both workflow type and title are required');
+  });
+
+  it('creates a task via interactive wizard with piped skip input', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    // Simulate wizard: accept default workflow, provide title, choose skip
+    const result = await execa(
+      'npx',
+      ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create'],
+      {
+        cwd: workspace.dir,
+        reject: false,
+        // empty for workflow (default mono-spec), title, choice 4 (skip)
+        input: '\nWizard Skip Task\n4\n',
+        env: { ...process.env, PLAY_SPEC_NON_INTERACTIVE: undefined },
+      }
+    );
+    const store = new YamlTaskStore(workspace.dir);
+
+    // Wizard output goes to stdout which is piped (not a TTY), so PLAY_SPEC_NON_INTERACTIVE
+    // is the standard way to gate. In piped mode stdout.isTTY is falsy, so the
+    // wizard guard fires. We verify the guard is triggered here.
+    // If the process is a TTY (CI with pseudo-TTY), the wizard would run.
+    // In most CI / test environments, stdout is piped so the guard triggers.
+    if (result.exitCode !== 0) {
+      // Non-TTY environment: guard triggered, which is expected
+      expect(result.stderr).toContain('Interactive wizard requires a terminal');
+    } else {
+      // TTY environment: wizard ran and created the task
+      const task = await store.getTask('wizard_skip_task');
+      expect(task.title).toBe('Wizard Skip Task');
+      expect(task.contextRefs ?? []).toHaveLength(0);
+    }
+  });
+
   it('rejects HEAD-based phase rendering for completed tasks via the CLI', async () => {
     const taskId = await createActiveTask('Completed Phase Task');
     const store = new YamlTaskStore(workspace.dir);

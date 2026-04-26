@@ -6,7 +6,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { PlaySpecError } from '#core/errors.js';
 import { runInit } from './commands/init.js';
-import { runCreate } from './commands/create.js';
+import { runCreate, runInteractiveCreate } from './commands/create.js';
 import { runList } from './commands/list.js';
 import { runListTasks } from './commands/list-tasks.js';
 import { runCurrent } from './commands/current.js';
@@ -79,13 +79,32 @@ program
 
 // create
 program
-  .command('create <workflowType> <title>')
-  .description('Create a new task')
+  .command('create [workflowType] [title]')
+  .description('Create a new task (omit both arguments to launch the interactive wizard)')
   .option('--phase <n>', 'Target workflow phase for phase-execution tasks')
-  .option('--from <taskId>', 'Planning task ID to bind context from')
-  .option('--from-file <path>', 'Seed the task from a problem/source markdown file')
-  .option('--stdin', 'Seed the task from stdin', false)
-  .action(async (workflowType: string, title: string, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean }) => {
+  .option('--from <value>', 'Source problem file path (without --phase) or planning task ID (with --phase)')
+  .option('--from-file <path>', 'Seed the task from a source problem file')
+  .option('--stdin', 'Seed the task from stdin (for scripts and automation)', false)
+  .option('--edit', 'Open $EDITOR to write the source problem', false)
+  .action(async (workflowType: string | undefined, title: string | undefined, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean }) => {
+    if (!workflowType && !title) {
+      const isInteractive = process.stdout.isTTY === true && !process.env['PLAY_SPEC_NON_INTERACTIVE'];
+      if (!isInteractive) {
+        console.error(chalk.red('Error: Interactive wizard requires a terminal.'));
+        console.error(chalk.yellow('Hint: Use: playspec create <workflowType> "<title>"'));
+        process.exit(1);
+      }
+      try {
+        await runInteractiveCreate(process.cwd());
+      } catch (err) {
+        handleError(err);
+      }
+      return;
+    }
+    if (!workflowType || !title) {
+      console.error(chalk.red('Error: Both workflow type and title are required, or omit both for the interactive wizard.'));
+      process.exit(1);
+    }
     try {
       await runCreate(process.cwd(), workflowType, title, opts);
     } catch (err) {

@@ -1,6 +1,8 @@
-import { access } from 'node:fs/promises';
+import { access, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as readline from 'node:readline';
+import { tmpdir } from 'node:os';
+import { execa } from 'execa';
 import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
@@ -10,9 +12,24 @@ import type { TaskContextRef, TaskTarget } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
+  /** Planning task ID (with --phase) or source problem file path (without --phase). */
   from?: string;
   fromFile?: string;
   stdin?: boolean;
+  /** Open $EDITOR to write the source problem. */
+  edit?: boolean;
+}
+
+interface SourceOptions {
+  fromFile?: string;
+  stdin?: boolean;
+  edit?: boolean;
+}
+
+interface SourceResult {
+  relativePath: string;
+  content: string;
+  method: string;
 }
 
 export async function runCreate(
@@ -29,34 +46,24 @@ export async function runCreate(
   }
 
   if (!options.phase) {
+    if (options.from && options.fromFile) {
+      throw new Error('--from and --from-file both specify source files. Use only one.');
+    }
+    // Without --phase, --from is treated as a source problem file alias.
+    const fileSource = options.fromFile ?? options.from;
+
     const taskId = slugify(title);
-    const source = await resolveSourceProblem(workspaceRoot, taskId, options);
-    const store = new YamlTaskStore(workspaceRoot);
-    const task = await store.createTask({
-      id: taskId,
-      title,
-      workflowType,
-      variables: source
-        ? { SOURCE_PROBLEM_FILE: source.relativePath }
-        : undefined,
-      contextRefs: source
-        ? [{ path: source.relativePath, role: 'source-problem', source: options.stdin ? 'stdin' : 'create' }]
-        : undefined,
+    const source = await resolveSourceProblem(workspaceRoot, taskId, {
+      fromFile: fileSource,
+      stdin: options.stdin,
+      edit: options.edit,
     });
-    if (source) {
-      await writeTextFile(path.join(workspaceRoot, source.relativePath), source.content);
-    }
-    await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
-    console.log(`Created task "${task.id}" (${title})`);
-    if (source) {
-      console.log(`Source problem stored: ${source.relativePath}`);
-    }
-    console.log(`HEAD set to: ${task.id}`);
+    await createNormalTask(workspaceRoot, workflowType, title, source);
     return;
   }
 
-  if (options.fromFile || options.stdin) {
-    throw new Error('--from-file and --stdin are only supported for normal task creation, not --phase execution tasks.');
+  if (options.fromFile || options.stdin || options.edit) {
+    throw new Error('--from-file, --stdin, and --edit are only supported for normal task creation, not --phase execution tasks.');
   }
 
   // Phase-execution flow
@@ -65,7 +72,6 @@ export async function runCreate(
   const taskId = slugify(finalTitle);
   const store = new YamlTaskStore(workspaceRoot);
 
-  // Resolve planning source
   let planningTaskId: string;
   const isInteractive = process.stdout.isTTY === true;
 
@@ -95,7 +101,6 @@ export async function runCreate(
     }
   }
 
-  // Load planning task and discover context files
   const planningTask = await store.getTask(planningTaskId);
   const featureSlug = planningTask.variables['FEATURE_SLUG'] ?? planningTask.id;
   const projectDocRoot = planningTask.paths.projectDocRoot;
@@ -124,13 +129,11 @@ export async function runCreate(
 
   const target: TaskTarget = { phaseNumber };
 
-  // Print linked files
   console.log(`\nAuto-linked context from "${planningTask.title}" (planning task):`);
   for (const ref of contextRefs) {
     console.log(`  - ${ref.path}`);
   }
 
-  // If auto-binding (no --from) and interactive, ask for confirmation
   if (!options.from && isInteractive) {
     const confirmed = await askConfirmation('\nConfirm linking these files? [y/N] ');
     if (!confirmed) {
@@ -139,7 +142,6 @@ export async function runCreate(
     }
   }
 
-  // Create the task
   const task = await store.createTask({ id: taskId, title: finalTitle, workflowType, target, contextRefs });
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
 
@@ -147,31 +149,181 @@ export async function runCreate(
   console.log(`HEAD set to: ${task.id}`);
 }
 
+export async function runInteractiveCreate(workspaceRoot: string): Promise<void> {
+  const playspecRoot = getPlayspecRoot(workspaceRoot);
+  try {
+    await access(playspecRoot);
+  } catch {
+    throw new WorkspaceNotInitializedError(workspaceRoot);
+  }
+
+  const workflowTypeInput = (await askQuestion('Workflow type [mono-spec]: ')).trim();
+  const workflowType = workflowTypeInput || 'mono-spec';
+
+  const titleInput = (await askQuestion('Task title: ')).trim();
+  if (!titleInput) {
+    throw new Error('Task title is required.');
+  }
+
+  console.log('\nHow would you like to provide the source problem?');
+  console.log('  1. paste   — type or paste content (enter "---" on its own line to finish)');
+  console.log('  2. editor  — open $EDITOR');
+  console.log('  3. file    — provide a file path');
+  console.log('  4. skip    — create without source problem (default)');
+
+  const choice = (await askQuestion('\nChoice [1-4]: ')).trim();
+
+  let sourceContent: string | undefined;
+  let sourceMethod = 'create';
+
+  if (choice === '1' || choice === 'paste') {
+    console.log('\nPaste content below. Enter "---" on its own line to finish:\n');
+    sourceContent = await readPasteInput();
+    if (!sourceContent.trim()) {
+      console.log('No content provided. Creating task without source problem.');
+      sourceContent = undefined;
+    }
+    sourceMethod = 'paste';
+  } else if (choice === '2' || choice === 'editor') {
+    sourceContent = await openEditorForContent();
+    if (!sourceContent || !sourceContent.trim()) {
+      console.log('No content from editor. Creating task without source problem.');
+      sourceContent = undefined;
+    }
+    sourceMethod = 'editor';
+  } else if (choice === '3' || choice === 'file') {
+    const filePathInput = (await askQuestion('File path: ')).trim();
+    if (!filePathInput) throw new Error('File path is required.');
+    const resolvedPath = path.resolve(workspaceRoot, filePathInput);
+    sourceContent = await readTextFile(resolvedPath);
+    sourceMethod = 'create';
+  }
+  // choice 4 / skip / empty / default: no source
+
+  const taskId = slugify(titleInput);
+  let sourceResult: SourceResult | undefined;
+  if (sourceContent && sourceContent.trim()) {
+    sourceResult = {
+      relativePath: path.join('.playspec', 'tasks', 'active', taskId, 'sources', 'source_problem.md'),
+      content: sourceContent.endsWith('\n') ? sourceContent : `${sourceContent}\n`,
+      method: sourceMethod,
+    };
+  }
+
+  await createNormalTask(workspaceRoot, workflowType, titleInput, sourceResult);
+}
+
+async function createNormalTask(
+  workspaceRoot: string,
+  workflowType: string,
+  title: string,
+  source: SourceResult | undefined
+): Promise<void> {
+  const taskId = slugify(title);
+  const store = new YamlTaskStore(workspaceRoot);
+  const task = await store.createTask({
+    id: taskId,
+    title,
+    workflowType,
+    variables: source
+      ? { SOURCE_PROBLEM_FILE: source.relativePath }
+      : undefined,
+    contextRefs: source
+      ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
+      : undefined,
+  });
+  if (source) {
+    await writeTextFile(path.join(workspaceRoot, source.relativePath), source.content);
+  }
+  await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
+  console.log(`Created task "${task.id}" (${title})`);
+  if (source) {
+    console.log(`Source problem stored: ${source.relativePath}`);
+  }
+  console.log(`HEAD set to: ${task.id}`);
+}
+
 async function resolveSourceProblem(
   workspaceRoot: string,
   taskId: string,
-  options: CreateOptions
-): Promise<{ relativePath: string; content: string } | undefined> {
-  if (options.fromFile && options.stdin) {
-    throw new Error('Use only one source input option: --from-file or --stdin.');
+  opts: SourceOptions
+): Promise<SourceResult | undefined> {
+  const activeModes = [
+    opts.fromFile !== undefined,
+    opts.stdin === true,
+    opts.edit === true,
+  ].filter(Boolean);
+
+  if (activeModes.length > 1) {
+    throw new Error('Use only one source input: --from-file (or --from), --stdin, or --edit.');
   }
 
   let content: string | undefined;
-  if (options.fromFile) {
-    const sourcePath = path.resolve(workspaceRoot, options.fromFile);
-    content = await readTextFile(sourcePath);
-  } else if (options.stdin) {
-    content = await readStdin();
-  }
+  let method = 'create';
 
-  if (content === undefined) {
+  if (opts.fromFile !== undefined) {
+    const sourcePath = path.resolve(workspaceRoot, opts.fromFile);
+    content = await readTextFile(sourcePath);
+    method = 'create';
+  } else if (opts.stdin) {
+    content = await readStdin();
+    method = 'stdin';
+  } else if (opts.edit) {
+    if (process.env['PLAY_SPEC_NON_INTERACTIVE']) {
+      throw new Error('--edit cannot be used in non-interactive mode. Use --stdin or --from-file for scripts.');
+    }
+    content = await openEditorForContent();
+    method = 'editor';
+    if (!content || !content.trim()) return undefined;
+  } else {
     return undefined;
   }
+
+  if (content === undefined) return undefined;
 
   return {
     relativePath: path.join('.playspec', 'tasks', 'active', taskId, 'sources', 'source_problem.md'),
     content: content.endsWith('\n') ? content : `${content}\n`,
+    method,
   };
+}
+
+async function openEditorForContent(): Promise<string | undefined> {
+  const editor = process.env['EDITOR'] || process.env['VISUAL'] || 'vi';
+  const tmpDir = await mkdtemp(path.join(tmpdir(), 'playspec-edit-'));
+  const tmpFile = path.join(tmpDir, 'source_problem.md');
+
+  try {
+    await writeFile(tmpFile, '# Source Problem\n\n', 'utf-8');
+    try {
+      await execa(editor, [tmpFile], { stdio: 'inherit' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Editor "${editor}" failed: ${msg}. Set $EDITOR to a working editor command.`);
+    }
+    const raw = await readFile(tmpFile, 'utf-8');
+    return raw;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function readPasteInput(): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const lines: string[] = [];
+
+  return new Promise<string>((resolve) => {
+    rl.on('line', (line) => {
+      if (line === '---') {
+        rl.close();
+      } else {
+        lines.push(line);
+      }
+    });
+    rl.on('close', () => {
+      resolve(lines.join('\n'));
+    });
+  });
 }
 
 async function readStdin(): Promise<string> {
@@ -180,6 +332,16 @@ async function readStdin(): Promise<string> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+async function askQuestion(prompt: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 }
 
 function normalizeExecutionTitle(baseTitle: string, phaseNumber: string): string {
