@@ -1,8 +1,7 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
-import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
-import { formatContextRef } from '../cli-utils.js';
+import { formatContextRef, resolveEffectivePhaseDisplay } from '../cli-utils.js';
 
 export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
@@ -10,38 +9,7 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   const task = await resolver.resolveTask();
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
-
-  let phaseDisplay = task.currentPhase ?? '(not started)';
-  let phaseLabel = 'Phase';
-  let phaseIdDisplay = '';
-  let gateRouteLines: string[] = [];
-  let nextRouteLines: string[] = [];
-  if (task.currentPhase !== null) {
-    try {
-      const workflow = await workflowLoader.load(task.workflowType);
-      const definition = workflow.phases[task.currentPhase];
-      if (definition) {
-        const display = phaseDisplayInfo(task.currentPhase, definition);
-        if (definition.stepNumber) {
-          phaseLabel = 'Step';
-          phaseDisplay = display.label;
-        } else {
-          phaseDisplay = `${display.id} — ${display.title}`;
-        }
-        if (definition.stepNumber) {
-          phaseIdDisplay = display.id;
-        }
-        if (definition.stepNumber && gateResults(definition).length > 0) {
-          gateRouteLines = formatGateRoutes(workflow, definition);
-        }
-        if (definition.stepNumber && gateResults(definition).length === 0 && definition.next !== undefined) {
-          nextRouteLines = formatNextRoute(workflow, definition);
-        }
-      }
-    } catch {
-      // leave phase metadata minimal if workflow fails to load
-    }
-  }
+  const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);
 
   const contextRefsCount = task.contextRefs?.length ?? 0;
 
@@ -49,21 +17,17 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   console.log(`Title:        ${task.title}`);
   console.log(`Workflow:     ${task.workflowType}`);
   console.log(`Status:       ${task.status}`);
-  console.log(`${`${phaseLabel}:`.padEnd(13)}${phaseDisplay}`);
-  if (phaseIdDisplay) {
-    console.log(`Step ID:      ${phaseIdDisplay}`);
+  console.log(`${`${eph.phaseLabel}:`.padEnd(13)}${eph.phaseDisplay}`);
+  if (eph.phaseIdDisplay) {
+    console.log(`Step ID:      ${eph.phaseIdDisplay}`);
   }
-  if (gateRouteLines.length > 0) {
+  if (eph.gateRouteLines.length > 0) {
     console.log('Gate:');
-    for (const line of gateRouteLines) {
-      console.log(line);
-    }
+    for (const line of eph.gateRouteLines) console.log(line);
   }
-  if (nextRouteLines.length > 0) {
+  if (eph.nextRouteLines.length > 0) {
     console.log('Next:');
-    for (const line of nextRouteLines) {
-      console.log(line);
-    }
+    for (const line of eph.nextRouteLines) console.log(line);
   }
   console.log(`Context refs: ${contextRefsCount}`);
   console.log(`Docs root:    ${task.paths.projectDocRoot}`);

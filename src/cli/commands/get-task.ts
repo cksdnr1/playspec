@@ -1,16 +1,27 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { resolveEffectivePhaseDisplay } from '../cli-utils.js';
 
-export async function runGetTask(workspaceRoot: string, taskId: string): Promise<void> {
+export async function runGetTask(workspaceRoot: string, taskId: string, json?: boolean): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const task = await store.getTask(taskId);
 
+  if (json) {
+    console.log(JSON.stringify(task, null, 2));
+    return;
+  }
+
+  const workflowLoader = new WorkflowLoader(workspaceRoot);
+  const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);
   const contextRefsCount = task.contextRefs?.length ?? 0;
-  const phaseDisplay = task.currentPhase ?? '(not started)';
 
   console.log(`ID:           ${task.id}`);
   console.log(`Title:        ${task.title}`);
   console.log(`Workflow:     ${task.workflowType}`);
   console.log(`Status:       ${task.status}`);
-  console.log(`Phase:        ${phaseDisplay}`);
+  console.log(`${`${eph.phaseLabel}:`.padEnd(13)}${eph.phaseDisplay}`);
+  if (eph.phaseIdDisplay) {
+    console.log(`Step ID:      ${eph.phaseIdDisplay}`);
+  }
   console.log(`Context refs: ${contextRefsCount}`);
 }

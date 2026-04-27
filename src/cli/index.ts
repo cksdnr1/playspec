@@ -15,6 +15,7 @@ import { runGetTask } from './commands/get-task.js';
 import { runAddContext } from './commands/add-context.js';
 import { runUse } from './commands/use.js';
 import { runNext } from './commands/next.js';
+import { runPrompt } from './commands/prompt.js';
 import { runPhase } from './commands/phase.js';
 import { runComplete } from './commands/complete.js';
 import { runEvidence } from './commands/evidence.js';
@@ -165,9 +166,10 @@ program
   .command('get-task')
   .description('Look up a specific task by ID (no HEAD fallback)')
   .requiredOption('--task <id>', 'Task ID to look up')
-  .action(async (opts: { task: string }) => {
+  .option('--json', 'Emit task record as JSON', false)
+  .action(async (opts: { task: string; json: boolean }) => {
     try {
-      await runGetTask(process.cwd(), opts.task);
+      await runGetTask(process.cwd(), opts.task, opts.json);
     } catch (err) {
       handleError(err);
     }
@@ -175,12 +177,13 @@ program
 
 // add-context
 program
-  .command('add-context <file>')
+  .command('add-context [file]')
   .description('Add a context file reference to a task')
   .option('--task <id>', 'Task ID to add context to')
-  .action(async (file: string, opts: { task?: string }) => {
+  .option('--edit', 'Open $EDITOR to write a context note for the task', false)
+  .action(async (file: string | undefined, opts: { task?: string; edit: boolean }) => {
     try {
-      await runAddContext(process.cwd(), file, opts.task);
+      await runAddContext(process.cwd(), file, opts.task, opts.edit);
     } catch (err) {
       handleError(err);
     }
@@ -198,10 +201,28 @@ program
     }
   });
 
-// next
+// prompt (canonical command)
+program
+  .command('prompt')
+  .description('Render the next phase prompt (copies to clipboard by default)')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--no-copy', 'Render without copying to clipboard (prints prompt body instead)')
+  .option('--print-only', 'Print raw prompt body to stdout without copying', false)
+  .option('--quiet', 'Suppress the compact Context Header', false)
+  .option('--write', 'Write prompt snapshot to prompts/ directory', false)
+  .option('--out <file>', 'Write prompt to a user-selected output file')
+  .action(async (opts: { task?: string; copy: boolean; printOnly: boolean; quiet: boolean; write: boolean; out?: string }) => {
+    try {
+      await runPrompt(process.cwd(), opts.task, !opts.copy, opts.printOnly, opts.quiet, opts.write, opts.out);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// next (deprecated alias for prompt)
 program
   .command('next')
-  .description('Render the next phase prompt for the active task')
+  .description('[deprecated] Use `prompt` instead')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--write', 'Write prompt to prompts/ directory', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
@@ -236,9 +257,10 @@ program
   .option('--with-review', 'Persist a review record', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
   .option('--result <value>', 'Result value for result-bearing phases (required in non-interactive mode)')
-  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string }) => {
+  .option('--no-copy', 'Do not copy the next prompt to clipboard after completion')
+  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string; copy: boolean }) => {
     try {
-      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result);
+      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result, !opts.copy);
     } catch (err) {
       handleError(err);
     }
