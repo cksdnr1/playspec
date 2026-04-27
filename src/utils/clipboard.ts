@@ -6,6 +6,7 @@ export interface ClipboardResult {
   attempted?: boolean; // true when OSC52 was written but cannot be verified
   method?: string;
   error?: string;
+  primaryOk?: boolean; // Linux only: whether PRIMARY selection was also set
 }
 
 export async function copyToClipboard(text: string): Promise<ClipboardResult> {
@@ -34,6 +35,8 @@ export async function copyToClipboard(text: string): Promise<ClipboardResult> {
 async function copyWithPlatformCommand(text: string): Promise<ClipboardResult> {
   const candidates = platformClipboardCommands();
   let lastError: string | undefined;
+  let clipboardOk = false;
+  let method: string | undefined;
 
   for (const candidate of candidates) {
     try {
@@ -41,13 +44,36 @@ async function copyWithPlatformCommand(text: string): Promise<ClipboardResult> {
         input: text,
         timeout: 1500,
       });
-      return { ok: true, method: candidate.command };
+      clipboardOk = true;
+      method = candidate.command;
+      break;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  return { ok: false, error: lastError };
+  const primaryOk = process.platform === 'linux' ? await tryLinuxPrimary(text) : undefined;
+
+  if (clipboardOk) {
+    return { ok: true, method, primaryOk };
+  }
+  return { ok: false, error: lastError, primaryOk };
+}
+
+async function tryLinuxPrimary(text: string): Promise<boolean> {
+  const primaryCandidates = [
+    { command: 'xclip', args: ['-selection', 'primary'] },
+    { command: 'xsel', args: ['--primary', '--input'] },
+  ];
+  for (const candidate of primaryCandidates) {
+    try {
+      await execa(candidate.command, candidate.args, { input: text, timeout: 1500 });
+      return true;
+    } catch {
+      // continue to next candidate
+    }
+  }
+  return false;
 }
 
 function platformClipboardCommands(): Array<{ command: string; args: string[] }> {

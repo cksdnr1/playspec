@@ -1093,4 +1093,247 @@ phases:
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(`Task "${taskId}" is not active`);
   });
+
+  // ui_ux_update_260427
+
+  it('prompt copies by default (clipboard unavailable → fallback written, no body printed)', async () => {
+    const taskId = await createActiveTask('Prompt Copy Default Task');
+
+    const result = await runCli(['prompt'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const promptFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts')
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Clipboard unavailable. Prompt written to:');
+    expect(result.stdout).not.toContain('Global Rules');
+    expect(promptFiles.some((f) => f.startsWith('next-prompt-'))).toBe(true);
+  });
+
+  it('prompt --no-copy prints prompt body without clipboard', async () => {
+    await createActiveTask('Prompt No Copy Task');
+
+    const result = await runCli(['prompt', '--no-copy'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Global Rules');
+    expect(result.stdout).not.toContain('Clipboard');
+  });
+
+  it('prompt --print-only prints only raw prompt body with no metadata', async () => {
+    await createActiveTask('Prompt Print Only Task');
+
+    const result = await runCli(['prompt', '--print-only'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Global Rules');
+    expect(result.stdout).not.toContain('Resolved phase:');
+    expect(result.stdout).not.toContain('Clipboard');
+  });
+
+  it('prompt --out writes to file (clipboard fails → fallback uses outFile path)', async () => {
+    await createActiveTask('Prompt Out Task');
+    const outputPath = 'tmp/prompt-out.md';
+
+    const result = await runCli(['prompt', '--out', outputPath], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const written = await readTextFile(path.join(workspace.dir, outputPath));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(written).toContain('Global Rules');
+    expect(result.stdout).not.toContain('Global Rules');
+  });
+
+  it('next shows deprecation warning on stderr', async () => {
+    await createActiveTask('Next Deprecation Task');
+
+    const result = await runCli(['next'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('`playspec next` is deprecated');
+    expect(result.stderr).toContain('`playspec prompt`');
+  });
+
+  it('current shows deprecation warning on stderr', async () => {
+    await createActiveTask('Current Deprecation Task');
+
+    const result = await runCli(['current'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('`playspec current` is deprecated');
+    expect(result.stderr).toContain('`playspec current-task`');
+  });
+
+  it('list shows deprecation warning on stderr', async () => {
+    await createActiveTask('List Deprecation Task');
+
+    const result = await runCli(['list'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('`playspec list` is deprecated');
+    expect(result.stderr).toContain('`playspec list-tasks`');
+  });
+
+  it('complete renders next prompt after phase completion', async () => {
+    const taskId = await createActiveTask('Complete Renders Next Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Completed phase');
+    expect(result.stdout).toContain('Next phase:');
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Clipboard unavailable. Prompt written to:');
+    expect(task.currentPhase).toBe('2');
+  });
+
+  it('complete --no-copy renders next prompt body after completion without clipboard', async () => {
+    const taskId = await createActiveTask('Complete No Copy Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete', '--no-copy'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Completed phase');
+    expect(result.stdout).toContain('Resolved phase:');
+    expect(result.stdout).toContain('Global Rules');
+    expect(result.stdout).not.toContain('Clipboard');
+  });
+
+  it('prompt does not mutate task.yaml (read-only check)', async () => {
+    const taskId = await createActiveTask('Prompt ReadOnly Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    await runCli(['prompt', '--no-copy'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const after = await store.getTask(taskId);
+
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+    expect(after.phaseHistory).toEqual(before.phaseHistory);
+  });
+
+  it('current-task does not mutate task.yaml (read-only check)', async () => {
+    const taskId = await createActiveTask('CurrentTask ReadOnly Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    await runCli(['current-task'], workspace.dir);
+    const after = await store.getTask(taskId);
+
+    expect(after.updatedAt).toBe(before.updatedAt);
+    expect(after.currentPhase).toBe(before.currentPhase);
+  });
+
+  it('list-tasks does not mutate task.yaml (read-only check)', async () => {
+    const taskId = await createActiveTask('ListTasks ReadOnly Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    await runCli(['list-tasks'], workspace.dir);
+    const after = await store.getTask(taskId);
+
+    expect(after.updatedAt).toBe(before.updatedAt);
+    expect(after.currentPhase).toBe(before.currentPhase);
+  });
+
+  it('get-task does not mutate task.yaml (read-only check)', async () => {
+    const taskId = await createActiveTask('GetTask ReadOnly Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    await runCli(['get-task', '--task', taskId], workspace.dir);
+    const after = await store.getTask(taskId);
+
+    expect(after.updatedAt).toBe(before.updatedAt);
+    expect(after.currentPhase).toBe(before.currentPhase);
+  });
+
+  it('current-task shows effective first phase when currentPhase is null', async () => {
+    await createActiveTask('Effective Phase Current Task');
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('(effective)');
+    expect(result.stdout).not.toContain('(not started)');
+  });
+
+  it('list-tasks shows effective first phase when currentPhase is null', async () => {
+    await createActiveTask('Effective Phase List Task');
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('(effective)');
+    expect(result.stdout).not.toContain('(not started)');
+  });
+
+  it('get-task shows effective first phase when currentPhase is null', async () => {
+    const taskId = await createActiveTask('Effective Phase Get Task');
+
+    const result = await runCli(['get-task', '--task', taskId], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('(effective)');
+    expect(result.stdout).not.toContain('(not started)');
+  });
+
+  it('current-task shows INVALID with allowed phases for unknown currentPhase', async () => {
+    const taskId = await createActiveTask('Invalid Phase Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'nonexistent_phase' });
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('INVALID');
+    expect(result.stdout).toContain('nonexistent_phase');
+    expect(result.stdout).toContain('allowed:');
+  });
+
+  it('list-tasks shows INVALID with allowed phases for unknown currentPhase', async () => {
+    const taskId = await createActiveTask('Invalid Phase List Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: 'bogus_phase' });
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('INVALID');
+    expect(result.stdout).toContain('bogus_phase');
+    expect(result.stdout).toContain('allowed:');
+  });
+
+  it('get-task --json emits task record as JSON', async () => {
+    const taskId = await createActiveTask('GetTask JSON Task');
+
+    const result = await runCli(['get-task', '--task', taskId, '--json'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.id).toBe(taskId);
+    expect(parsed.title).toBe('GetTask JSON Task');
+    expect(parsed).toHaveProperty('status');
+    expect(parsed).toHaveProperty('currentPhase');
+  });
 });

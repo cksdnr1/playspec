@@ -7,6 +7,7 @@ import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { formatContextHeader } from '../context-header.js';
 import { MissingResultError } from '#core/errors.js';
+import { outputPrompt } from './prompt.js';
 
 async function promptResultSelection(phaseLabel: string, results: string[]): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -36,7 +37,8 @@ export async function runComplete(
   taskIdOption?: string,
   withReview = false,
   quiet?: boolean,
-  resultOption?: string
+  resultOption?: string,
+  noCopy?: boolean,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -47,13 +49,11 @@ export async function runComplete(
     console.log('');
   }
 
-  // Determine if current phase has results declared (for interactive/non-interactive guard)
   let result: string | undefined = resultOption;
   let completedPhaseLabel: string | undefined;
   let nextPhaseLabel: string | undefined;
 
   if (result === undefined) {
-    // Load the workflow to check if current phase has results
     const workflowLoader = new WorkflowLoader(workspaceRoot);
     const phaseResolver = new PhaseResolver();
     const workflow = await workflowLoader.load(task.workflowType);
@@ -100,5 +100,19 @@ export async function runComplete(
   console.log(`Evidence files: ${completionResult.evidenceFiles.join(', ')}`);
   if (completionResult.reviewFile) {
     console.log(`Review file: ${completionResult.reviewFile}`);
+  }
+
+  if (completionResult.nextPhase) {
+    console.log('');
+    try {
+      const updatedTask = await store.getTask(task.id);
+      const prompt = await core.renderNextPrompt(updatedTask.id);
+      await outputPrompt(workspaceRoot, updatedTask, prompt, { noCopy });
+    } catch (err) {
+      const hint = `playspec prompt --task ${task.id}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Warning: Could not render next prompt after completion: ${msg}\n`);
+      process.stderr.write(`Hint: Run: ${hint}\n`);
+    }
   }
 }

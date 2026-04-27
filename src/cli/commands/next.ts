@@ -8,10 +8,8 @@ import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 import { formatContextHeader } from '../context-header.js';
 import { copyToClipboard } from '#utils/clipboard.js';
-import { WorkflowLoader } from '#workflow/workflow-loader.js';
-import { PhaseResolver } from '#workflow/phase-resolver.js';
-import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { resolveOutputFilePath } from '../cli-utils.js';
+import { renderPromptWithContext } from './prompt.js';
 
 export async function runNext(
   workspaceRoot: string,
@@ -19,8 +17,10 @@ export async function runNext(
   write?: boolean,
   quiet?: boolean,
   copy?: boolean,
-  outFile?: string
+  outFile?: string,
 ): Promise<void> {
+  process.stderr.write('Warning: `playspec next` is deprecated. Use `playspec prompt` instead.\n');
+
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
@@ -41,20 +41,10 @@ export async function runNext(
     console.log('');
   }
 
-  const prompt = await core.renderNextPrompt(task.id);
-  const workflowLoader = new WorkflowLoader(workspaceRoot);
-  const phaseResolver = new PhaseResolver();
-  const workflow = await workflowLoader.load(task.workflowType);
-  const { phaseId, definition } = phaseResolver.resolveCurrentPhase(task, workflow);
-  const display = phaseDisplayInfo(phaseId, definition);
-  const gateRouteLines = definition.stepNumber && gateResults(definition).length > 0
-    ? formatGateRoutes(workflow, definition)
-    : [];
-  const nextRouteLines = definition.stepNumber && gateResults(definition).length === 0 && definition.next !== undefined
-    ? formatNextRoute(workflow, definition)
-    : [];
-  const shouldPrintStepMetadata = definition.stepNumber !== undefined;
-  const phaseLine = `Resolved phase: ${display.label}${definition.stepNumber ? ` (id: ${display.id})` : ''}`;
+  const { prompt, phaseLine, display, shouldPrintStepMetadata, gateRouteLines, nextRouteLines } =
+    await renderPromptWithContext(workspaceRoot, task, core);
+
+  // Preserve old statusOnly semantics: body suppressed when --copy or --out
   const statusOnly = copy === true || outFile !== undefined;
   let wroteOutputPath: string | undefined;
 
@@ -95,30 +85,20 @@ export async function runNext(
       console.log(`id: ${display.id}`);
       if (gateRouteLines.length > 0) {
         console.log('Gate:');
-        for (const line of gateRouteLines) {
-          console.log(line);
-        }
+        for (const line of gateRouteLines) console.log(line);
       }
       if (nextRouteLines.length > 0) {
         console.log('Next:');
-        for (const line of nextRouteLines) {
-          console.log(line);
-        }
+        for (const line of nextRouteLines) console.log(line);
       }
     }
     console.log('');
     console.log(prompt);
-  } else {
-    void quiet;
   }
 
   if (write) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const promptPath = path.join(
-      getTaskRoot(workspaceRoot, task.id),
-      'prompts',
-      `${timestamp}.md`
-    );
+    const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `${timestamp}.md`);
     await writeTextFile(promptPath, prompt);
     if (statusOnly) {
       console.log(`Prompt snapshot written: ${path.relative(workspaceRoot, promptPath)}`);
@@ -126,17 +106,9 @@ export async function runNext(
   }
 }
 
-async function writeFallbackPrompt(
-  workspaceRoot: string,
-  taskId: string,
-  prompt: string
-): Promise<string> {
+async function writeFallbackPrompt(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(
-    getTaskRoot(workspaceRoot, taskId),
-    'prompts',
-    `next-prompt-${timestamp}.md`
-  );
+  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `next-prompt-${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
   return promptPath;
 }
