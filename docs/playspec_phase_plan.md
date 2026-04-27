@@ -41,7 +41,7 @@ Dev Phase 1 — Core Foundation
 | Dev Phase 3.6 | Task Relay and Smart Context Binding | Planning→Execution context 자동 바인딩, confirmation UX |
 | Dev Phase 3.7 | Simple Conditional Routing with Human Selection | result 기반 phase routing, loop guard |
 | Dev Phase 4 | MCP Adapter | Claude Code / Codex / OpenClaw 연동 |
-| Dev Phase 4.1 | MCP-Driven Context Migration and State Promotion | 역사 문서를 PlaySpec 상태로 마이그레이션 |
+| Dev Phase 4.1 | CLI Migration Runner and State Promotion | 역사 문서를 PlaySpec 상태로 마이그레이션 |
 | Dev Phase 5 | Archive & Knowledge Base | close/archive/archived context |
 | Dev Phase 6 | Evolution System | proposal, proactive evolution, human edit learner |
 | Dev Phase 7 | Automation Safety | retry budget, circuit breaker |
@@ -877,11 +877,11 @@ MCP는 global HEAD fallback을 사용하지 않는다.
 
 ---
 
-# Dev Phase 4.1 — MCP-Driven Context Migration and State Promotion
+# Dev Phase 4.1 — CLI Migration Runner and State Promotion
 
 ## Goal
 
-Migrate fragmented historical project markdown documents into structured PlaySpec state using Claude/MCP for analysis and proposal generation.
+Migrate fragmented historical project markdown documents into structured PlaySpec state through a validated CLI migration runner.
 
 Existing repos may already contain legacy planning and result documents such as:
 
@@ -892,16 +892,16 @@ Existing repos may already contain legacy planning and result documents such as:
 - `playspec_total_spec.md`
 - `playspec_phase_plan.md`
 
-Phase 4.1 lets Claude/MCP read these documents, infer current project and task state, and generate a validated `MigrationPlan` that can promote useful context into PlaySpec structures.
+Phase 4.1 lets Claude/Codex assist by reading these documents and producing an external YAML `MigrationPlan`, while PlaySpec owns validation, persistence, preview, backup, and apply.
 
 **Core principle:** Claude analyses and proposes. PlaySpec validates, previews, backs up, and applies only authorised plan actions.
 
 ## In Scope
 
-- Bulk markdown reading via MCP tools from Dev Phase 4.
-- Claude-assisted document analysis and state inference.
+- CLI `playspec migrate` runner.
+- Optional Claude/Codex-assisted document analysis and external plan generation.
 - `MigrationPlan` schema and Zod validation.
-- State promotion plan generation.
+- Conservative built-in plan generation from markdown discovery.
 - Migration report generation.
 - Diff preview for document and state changes.
 - Selective apply in `review` mode.
@@ -909,7 +909,11 @@ Phase 4.1 lets Claude/MCP read these documents, infer current project and task s
 - Optional archive with explicit `--with-archive`.
 - All plans and reports persisted under `.playspec/migrations/`.
 
-State promotion targets: `task.yaml.title`, `task.yaml.target`, `task.yaml.currentPhase`, `task.yaml.contextRefs`, `task.yaml.routing` (if already supported), current active task metadata, and master docs (`playspec_total_spec.md`, `playspec_phase_plan.md`).
+Current `update_task_state` targets: `task.yaml.title`, `task.yaml.target`, and `task.yaml.currentPhase`.
+
+`task.yaml.contextRefs` are promoted through dedicated `add_context_ref` and `remove_context_ref` actions. `task.yaml.routing` is not a current `update_task_state` target.
+
+Master docs such as `playspec_total_spec.md` and `playspec_phase_plan.md` can be changed through document actions (`update_file`, `append_section`, `replace_section`) in an external plan.
 
 ## Modes
 
@@ -927,6 +931,7 @@ playspec migrate --mode review
 playspec migrate --mode dry-run
 playspec migrate --mode auto
 playspec migrate --mode auto --with-archive
+playspec migrate --plan migration_plan.yaml
 
 # Optional targeting
 playspec migrate --source docs/
@@ -981,6 +986,7 @@ playspec migrate --target-phase-plan docs/playspec_phase_plan.md
 - Every mutation creates a backup.
 - All plans/reports are persisted under `.playspec/migrations/`.
 - The spec clearly states Claude proposes and PlaySpec validates/applies.
+- Dedicated MCP migration tools are not part of Phase 4.1.
 
 Full spec: `docs/playspec_phase4.1_implementation_spec.md`
 
@@ -994,8 +1000,65 @@ Full spec: `docs/playspec_phase4.1_implementation_spec.md`
 - `archive_file` action은 `--with-archive` 없이 실패
 - 모든 mutation 전 `.playspec/migrations/backups/` 하위 백업 생성
 - `task.yaml` state promotion은 `TaskRecordSchema.parse()` + `writeTextFileAtomic()` 경로로만 적용
+- built-in generated plan은 현재 누락된 markdown `contextRefs` 추가만 제안한다
+- dedicated MCP migration tools는 등록하지 않음; MCP client는 external plan 작성을 보조할 수 있음
 - build: zero errors, test: 133/133 (115 pre-existing + 18 new Phase 4.1 tests)
 - Phase 5 dependency 요건 충족: migration-local archive 경로(`/migrations/archived/`)는 Phase 5 general archive 모델과 독립적
+
+---
+
+# Post-Phase 4 Usage Updates — CLI UX Alignment
+
+Phase 4 이후 작은 UX 개선으로 현재 사용법은 아래를 기준으로 한다.
+
+## Current Prompt UX
+
+```bash
+playspec prompt
+playspec prompt --task TASK_ID
+playspec prompt --quiet
+playspec prompt --no-copy
+playspec prompt --print-only
+playspec prompt --out prompt.md
+playspec next  # deprecated alias
+```
+
+- `playspec prompt`가 canonical prompt command다.
+- 기본 동작은 rendered prompt를 clipboard에 복사한다.
+- `--no-copy`는 clipboard 복사 없이 prompt body를 출력한다.
+- `--print-only`는 metadata 없이 raw prompt body만 stdout으로 출력한다.
+- `--out <file>`은 선택한 파일로 prompt를 저장한다.
+- `playspec next`는 deprecated compatibility alias다.
+
+## Current Completion UX
+
+```bash
+playspec complete
+playspec complete --result approved
+playspec complete --result needs_revision
+playspec complete --no-copy
+```
+
+- 완료 성공 후 다음 phase prompt를 다시 렌더한다.
+- 다음 prompt도 `prompt`와 같은 copy-by-default 정책을 사용한다.
+- clipboard 복사를 원하지 않으면 `--no-copy`를 사용한다. 출력은 여전히 human-readable completion output이다.
+
+## Current Task Visibility UX
+
+```bash
+playspec list-tasks
+playspec current-task
+playspec get-task --task TASK_ID
+playspec get-task --task TASK_ID --json
+playspec add-context docs/context.md
+playspec add-context --edit
+```
+
+- `list`와 `current`는 deprecated compatibility aliases다.
+- `list-tasks`, `current-task`, `get-task`는 effective phase display를 사용한다.
+- `currentPhase: null`인 task는 첫 workflow phase를 `(effective)`로 표시한다.
+- 알 수 없는 phase는 `INVALID (...)`와 allowed phase 목록을 출력한다.
+- `add-context --edit`는 task-local context note를 생성한 뒤 contextRef로 연결한다.
 
 ---
 
@@ -1253,7 +1316,7 @@ playspec rollback
 playspec desync-check
 playspec status
 playspec create phase-execution "Feature" --phase 1
-playspec next                   # follows result-based routing
+playspec prompt                 # follows result-based routing
 ```
 
 ---
@@ -1263,10 +1326,12 @@ playspec next                   # follows result-based routing
 대상:
 
 - Dev Phase 4
+- Dev Phase 4.1
 
 사용 가능:
 
 - Claude Code / Codex / OpenClaw 연동 가능
+- `playspec migrate`로 historical markdown context promotion 가능
 
 ---
 
@@ -1323,7 +1388,7 @@ playspec next                   # follows result-based routing
 7. Dev Phase 3.6 — Task Relay and Smart Context Binding
 8. Dev Phase 3.7 — Simple Conditional Routing with Human Selection
 9. Dev Phase 4 — MCP Adapter
-10. Dev Phase 4.1 — MCP-Driven Context Migration and State Promotion
+10. Dev Phase 4.1 — CLI Migration Runner and State Promotion
 11. Dev Phase 5 — Archive & Knowledge Base
 12. Dev Phase 6 — Evolution System
 13. Dev Phase 7 — Automation Safety

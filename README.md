@@ -12,12 +12,17 @@ Implemented through Phase 4.1. The repository currently includes:
 - YAML-backed task storage.
 - Default workflow preset.
 - Prompt rendering with required variable validation.
+- Canonical `playspec prompt` command with copy-by-default output, file output, and raw print modes.
 - Phase completion with snapshots, Git evidence, and optional review records.
+- Post-completion next-prompt rendering after `playspec complete`.
 - Routed phase completion support through workflow `results` and `nextByResult`.
 - Compact context headers for CLI workflow commands.
+- Task discovery commands with effective phase display and JSON task output.
 - Git state desync checks and safe rollback planning/state rollback.
 - MCP stdio server with explicit `taskId` or `sessionId` context resolution.
 - Migration plan validation, review/dry-run/auto execution, backups, reports, and optional archive actions.
+
+`playspec prompt` is the current prompt command. `playspec next`, `playspec current`, and `playspec list` remain available as deprecated compatibility aliases.
 
 The current code does not register `playspec view`, `playspec close`, harness automation, or evolution proposal commands. Migration is exposed through `playspec migrate`; MCP-specific migration tools are not registered.
 
@@ -38,8 +43,8 @@ pnpm build
 During local development you can run the CLI without building:
 
 ```bash
-pnpm dev -- --help
-pnpm dev -- init --preset default
+pnpm dev --help
+pnpm dev init --preset default
 ```
 
 After `pnpm build`, the package exposes:
@@ -58,13 +63,13 @@ playspec init --preset default
 # Create a task and set .playspec/HEAD for human CLI use
 playspec create multi-spec "My Feature"
 
-# Render the active task's next prompt
-playspec next
+# Render and copy the active task's next prompt
+playspec prompt
 
 # Save the rendered prompt under the task prompts/ directory
-playspec next --write
+playspec prompt --write
 
-# Complete the current phase, collecting snapshots and Git evidence
+# Complete the current phase, then render/copy the next prompt
 playspec complete
 
 # Inspect task state
@@ -102,14 +107,20 @@ playspec create mono-spec "Migration Bug Fix" --from-file ./problem.md
 # From stdin — for scripts and automation only
 cat problem.md | playspec create mono-spec "Migration Bug Fix" --stdin
 
-playspec list
-playspec current
+playspec list-tasks
+playspec current-task
+playspec get-task --task <taskId>
+playspec get-task --task <taskId> --json
 playspec status
 playspec status --task <taskId>
 playspec use <taskId>
+playspec add-context ./notes.md
+playspec add-context --edit
 ```
 
 `playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
+
+`playspec list` and `playspec current` are deprecated compatibility aliases. Prefer `list-tasks` and `current-task` for resolved phase titles, effective first-phase display when a task has not started, and invalid phase diagnostics.
 
 #### Source problem input modes
 
@@ -156,15 +167,21 @@ Refactor and PR preparation prompts require `TARGET_BRANCH` and default it to `o
 ### Prompt Rendering
 
 ```bash
-playspec next
-playspec next --task <taskId>
-playspec next --write
-playspec next --quiet
+playspec prompt
+playspec prompt --task <taskId>
+playspec prompt --write
+playspec prompt --quiet
+playspec prompt --no-copy
+playspec prompt --print-only
+playspec prompt --out prompt.md
+playspec next                 # deprecated alias
 playspec phase <phaseId>
 playspec phase <phaseId> --task <taskId>
 ```
 
-`next` renders the current workflow phase. `phase` renders a specific phase without advancing task state.
+`prompt` renders the current workflow phase and copies it to the clipboard by default. Use `--no-copy` to print the prompt body instead, `--print-only` for raw prompt body output without metadata, or `--out <file>` to write a selected output file. Use `--write` to save a prompt snapshot under the task's `prompts/` directory.
+
+`next` is deprecated and kept as a compatibility alias. `phase` renders a specific phase without advancing task state.
 
 ### Phase Completion
 
@@ -174,6 +191,7 @@ playspec complete --task <taskId>
 playspec complete --with-review
 playspec complete --quiet
 playspec complete --result <result>
+playspec complete --no-copy
 ```
 
 Completion writes:
@@ -186,6 +204,8 @@ Completion writes:
 - `reviews/phase<N>_review.yaml` when `--with-review` is used
 
 For routed workflow phases that declare allowed `results`, non-interactive usage must pass `--result <result>`. Interactive terminals are prompted to choose a result.
+
+After successful completion, `complete` reloads the updated task and renders the next prompt using the same copy-by-default behavior as `prompt`. Use `complete --no-copy` to suppress clipboard copying; the command still emits human-readable completion output.
 
 ### Evidence And Snapshots
 

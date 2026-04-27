@@ -119,13 +119,19 @@ playspec create phase-execution "Feature Name" --phase 1 --from planning_task_id
 
   
 
-playspec next
+playspec prompt
 
 playspec complete
 
 playspec rollback
 
-playspec view
+playspec status
+
+Note:
+
+- 현재 구현에서 prompt 렌더링의 canonical command는 `playspec prompt`다.
+- `playspec next`는 deprecated compatibility alias로 남아 있다.
+- `playspec view`는 아직 구현되지 않았고 Dev Phase 9 범위다.
 
 4.2 사용자가 기억하지 않아도 되는 것
 
@@ -1140,7 +1146,7 @@ result: approved
 
 visitCount: 1
 
-  
+
 
 validation:
 
@@ -1816,13 +1822,17 @@ Viewer가 보여줄 것:
 
 MCP는 명시적 task context 중심이다.
 
+Phase 4.0 implemented MCP tools:
+
 playspec_list_tasks
 
 playspec_get_task
 
 playspec_use_session_task
 
-  
+playspec_get_session_task
+
+
 
 playspec_render_next_prompt
 
@@ -1836,37 +1846,9 @@ playspec_collect_evidence
 
 playspec_run_state_desync_check
 
-  
+playspec_rollback_state
 
-playspec_create_snapshot
-
-playspec_rollback
-
-  
-
-playspec_get_harness_status
-
-playspec_record_attempt_result
-
-playspec_unblock_task
-
-  
-
-playspec_close_task
-
-playspec_archive_task
-
-  
-
-playspec_get_evolution_context
-
-playspec_propose_evolution
-
-playspec_apply_evolution
-
-  
-
-playspec_get_archived_task_context
+Future MCP tools are phase-gated. Harness, close/archive, evolution, archived-context, and dedicated migration MCP tools are not registered in the current implementation.
 
 MCP rule:
 
@@ -1878,37 +1860,48 @@ global HEAD fallback forbidden
 
 30. CLI Commands
 
-playspec init --preset cpp-vulkan
+30.1 Current Implemented CLI
 
-playspec init --local-only
+playspec init --preset default
 
-playspec init --global-only
+Current implementation note:
 
-playspec config
+- only the `default` preset is present in this repository
+- `playspec config`, `playspec view`, `playspec close`, harness commands, archive commands, and evolution commands are future-phase commands
 
 playspec status
 
 playspec create multi-spec "Feature Name"
 
-  
 
-playspec list
 
-playspec list --archived
+playspec list-tasks
 
-playspec current
+playspec current-task
+
+playspec get-task --task TASK_ID
+
+playspec get-task --task TASK_ID --json
 
 playspec use TASK_ID
 
-  
 
-playspec next
 
-playspec next --task TASK_ID
+playspec prompt
 
-playspec next --quiet
+playspec prompt --task TASK_ID
 
-  
+playspec prompt --quiet
+
+playspec prompt --no-copy
+
+playspec prompt --print-only
+
+playspec prompt --out prompt.md
+
+playspec next  # deprecated alias
+
+
 
 playspec phase 3
 
@@ -1924,7 +1917,15 @@ playspec complete --result approved
 
 playspec complete --result needs_patch
 
-  
+playspec complete --no-copy
+
+
+
+playspec add-context docs/context.md
+
+playspec add-context --edit
+
+
 
 playspec evidence
 
@@ -1938,9 +1939,25 @@ playspec rollback --task TASK_ID
 
 playspec rollback --state-only
 
-playspec rollback --git-only
+playspec rollback --git-only --confirm
 
-  
+
+
+playspec migrate
+
+playspec migrate --mode review
+
+playspec migrate --mode dry-run
+
+playspec migrate --mode auto
+
+playspec migrate --plan migration_plan.yaml
+
+playspec migrate --mode auto --with-archive
+
+
+
+30.2 Future Phase CLI
 
 playspec harness run --task TASK_ID
 
@@ -2131,7 +2148,19 @@ Phase 4 — MCP Adapter with Explicit Task Context
 
 Scope:
 
-- MCP tools
+- MCP stdio server
+
+- implemented MCP tools:
+  - playspec_list_tasks
+  - playspec_get_task
+  - playspec_use_session_task
+  - playspec_get_session_task
+  - playspec_render_next_prompt
+  - playspec_render_phase_prompt
+  - playspec_complete_phase
+  - playspec_collect_evidence
+  - playspec_run_state_desync_check
+  - playspec_rollback_state
 
 - taskId/sessionId required
 
@@ -2141,7 +2170,48 @@ Acceptance:
 
 Claude Code/Codex에서 PlaySpec phase3 요청이 CLI와 같은 Core 결과를 반환한다.
 
-  
+Phase 4.1 — CLI Migration Runner for Historical Context Promotion
+
+Scope:
+
+- playspec migrate command
+
+- MigrationPlanSchema validation before apply
+
+- modes: review, dry-run, auto
+
+- supported actions:
+  - update_file
+  - append_section
+  - replace_section
+  - update_task_state
+  - add_context_ref
+  - remove_context_ref
+  - archive_file
+
+- no delete_file action type
+
+- archive_file requires --with-archive
+
+- plans, reports, backups, and migration-local archived files under .playspec/migrations/
+
+- generated plans conservatively add missing contextRefs
+
+- higher-risk state/document promotion comes from reviewed external YAML plans
+
+Current boundary:
+
+- Phase 4.1 is exposed through CLI, not dedicated MCP migration tools.
+
+- Claude/Codex may assist by reading legacy docs and writing an external MigrationPlan.
+
+- PlaySpec validates, persists, previews, backs up, and applies the plan.
+
+Acceptance:
+
+Historical markdown can be promoted into structured PlaySpec context through validated migration plans without silent mutation or unsupported deletion.
+
+
 
 Phase 5 — Archive System
 
