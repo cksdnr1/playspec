@@ -113,12 +113,15 @@ playspec get-task --task <taskId>
 playspec get-task --task <taskId> --json
 playspec status
 playspec status --task <taskId>
+playspec use
 playspec use <taskId>
 playspec add-context ./notes.md
 playspec add-context --edit
 ```
 
 `playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
+
+`playspec use` opens an interactive active-task selector in a TTY. Use `playspec use <taskId>` for scripts or direct task switching.
 
 `playspec list` and `playspec current` are deprecated compatibility aliases. Prefer `list-tasks` and `current-task` for resolved phase titles, effective first-phase display when a task has not started, and invalid phase diagnostics.
 

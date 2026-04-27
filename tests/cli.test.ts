@@ -27,6 +27,34 @@ function runCli(
     input: options.input,
   });
 }
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function runCliInPty(
+  args: string[],
+  cwd: string,
+  input: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+) {
+  const command = [
+    'npx',
+    'tsx',
+    '--tsconfig',
+    shellQuote(TSCONFIG_PATH),
+    shellQuote(CLI_PATH),
+    ...args.map(shellQuote),
+  ].join(' ');
+  const delayedInput = `(sleep 0.3; printf %b ${shellQuote(input)})`;
+
+  return execa('bash', ['-lc', `${delayedInput} | script -q -e /dev/null -c ${shellQuote(command)}`], {
+    cwd,
+    reject: false,
+    env: options.env,
+    timeout: 10_000,
+  });
+}
 let workspace: TempWorkspace;
 
 beforeEach(async () => {
@@ -50,6 +78,17 @@ async function createActiveTask(title: string, workflowType = 'multi-spec') {
   });
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+  return taskId;
+}
+
+async function createAdditionalActiveTask(title: string, workflowType = 'multi-spec') {
+  const taskId = slugify(title);
+  const store = new YamlTaskStore(workspace.dir);
+  await store.createTask({
+    id: taskId,
+    title,
+    workflowType,
+  });
   return taskId;
 }
 
@@ -92,6 +131,97 @@ describe('CLI placeholder', () => {
     expect(list.stdout).toContain('head_marker_task [HEAD]');
     expect(listTasks.exitCode).toBe(0);
     expect(listTasks.stdout).toContain('head_marker_task [HEAD]');
+  });
+
+  it('sets HEAD with explicit use <taskId>', async () => {
+    const firstTaskId = await createActiveTask('Use Explicit First Task');
+    const secondTaskId = await createAdditionalActiveTask('Use Explicit Second Task');
+
+    const result = await runCli(['use', secondTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`HEAD set to: ${secondTaskId}`);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${secondTaskId}\n`);
+    expect(firstTaskId).not.toBe(secondTaskId);
+  });
+
+  it('rejects no-arg use in non-interactive mode without changing HEAD', async () => {
+    const taskId = await createActiveTask('Use Non Interactive Task');
+
+    const result = await runCli(['use'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Missing taskId.');
+    expect(result.stderr).toContain('playspec list-tasks');
+    expect(result.stderr).toContain('playspec use <taskId>');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${taskId}\n`);
+  });
+
+  it('selects an active task with no-arg use in an interactive terminal', async () => {
+    const firstTaskId = await createActiveTask('Use Interactive Alpha Task');
+    const secondTaskId = await createAdditionalActiveTask('Use Interactive Zulu Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(secondTaskId);
+
+    const result = await runCliInPty(['use'], workspace.dir, '\x1b[B\r');
+    const after = await store.getTask(secondTaskId);
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Select an active task:');
+    expect(output).toContain(`${firstTaskId} [HEAD]`);
+    expect(output).toContain(`[multi-spec]  Phase:`);
+    expect(output).toContain('Use Interactive Zulu Task');
+    expect(output).toContain(`HEAD set to: ${secondTaskId}`);
+    expect(output).toContain(`Selected task: ${secondTaskId} - Use Interactive Zulu Task`);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${secondTaskId}\n`);
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('cancels no-arg interactive use without changing HEAD', async () => {
+    const taskId = await createActiveTask('Use Cancel Task');
+
+    const result = await runCliInPty(['use'], workspace.dir, '\x1b');
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain('Cancelled. No task selected.');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${taskId}\n`);
+  });
+
+  it('reports no active tasks for no-arg interactive use without mutating HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(getHeadPath(workspace.dir), 'stale_head\n');
+
+    const result = await runCliInPty(['use'], workspace.dir, '');
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain('No active tasks found.');
+    expect(output).toContain('playspec create <workflowType> "<title>"');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('stale_head\n');
+  });
+
+  it('shows effective and invalid phase displays in the interactive use selector', async () => {
+    const effectiveTaskId = await createActiveTask('Use Effective Phase Task');
+    const invalidTaskId = await createAdditionalActiveTask('Use Invalid Phase Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(invalidTaskId, { currentPhase: 'missing_phase' });
+
+    const result = await runCliInPty(['use'], workspace.dir, '\x1b[B\r');
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain(`${effectiveTaskId} [HEAD]`);
+    expect(output).toContain('(effective)');
+    expect(output).toContain('INVALID');
+    expect(output).toContain('missing_phase');
+    expect(output).toContain('allowed:');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${invalidTaskId}\n`);
   });
 
   it('shows context paths in current and rich context details in current-task', async () => {

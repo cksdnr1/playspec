@@ -191,9 +191,9 @@ program
 
 // use
 program
-  .command('use <taskId>')
+  .command('use [taskId]')
   .description('Set the active task by ID')
-  .action(async (taskId: string) => {
+  .action(async (taskId: string | undefined) => {
     try {
       await runUse(process.cwd(), taskId);
     } catch (err) {
