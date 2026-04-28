@@ -22,6 +22,7 @@ import {
   AbsoluteContextPathError,
   ContextPathEscapesWorkspaceError,
   ContextFileNotFoundError,
+  InvalidRecoveryTargetError,
 } from '#core/errors.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
@@ -38,6 +39,7 @@ import type {
   RollbackPlanResult,
   RollbackExecutionResult,
   RollbackSafePoint,
+  SetCurrentPhaseResult,
 } from '#core/types.js';
 import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
@@ -269,6 +271,24 @@ export class PlaySpecCore {
       result: inputResult,
       visitCount: nextVisitCount,
     };
+  }
+
+  async setCurrentPhase(
+    taskId: string,
+    targetPhaseId: string
+  ): Promise<SetCurrentPhaseResult> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+
+    const workflow = await this.workflowLoader.load(task.workflowType);
+    if (!workflow.phaseOrder.includes(targetPhaseId) || !workflow.phases[targetPhaseId]) {
+      throw new InvalidRecoveryTargetError(targetPhaseId, workflow.id, workflow.phaseOrder);
+    }
+
+    const previousPhase = task.currentPhase;
+    await this.taskStore.updateTask(taskId, { currentPhase: targetPhaseId });
+
+    return { taskId, previousPhase, currentPhase: targetPhaseId };
   }
 
   async collectEvidence(taskId: string): Promise<EvidenceResult> {

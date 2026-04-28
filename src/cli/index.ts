@@ -18,6 +18,7 @@ import { runNext } from './commands/next.js';
 import { runPrompt } from './commands/prompt.js';
 import { runSpecs } from './commands/specs.js';
 import { runPhase } from './commands/phase.js';
+import { runRewind } from './commands/rewind.js';
 import { runComplete } from './commands/complete.js';
 import { runEvidence } from './commands/evidence.js';
 import { runSnapshot } from './commands/snapshot.js';
@@ -257,12 +258,30 @@ program
 
 // phase
 program
-  .command('phase <phaseId>')
-  .description('Render a specific phase prompt for the active task')
+  .command('phase [phaseId]')
+  .description('Render a specific phase prompt, or set/select the current phase for recovery')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
-  .action(async (phaseId: string, opts: { task?: string }) => {
+  .option('--set <phaseId>', 'Set current phase to the specified phase ID (recovery)')
+  .option('--select', 'Select current phase from an interactive list (recovery)', false)
+  .option('--yes', 'Confirm mutation without interactive prompt', false)
+  .action(async (phaseId: string | undefined, opts: { task?: string; set?: string; select: boolean; yes: boolean }) => {
     try {
-      await runPhase(process.cwd(), phaseId, opts.task);
+      await runPhase(process.cwd(), phaseId, opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// rewind
+program
+  .command('rewind')
+  .description('Move the current phase pointer backward in the workflow (recovery)')
+  .option('--steps <n>', 'Number of phases to rewind (default: 1 in interactive mode)')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--yes', 'Confirm mutation without interactive prompt', false)
+  .action(async (opts: { steps?: string; task?: string; yes: boolean }) => {
+    try {
+      await runRewind(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }

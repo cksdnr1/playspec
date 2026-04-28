@@ -249,7 +249,8 @@ async function selectCandidate(items: SelectorItem[]): Promise<RelevantFileCandi
         'Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.',
       ];
       stdout.write(`${lines.join('\n')}\n`);
-      renderedLines = lines.length;
+      const termWidth = stdout.columns || 80;
+      renderedLines = lines.reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / termWidth)), 0);
     };
 
     const onData = (data: Buffer) => {

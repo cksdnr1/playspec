@@ -193,3 +193,9 @@ export interface CompletionResult {
   snapshotFiles: string[];
   reviewFile?: string;
 }
+
+export interface SetCurrentPhaseResult {
+  taskId: TaskId;
+  previousPhase: PhaseId | null;
+  currentPhase: PhaseId;
+}
