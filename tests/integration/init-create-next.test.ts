@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execa } from 'execa';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -11,7 +13,18 @@ import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 
+const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
+const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
+
 let workspace: TempWorkspace;
+
+function runCli(args: string[]) {
+  return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
+    cwd: workspace.dir,
+    reject: false,
+  });
+}
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
@@ -20,6 +33,14 @@ beforeEach(async () => {
 afterEach(async () => {
   await workspace.cleanup();
 });
+
+async function initGitRepo(): Promise<void> {
+  await execa('git', ['init'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
+  await execa('git', ['add', '.'], { cwd: workspace.dir });
+  await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
+}
 
 describe('PresetManager.initWorkspace — structure verification', () => {
   it('creates expected .playspec directory structure', async () => {
@@ -172,6 +193,191 @@ describe('init → create → next (end-to-end)', () => {
     expect(prPrompt).toContain('Current branch diff compared against `origin/master`');
     expect(prPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
     expect(prPrompt).toContain('Update `docs/features/migration_bug_fix/result.md`');
+  });
+
+  it('renders total-plan first prompt with phase-execution-compatible output variables', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Large Feature');
+    const sourcePath = path.join('.playspec', 'tasks', 'active', taskId, 'sources', 'source_problem.md');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Large Feature',
+      workflowType: 'total-plan',
+      variables: { SOURCE_PROBLEM_FILE: sourcePath },
+      contextRefs: [{ path: sourcePath, role: 'source-problem', source: 'stdin' }],
+    });
+    await writeTextFile(path.join(workspace.dir, sourcePath), 'Build a large planning feature.\n');
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('TOTAL_SPEC_FILE=`docs/features/large_feature/large_feature_total_spec.md`');
+    expect(prompt).toContain('PHASE_PLAN_FILE=`docs/features/large_feature/large_feature_phase_plan.md`');
+    expect(prompt).toContain(`SOURCE_PROBLEM_FILE=\`${sourcePath}\``);
+    expect(prompt).toContain('- `.playspec/tasks/active/large_feature/sources/source_problem.md`');
+    expect(prompt).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+
+  it('renders every total-plan phase template without unresolved placeholders', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Template Smoke');
+    const sourcePath = path.join('.playspec', 'tasks', 'active', taskId, 'sources', 'source_problem.md');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Template Smoke',
+      workflowType: 'total-plan',
+      variables: { SOURCE_PROBLEM_FILE: sourcePath },
+      contextRefs: [{ path: sourcePath, role: 'source-problem', source: 'stdin' }],
+    });
+    await writeTextFile(path.join(workspace.dir, sourcePath), 'Smoke test all planning templates.\n');
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const phases = [
+      'total_spec_draft',
+      'total_spec_validate',
+      'total_spec_patch',
+      'phase_plan_create',
+      'phase_plan_validate',
+      'phase_plan_patch',
+      'final_review',
+    ];
+
+    for (const phaseId of phases) {
+      const prompt = await core.renderExplicitPhasePrompt(taskId, phaseId);
+      expect(prompt).toContain('TOTAL_SPEC_FILE=`docs/features/template_smoke/template_smoke_total_spec.md`');
+      expect(prompt).toContain('PHASE_PLAN_FILE=`docs/features/template_smoke/template_smoke_phase_plan.md`');
+      expect(prompt).not.toMatch(/\{\{[^}]+\}\}/);
+    }
+  });
+
+  it('renders total-plan no-source fallback guidance', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('No Source Planning');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'No Source Planning',
+      workflowType: 'total-plan',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('SOURCE_PROBLEM_FILE=`(not provided)`');
+    expect(prompt).toContain('(none)');
+    expect(prompt).toContain('start from `TASK_TITLE` and the current repository code');
+  });
+
+  it('renders total-plan validation prompts with explicit 95 score routing rules', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Validation Rules');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Validation Rules',
+      workflowType: 'total-plan',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const totalSpecValidation = await core.renderExplicitPhasePrompt(taskId, 'total_spec_validate');
+    const phasePlanValidation = await core.renderExplicitPhasePrompt(taskId, 'phase_plan_validate');
+
+    for (const prompt of [totalSpecValidation, phasePlanValidation]) {
+      expect(prompt).toContain('playspec complete --result approved');
+      expect(prompt).toContain('readiness score is `>= 95`');
+      expect(prompt).toContain('playspec complete --result needs_revision');
+      expect(prompt).toContain('readiness score is below `95` or unresolved blockers remain');
+    }
+  });
+
+  it('routes total-plan validation loops and stops at final review', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await initGitRepo();
+
+    const taskId = slugify('Planning Routes');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Planning Routes',
+      workflowType: 'total-plan',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await store.updateTask(taskId, { currentPhase: 'total_spec_validate' });
+    expect((await core.completePhase(taskId, { result: 'approved' })).nextPhase).toBe('phase_plan_create');
+
+    await store.updateTask(taskId, { currentPhase: 'total_spec_validate' });
+    expect((await core.completePhase(taskId, { result: 'needs_revision' })).nextPhase).toBe('total_spec_patch');
+
+    await store.updateTask(taskId, { currentPhase: 'phase_plan_validate' });
+    expect((await core.completePhase(taskId, { result: 'approved' })).nextPhase).toBe('final_review');
+
+    await store.updateTask(taskId, { currentPhase: 'phase_plan_validate' });
+    expect((await core.completePhase(taskId, { result: 'needs_revision' })).nextPhase).toBe('phase_plan_patch');
+
+    await store.updateTask(taskId, { currentPhase: 'final_review' });
+    const finalResult = await core.completePhase(taskId);
+    expect(finalResult.nextPhase).toBeNull();
+    expect(finalResult.status).toBe('completed');
+  });
+
+  it('uses total-plan output filenames for phase-execution creation context', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const planningTaskId = slugify('Compatible Planning');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: planningTaskId,
+      title: 'Compatible Planning',
+      workflowType: 'total-plan',
+    });
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_total_spec.md`),
+      '# Total Spec\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_phase_plan.md`),
+      '# Phase Plan\n'
+    );
+    await store.updateTask(planningTaskId, { status: 'completed', currentPhase: null });
+
+    const createResult = await runCli([
+      'create',
+      'phase-execution',
+      'Compatible Planning',
+      '--phase',
+      '2',
+      '--from',
+      planningTaskId,
+    ]);
+    expect(createResult.exitCode).toBe(0);
+
+    const executionTask = await store.getTask(slugify('Compatible Planning Phase 2 Execution'));
+    expect(executionTask.contextRefs).toEqual([
+      {
+        path: 'docs/features/compatible_planning/compatible_planning_total_spec.md',
+        role: 'planning-context',
+        source: planningTaskId,
+      },
+      {
+        path: 'docs/features/compatible_planning/compatible_planning_phase_plan.md',
+        role: 'planning-context',
+        source: planningTaskId,
+      },
+    ]);
   });
 
   it('fails when a workflow phase requires a missing variable', async () => {

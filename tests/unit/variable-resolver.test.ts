@@ -75,6 +75,8 @@ describe('VariableResolver', () => {
 
   it('keeps legacy phase-based file variables available for non-mono workflows', () => {
     const vars = resolver.resolve(baseTask, 'safe_refactor');
+    expect(vars.TOTAL_SPEC_FILE).toBe('docs/features/feature_name/feature_name_total_spec.md');
+    expect(vars.PHASE_PLAN_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
     expect(vars.MASTER_SPEC_FILE).toBe('docs/features/feature_name/feature_name_master_spec.md');
     expect(vars.MASTER_PHASE_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
     expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
@@ -200,5 +202,21 @@ describe('VariableResolver', () => {
     expect(vars.CONTEXT_FILES).toBe(
       '- `docs/features/feature_name/a.md`\n- `docs/features/feature_name/b.md`'
     );
+  });
+
+  it('allows explicit total-plan output variable overrides', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        FEATURE_SLUG: 'feature_name',
+        TOTAL_SPEC_FILE: 'docs/custom/total.md',
+        PHASE_PLAN_FILE: 'docs/custom/phases.md',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'total_spec_draft');
+
+    expect(vars.TOTAL_SPEC_FILE).toBe('docs/custom/total.md');
+    expect(vars.PHASE_PLAN_FILE).toBe('docs/custom/phases.md');
   });
 });

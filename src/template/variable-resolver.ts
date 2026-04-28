@@ -20,6 +20,8 @@ export interface ResolvedVariables {
   PLAN_FILE: string;
   RESULT_FILE: string;
   PR_FILE: string;
+  TOTAL_SPEC_FILE: string;
+  PHASE_PLAN_FILE: string;
   MASTER_SPEC_FILE: string;
   MASTER_PHASE_FILE: string;
   IMPLEMENTATION_PLAN_FILE: string;
@@ -56,6 +58,12 @@ export class VariableResolver {
     const planFile = task.variables['PLAN_FILE'] ?? defaultPlanFile;
     const resultFile = task.variables['RESULT_FILE'] ?? defaultResultFile;
     const prFile = task.variables['PR_FILE'] ?? defaultPrFile;
+    const totalSpecFile =
+      task.variables['TOTAL_SPEC_FILE'] ??
+      `${projectDocRoot}/${featureSlug}_total_spec.md`;
+    const phasePlanFile =
+      task.variables['PHASE_PLAN_FILE'] ??
+      `${projectDocRoot}/${featureSlug}_phase_plan.md`;
     const contextVariables = resolveContextVariables(task);
 
     return {
@@ -78,6 +86,8 @@ export class VariableResolver {
       PLAN_FILE: planFile,
       RESULT_FILE: resultFile,
       PR_FILE: prFile,
+      TOTAL_SPEC_FILE: totalSpecFile,
+      PHASE_PLAN_FILE: phasePlanFile,
       MASTER_SPEC_FILE:
         task.variables['MASTER_SPEC_FILE'] ??
         `${projectDocRoot}/${featureSlug}_master_spec.md`,

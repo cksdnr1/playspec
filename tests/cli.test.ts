@@ -121,6 +121,21 @@ describe('CLI placeholder', () => {
     expect(result.stdout).not.toMatch(/\{\{[^}]+\}\}/);
   });
 
+  it('renders total-plan through prompt and deprecated next CLI paths', async () => {
+    await createActiveTask('CLI Planning Task', 'total-plan');
+
+    const prompt = await runCli(['prompt', '--print-only', '--quiet'], workspace.dir);
+    const next = await runCli(['next', '--quiet'], workspace.dir);
+
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.stdout).toContain('TOTAL_SPEC_FILE=`docs/features/cli_planning_task/cli_planning_task_total_spec.md`');
+    expect(prompt.stdout).not.toMatch(/\{\{[^}]+\}\}/);
+    expect(next.exitCode).toBe(0);
+    expect(next.stderr).toContain('Warning: `playspec next` is deprecated.');
+    expect(next.stdout).toContain('TOTAL_SPEC_FILE=`docs/features/cli_planning_task/cli_planning_task_total_spec.md`');
+    expect(next.stdout).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+
   it('marks the HEAD task in list and list-tasks output', async () => {
     await createActiveTask('Head Marker Task');
 
