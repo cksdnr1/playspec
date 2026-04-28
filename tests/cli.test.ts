@@ -1591,4 +1591,352 @@ phases:
     expect(parsed).toHaveProperty('status');
     expect(parsed).toHaveProperty('currentPhase');
   });
+
+  // rewind — non-interactive success
+  it('rewind non-interactive moves currentPhase back one step', async () => {
+    const taskId = await createActiveTask('Rewind Noninteractive Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Rewound:');
+    const after = await store.getTask(taskId);
+    expect(after.currentPhase).toBe('1');
+  });
+
+  // rewind — non-interactive missing --task
+  it('rewind non-interactive fails without --task', async () => {
+    await createActiveTask('Rewind No Task Task');
+
+    const result = await runCli(
+      ['rewind', '--steps', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--task');
+  });
+
+  // rewind — non-interactive missing --steps
+  it('rewind non-interactive fails without --steps', async () => {
+    const taskId = await createActiveTask('Rewind No Steps Task');
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--steps');
+  });
+
+  // rewind — non-interactive missing --yes
+  it('rewind non-interactive fails without --yes', async () => {
+    const taskId = await createActiveTask('Rewind No Yes Task');
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '1'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--yes');
+  });
+
+  // rewind — currentPhase null
+  it('rewind fails when currentPhase is null', async () => {
+    const taskId = await createActiveTask('Rewind Null Phase Task');
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('has no explicit phase pointer');
+  });
+
+  // rewind — out-of-range
+  it('rewind fails when steps would exceed phaseOrder start', async () => {
+    const taskId = await createActiveTask('Rewind Out Of Range Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '1' });
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '2', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Cannot rewind');
+  });
+
+  // rewind — invalid --steps value
+  it('rewind fails with invalid --steps value', async () => {
+    const taskId = await createActiveTask('Rewind Invalid Steps Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '0', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid --steps value');
+  });
+
+  // rewind — inactive task
+  it('rewind fails on inactive task', async () => {
+    const taskId = await createActiveTask('Rewind Inactive Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed', currentPhase: null });
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('is not active');
+  });
+
+  // rewind — interactive confirm via PTY
+  it('rewind interactive asks for confirmation and mutates on yes', async () => {
+    const taskId = await createActiveTask('Rewind Interactive Confirm Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+
+    const result = await runCliInPty(['rewind', '--task', taskId], workspace.dir, 'y\n');
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Proceed? [y/N]');
+    expect(output).toContain('Rewound:');
+    const after = await store.getTask(taskId);
+    expect(after.currentPhase).toBe('1');
+  });
+
+  // rewind — interactive cancel via PTY
+  it('rewind interactive cancels without mutation on no', async () => {
+    const taskId = await createActiveTask('Rewind Interactive Cancel Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+    const before = await store.getTask(taskId);
+
+    const result = await runCliInPty(['rewind', '--task', taskId], workspace.dir, 'n\n');
+    const output = result.stdout + result.stderr;
+    const after = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Cancelled. Phase not changed.');
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  // rewind — phaseHistory preserved
+  it('rewind preserves phaseHistory after rewinding', async () => {
+    const taskId = await createActiveTask('Rewind History Task', 'multi-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    // Directly set currentPhase to simulate having been in phase 2
+    await store.updateTask(taskId, { currentPhase: '2', phaseHistory: [{ phase: '1', status: 'completed', completedAt: '2025-01-01T00:00:00.000Z' }] });
+
+    const result = await runCli(
+      ['rewind', '--task', taskId, '--steps', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    const after = await store.getTask(taskId);
+    expect(after.currentPhase).toBe('1');
+    expect(after.phaseHistory).toHaveLength(1);
+    expect(after.phaseHistory[0]?.phase).toBe('1');
+    expect(after.phaseHistory[0]?.status).toBe('completed');
+  });
+
+  // phase --set — non-interactive success
+  it('phase --set non-interactive moves currentPhase to target', async () => {
+    const taskId = await createActiveTask('Phase Set Noninteractive Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+
+    const result = await runCli(
+      ['phase', '--task', taskId, '--set', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Phase set:');
+    const after = await store.getTask(taskId);
+    expect(after.currentPhase).toBe('1');
+  });
+
+  // phase --set — invalid target
+  it('phase --set fails on invalid target phase', async () => {
+    const taskId = await createActiveTask('Phase Set Invalid Task');
+
+    const result = await runCli(
+      ['phase', '--task', taskId, '--set', 'bogus_phase', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid phase: bogus_phase');
+  });
+
+  // phase --set — missing --task non-interactive
+  it('phase --set non-interactive fails without --task', async () => {
+    await createActiveTask('Phase Set No Task Task');
+
+    const result = await runCli(
+      ['phase', '--set', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--task');
+  });
+
+  // phase --set — missing --yes non-interactive
+  it('phase --set non-interactive fails without --yes', async () => {
+    const taskId = await createActiveTask('Phase Set No Yes Task');
+
+    const result = await runCli(
+      ['phase', '--task', taskId, '--set', '1'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('--yes');
+  });
+
+  // phase --set — backward warning
+  it('phase --set warns when moving backward', async () => {
+    const taskId = await createActiveTask('Phase Set Backward Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '3' });
+
+    const result = await runCli(
+      ['phase', '--task', taskId, '--set', '1', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('backward');
+  });
+
+  // phase --set — skip-forward warning
+  it('phase --set warns when skipping forward', async () => {
+    const taskId = await createActiveTask('Phase Set Skip Forward Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '1' });
+
+    const result = await runCli(
+      ['phase', '--task', taskId, '--set', '3', '--yes'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('skips forward');
+  });
+
+  // phase --select — non-interactive fails
+  it('phase --select fails in non-interactive mode', async () => {
+    await createActiveTask('Phase Select Noninteractive Task');
+
+    const result = await runCli(
+      ['phase', '--select'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('interactive terminal');
+  });
+
+  // phase --select — PTY cancel
+  it('phase --select cancels without mutation on Esc', async () => {
+    const taskId = await createActiveTask('Phase Select Cancel Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '2' });
+    const before = await store.getTask(taskId);
+
+    const result = await runCliInPty(['phase', '--task', taskId, '--select'], workspace.dir, '\x1b');
+    const output = result.stdout + result.stderr;
+    const after = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Cancelled. Phase not changed.');
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  // phase <phaseId> — still render-only (no state change)
+  it('phase <phaseId> renders prompt without mutating state', async () => {
+    const taskId = await createActiveTask('Phase Render Only Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    const result = await runCli(['phase', '1'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    const after = await store.getTask(taskId);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Phase 1');
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  // phase set <phaseId> treated as render-only positional (not a mutating alias)
+  it('playspec phase set is treated as render-only positional phase ID', async () => {
+    const taskId = await createActiveTask('Phase Set Alias Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const before = await store.getTask(taskId);
+
+    // There is no phase named "set", so this fails with PhaseNotFoundError (render-only behavior)
+    const result = await runCli(['phase', 'set'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    // Should fail as a phase-not-found error, not as a mutating command
+    expect(result.stderr).not.toContain('Non-interactive phase --set requires');
+    const after = await store.getTask(taskId);
+    expect(after.currentPhase).toBe(before.currentPhase);
+  });
+
+  // phase <phaseId> + --set is ambiguous
+  it('phase <phaseId> combined with --set fails with ambiguity error', async () => {
+    const taskId = await createActiveTask('Phase Ambiguous Task');
+
+    const result = await runCli(
+      ['phase', '1', '--set', '2'],
+      workspace.dir,
+      { env: { PLAY_SPEC_NON_INTERACTIVE: '1' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('cannot be combined with --set or --select');
+  });
 });

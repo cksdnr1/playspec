@@ -325,3 +325,54 @@ export class ContextFileNotFoundError extends PlaySpecError {
     this.name = 'ContextFileNotFoundError';
   }
 }
+
+export class NoExplicitPhasePointerError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Task "${taskId}" has no explicit phase pointer yet.`,
+      'Use `playspec phase --set <phaseId>` to set an explicit starting phase.'
+    );
+    this.name = 'NoExplicitPhasePointerError';
+  }
+}
+
+export class InvalidRecoveryTargetError extends PlaySpecError {
+  constructor(phaseId: string, workflowId: string, allowedValues: string[]) {
+    const allowedList = allowedValues.map((p) => `  ${p}`).join('\n');
+    super(
+      `Invalid phase: ${phaseId}\nAllowed values:\n${allowedList}`,
+      `Phase must be listed in workflow "${workflowId}" phaseOrder.`
+    );
+    this.name = 'InvalidRecoveryTargetError';
+  }
+}
+
+export class RewindOutOfRangeError extends PlaySpecError {
+  constructor(steps: number, currentIndex: number) {
+    super(
+      `Cannot rewind ${steps} step${steps === 1 ? '' : 's'}: current phase is at index ${currentIndex} in phaseOrder.`,
+      'Use a smaller --steps value or `playspec phase --set <phaseId>` for an explicit target.'
+    );
+    this.name = 'RewindOutOfRangeError';
+  }
+}
+
+export class InvalidRewindStepsError extends PlaySpecError {
+  constructor(value: string) {
+    super(
+      `Invalid --steps value: "${value}". Must be a positive integer greater than zero.`,
+      'Example: --steps 1 or --steps 2'
+    );
+    this.name = 'InvalidRewindStepsError';
+  }
+}
+
+export class AmbiguousPhaseCommandError extends PlaySpecError {
+  constructor() {
+    super(
+      'Positional phase ID cannot be combined with --set or --select.',
+      'Use `playspec phase <phaseId>` for render-only, or `playspec phase --set <phaseId>` / `playspec phase --select` for recovery.'
+    );
+    this.name = 'AmbiguousPhaseCommandError';
+  }
+}

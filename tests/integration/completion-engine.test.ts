@@ -293,3 +293,72 @@ phases:
     expect(result.reasons).toContain('Tracked files were renamed since the last safe point.');
   });
 });
+
+describe('setCurrentPhase — phase-pointer recovery', () => {
+  it('changes currentPhase and updatedAt without touching phaseHistory', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    // Advance to phase 2 so phaseHistory has an entry
+    await core.completePhase(taskId);
+    const afterComplete = await store.getTask(taskId);
+    expect(afterComplete.currentPhase).toBe('2');
+    const historyBefore = afterComplete.phaseHistory.map((e) => ({ ...e }));
+    const updatedAtBefore = afterComplete.updatedAt;
+
+    // Rewind to phase 1
+    const result = await core.setCurrentPhase(taskId, '1');
+
+    const afterRewind = await store.getTask(taskId);
+    expect(result.taskId).toBe(taskId);
+    expect(result.previousPhase).toBe('2');
+    expect(result.currentPhase).toBe('1');
+    expect(afterRewind.currentPhase).toBe('1');
+    expect(afterRewind.updatedAt).not.toBe(updatedAtBefore);
+    expect(afterRewind.phaseHistory).toEqual(historyBefore);
+    expect(afterRewind.status).toBe('active');
+  });
+
+  it('rejects recovery on an inactive (completed) task', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.setCurrentPhase(taskId, '1')).rejects.toThrow('is not active');
+  });
+
+  it('rejects a target phase not in workflow phaseOrder', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await store.updateTask(taskId, { currentPhase: '2' });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.setCurrentPhase(taskId, 'nonexistent')).rejects.toThrow('Invalid phase: nonexistent');
+  });
+
+  it('preserves artifact directories after recovery', async () => {
+    const { access: fsAccess } = await import('node:fs/promises');
+    const { store, taskId } = await initWorkspaceWithTask();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await core.completePhase(taskId);
+    const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
+
+    // Confirm snapshot exists before recovery
+    await expect(
+      fsAccess(path.join(taskRoot, 'snapshots', 'phase1_before_complete.yaml'))
+    ).resolves.not.toThrow();
+
+    // Recover: rewind to phase 1
+    await core.setCurrentPhase(taskId, '1');
+
+    // Snapshot must still be there
+    await expect(
+      fsAccess(path.join(taskRoot, 'snapshots', 'phase1_before_complete.yaml'))
+    ).resolves.not.toThrow();
+
+    // Evidence must still be there
+    await expect(
+      fsAccess(path.join(taskRoot, 'evidence', 'phase1_git_status.txt'))
+    ).resolves.not.toThrow();
+  });
+});

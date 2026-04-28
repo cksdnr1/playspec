@@ -164,8 +164,10 @@ export class YamlTaskStore implements TaskStore {
       ...patch,
       updatedAt: new Date().toISOString(),
     };
-    await this.saveTask(updated);
-    return updated;
+    const validated = TaskRecordSchema.parse(updated);
+    const yamlPath = this.taskYamlPath(taskId);
+    await writeTextFileAtomic(yamlPath, stringifyYaml(validated));
+    return validated;
   }
 
   async completePhase(
