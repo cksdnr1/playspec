@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { access, readdir } from 'node:fs/promises';
+import { access, readdir, writeFile } from 'node:fs/promises';
 import { execa } from 'execa';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -262,6 +262,131 @@ describe('CLI placeholder', () => {
     expect(next.stdout).toContain(`SOURCE_PROBLEM_FILE=\`${contextPath}\``);
     expect(next.stdout).toContain(`- \`${contextPath}\``);
     expect(next.stdout).toContain(`- \`${contextPath}\` (role: planning-context, source: manual)`);
+  });
+
+  it('lists relevant existing files for HEAD with specs --path-only', async () => {
+    const taskId = await createActiveTask('Specs Path Only Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Spec\n');
+
+    const result = await runCli(['specs', '--path-only'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')).toContain(specPath);
+    expect(result.stdout).not.toContain(`docs/features/${taskId}/plan.md`);
+  });
+
+  it('resolves specs --task without changing HEAD', async () => {
+    const firstTaskId = await createActiveTask('Specs Head Task', 'mono-spec');
+    const secondTaskId = await createAdditionalActiveTask('Specs Explicit Task', 'mono-spec');
+    const secondSpec = `docs/features/${secondTaskId}/spec.md`;
+    await writeTextFile(path.join(workspace.dir, `docs/features/${firstTaskId}/spec.md`), '# First\n');
+    await writeTextFile(path.join(workspace.dir, secondSpec), '# Second\n');
+
+    const result = await runCli(['specs', '--task', secondTaskId, '--path-only'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')).toContain(secondSpec);
+    expect(result.stdout).not.toContain(`docs/features/${firstTaskId}/spec.md`);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${firstTaskId}\n`);
+  });
+
+  it('reports missing specs paths on stderr while keeping --path-only stdout script-safe', async () => {
+    const taskId = await createActiveTask('Specs Missing Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    const planPath = `docs/features/${taskId}/plan.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Spec\n');
+
+    const result = await runCli(['specs', '--path-only', '--show-missing'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')).toContain(specPath);
+    expect(result.stdout).not.toContain(planPath);
+    expect(result.stderr).toContain('Missing expected files:');
+    expect(result.stderr).toContain(planPath);
+  });
+
+  it('rejects plain non-interactive specs with an output-mode hint', async () => {
+    const taskId = await createActiveTask('Specs Non Interactive Task', 'mono-spec');
+    await writeTextFile(path.join(workspace.dir, `docs/features/${taskId}/spec.md`), '# Spec\n');
+
+    const result = await runCli(['specs'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Non-interactive specs requires an output mode.');
+    expect(result.stderr).toContain('playspec specs --path-only');
+    expect(result.stderr).toContain('playspec specs --print');
+  });
+
+  it('prints all existing UTF-8 relevant files with deterministic separators', async () => {
+    const taskId = await createActiveTask('Specs Print Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    const planPath = `docs/features/${taskId}/plan.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Spec\n');
+    await writeTextFile(path.join(workspace.dir, planPath), '# Plan\n');
+
+    const result = await runCli(['specs', '--print'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`===== ${planPath} =====`);
+    expect(result.stdout).toContain('# Plan');
+    expect(result.stdout).toContain(`===== ${specPath} =====`);
+    expect(result.stdout).toContain('# Spec');
+  });
+
+  it('skips binary and large files for non-interactive specs --print but keeps paths visible', async () => {
+    const taskId = await createActiveTask('Specs Binary Large Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    const binaryPath = `docs/features/${taskId}/binary.md`;
+    const largePath = `docs/features/${taskId}/large.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Spec\n');
+    await writeFile(path.join(workspace.dir, binaryPath), Buffer.from([0, 1, 2, 3]));
+    await writeTextFile(path.join(workspace.dir, largePath), `${'x'.repeat(1024 * 1024 + 1)}\n`);
+
+    const pathOnly = await runCli(['specs', '--path-only'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const printed = await runCli(['specs', '--print'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(pathOnly.exitCode).toBe(0);
+    expect(pathOnly.stdout.split('\n')).toContain(binaryPath);
+    expect(pathOnly.stdout.split('\n')).toContain(largePath);
+    expect(printed.exitCode).toBe(0);
+    expect(printed.stdout).toContain(`===== ${specPath} =====`);
+    expect(printed.stdout).not.toContain(`===== ${binaryPath} =====`);
+    expect(printed.stdout).not.toContain(`===== ${largePath} =====`);
+    expect(printed.stderr).toContain('binary or non-UTF-8 content');
+    expect(printed.stderr).toContain('larger than 1 MiB');
+  });
+
+  it('selects a relevant file interactively with specs --no-copy without mutating task state', async () => {
+    const taskId = await createActiveTask('Specs Interactive Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Spec\n');
+    const taskYamlPath = path.join(workspace.dir, '.playspec/tasks/active', taskId, 'task.yaml');
+    const beforeTaskYaml = await readTextFile(taskYamlPath);
+    const beforeHead = await readTextFile(getHeadPath(workspace.dir));
+
+    const result = await runCliInPty(['specs', '--no-copy'], workspace.dir, '\r');
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Select a relevant file:');
+    expect(output).toContain(`Selected file: ${specPath}`);
+    expect(await readTextFile(taskYamlPath)).toBe(beforeTaskYaml);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(beforeHead);
   });
 
   it('rejects non-interactive add-context without --task before mutation', async () => {
