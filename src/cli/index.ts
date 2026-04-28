@@ -227,7 +227,7 @@ program
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--print', 'Print selected file content interactively, or all existing file contents non-interactively', false)
   .option('--path-only', 'Print existing relevant file paths only', false)
-  .option('--no-copy', 'Select without copying to clipboard', false)
+  .option('--no-copy', 'Select without copying to clipboard')
   .option('--show-missing', 'Show missing expected files on stderr', false)
   .option('--force-large', 'Allow printing or copying files larger than 1 MiB', false)
   .action(async (opts: { task?: string; print: boolean; pathOnly: boolean; copy: boolean; showMissing: boolean; forceLarge: boolean }) => {
