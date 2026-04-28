@@ -35,7 +35,7 @@
 
 - PR file written to `docs/features/24_playspec_phase_aware_relevant_file_selector/pr.md`.
 - Branch pushed as `24-playspec_phase_aware_relevant_file_selector` against `origin/master`.
-- PR created (see PR link below once available).
+- PR created: https://github.com/cksdnr1/playspec/pull/26
 
 ## Agent Guidance Recommendation
 
