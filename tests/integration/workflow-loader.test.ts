@@ -101,6 +101,41 @@ describe('WorkflowLoader', () => {
     expect(monoRequiredVariables).not.toContain('PHASE_HANDOFF_FILE');
   });
 
+  it('loads total-plan workflow with planning gates and phase-execution-compatible outputs', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+    const workflow = await loader.load('total-plan');
+
+    expect(workflow.id).toBe('total-plan');
+    expect(workflow.phaseOrder).toEqual([
+      'total_spec_draft',
+      'total_spec_validate',
+      'total_spec_patch',
+      'phase_plan_create',
+      'phase_plan_validate',
+      'phase_plan_patch',
+      'final_review',
+    ]);
+    expect(workflow.phases['total_spec_validate']?.gate?.nextByResult).toEqual({
+      approved: 'phase_plan_create',
+      needs_revision: 'total_spec_patch',
+    });
+    expect(workflow.phases['phase_plan_validate']?.gate?.nextByResult).toEqual({
+      approved: 'final_review',
+      needs_revision: 'phase_plan_patch',
+    });
+    expect(workflow.phases['total_spec_patch']?.next).toBe('total_spec_validate');
+    expect(workflow.phases['phase_plan_patch']?.next).toBe('phase_plan_validate');
+    expect(workflow.phases['final_review']?.next).toBeNull();
+    expect(workflow.phases['total_spec_draft']?.outputs).toEqual(['{{TOTAL_SPEC_FILE}}']);
+    expect(workflow.phases['phase_plan_create']?.outputs).toEqual(['{{PHASE_PLAN_FILE}}']);
+
+    const requiredVariables = workflow.phaseOrder.flatMap(
+      (phaseId) => workflow.phases[phaseId]?.requiredVariables ?? []
+    );
+    expect(requiredVariables).toContain('TOTAL_SPEC_FILE');
+    expect(requiredVariables).toContain('PHASE_PLAN_FILE');
+  });
+
   it('throws WorkflowNotFoundError for unknown workflow type', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);
