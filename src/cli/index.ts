@@ -16,6 +16,7 @@ import { runAddContext } from './commands/add-context.js';
 import { runUse } from './commands/use.js';
 import { runNext } from './commands/next.js';
 import { runPrompt } from './commands/prompt.js';
+import { runSpecs } from './commands/specs.js';
 import { runPhase } from './commands/phase.js';
 import { runComplete } from './commands/complete.js';
 import { runEvidence } from './commands/evidence.js';
@@ -214,6 +215,24 @@ program
   .action(async (opts: { task?: string; copy: boolean; printOnly: boolean; quiet: boolean; write: boolean; out?: string }) => {
     try {
       await runPrompt(process.cwd(), opts.task, !opts.copy, opts.printOnly, opts.quiet, opts.write, opts.out);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// specs
+program
+  .command('specs')
+  .description('Find relevant files for the current task and effective phase')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--print', 'Print selected file content interactively, or all existing file contents non-interactively', false)
+  .option('--path-only', 'Print existing relevant file paths only', false)
+  .option('--no-copy', 'Select without copying to clipboard', false)
+  .option('--show-missing', 'Show missing expected files on stderr', false)
+  .option('--force-large', 'Allow printing or copying files larger than 1 MiB', false)
+  .action(async (opts: { task?: string; print: boolean; pathOnly: boolean; copy: boolean; showMissing: boolean; forceLarge: boolean }) => {
+    try {
+      await runSpecs(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }
