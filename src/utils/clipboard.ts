@@ -16,7 +16,8 @@ export async function copyToClipboard(text: string): Promise<ClipboardResult> {
 
   try {
     await clipboard.write(text);
-    return { ok: true, method: 'native clipboard' };
+    const primaryOk = process.platform === 'linux' ? await tryLinuxPrimary(text) : undefined;
+    return { ok: true, method: 'native clipboard', primaryOk };
   } catch (error) {
     const firstError = error instanceof Error ? error.message : String(error);
     const commandResult = await copyWithPlatformCommand(text);
@@ -52,16 +53,16 @@ async function copyWithPlatformCommand(text: string): Promise<ClipboardResult> {
     }
   }
 
-  const primaryOk = process.platform === 'linux' ? await tryLinuxPrimary(text) : undefined;
-
   if (clipboardOk) {
+    const primaryOk = process.platform === 'linux' ? await tryLinuxPrimary(text) : undefined;
     return { ok: true, method, primaryOk };
   }
-  return { ok: false, error: lastError, primaryOk };
+  return { ok: false, error: lastError };
 }
 
 async function tryLinuxPrimary(text: string): Promise<boolean> {
   const primaryCandidates = [
+    { command: 'wl-copy', args: ['--primary'] },
     { command: 'xclip', args: ['-selection', 'primary'] },
     { command: 'xsel', args: ['--primary', '--input'] },
   ];
