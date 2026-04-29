@@ -55,3 +55,5 @@
 - Draft PR notes were written to `docs/features/issue_21_linux_primary_clipboard/pr.md`.
 - Reusable agent guidance decision: no AGENTS.md update needed because this was a narrow clipboard behavior change, not a recurring repository workflow rule.
 - Branch to push: `agent/issue-21-linux-primary-clipboard`.
+- Draft PR created: https://github.com/cksdnr1/playspec/pull/32.
+- Issue label `agent-pr-created` added successfully.
