@@ -26,6 +26,7 @@ import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
 import { runMigrate } from './commands/migrate.js';
+import { registerPackCommands } from './commands/pack.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -89,7 +90,8 @@ program
   .option('--from-file <path>', 'Seed the task from a source problem file')
   .option('--stdin', 'Seed the task from stdin (for scripts and automation)', false)
   .option('--edit', 'Open $EDITOR to write the source problem', false)
-  .action(async (workflowType: string | undefined, title: string | undefined, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean }) => {
+  .option('--pack <packId>', 'Workflow/template pack id to use')
+  .action(async (workflowType: string | undefined, title: string | undefined, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean; pack?: string }) => {
     if (!workflowType && !title) {
       const isInteractive = process.stdout.isTTY === true && !process.env['PLAY_SPEC_NON_INTERACTIVE'];
       if (!isInteractive) {
@@ -114,6 +116,8 @@ program
       handleError(err);
     }
   });
+
+registerPackCommands(program, handleError);
 
 // list
 program

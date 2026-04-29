@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os';
 import { execa } from 'execa';
 import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { VariableResolver } from '#template/variable-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import type { TaskContextRef, TaskTarget } from '#core/types.js';
+import type { TaskContextRef, TaskTarget, WorkflowPackRef, TaskRecord } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
@@ -18,6 +20,7 @@ export interface CreateOptions {
   stdin?: boolean;
   /** Open $EDITOR to write the source problem. */
   edit?: boolean;
+  pack?: string;
 }
 
 interface SourceOptions {
@@ -58,7 +61,7 @@ export async function runCreate(
       stdin: options.stdin,
       edit: options.edit,
     });
-    await createNormalTask(workspaceRoot, workflowType, title, source);
+    await createNormalTask(workspaceRoot, workflowType, title, source, options.pack);
     return;
   }
 
@@ -102,11 +105,10 @@ export async function runCreate(
   }
 
   const planningTask = await store.getTask(planningTaskId);
-  const featureSlug = planningTask.variables['FEATURE_SLUG'] ?? planningTask.id;
-  const projectDocRoot = planningTask.paths.projectDocRoot;
-
-  const totalSpecRelPath = path.join(projectDocRoot, `${featureSlug}_total_spec.md`);
-  const phasePlanRelPath = path.join(projectDocRoot, `${featureSlug}_phase_plan.md`);
+  const [totalSpecRelPath, phasePlanRelPath] = await resolvePlanningContextPaths(
+    workspaceRoot,
+    planningTask
+  );
 
   const totalSpecAbsPath = path.resolve(workspaceRoot, totalSpecRelPath);
   const phasePlanAbsPath = path.resolve(workspaceRoot, phasePlanRelPath);
@@ -142,7 +144,10 @@ export async function runCreate(
     }
   }
 
-  const task = await store.createTask({ id: taskId, title: finalTitle, workflowType, target, contextRefs });
+  const workflowPack = options.pack
+    ? await resolveWorkflowPackRef(workspaceRoot, workflowType, options.pack)
+    : undefined;
+  const task = await store.createTask({ id: taskId, title: finalTitle, workflowType, workflowPack, target, contextRefs });
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
@@ -217,14 +222,19 @@ async function createNormalTask(
   workspaceRoot: string,
   workflowType: string,
   title: string,
-  source: SourceResult | undefined
+  source: SourceResult | undefined,
+  packId?: string
 ): Promise<void> {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspaceRoot);
+  const workflowPack = packId
+    ? await resolveWorkflowPackRef(workspaceRoot, workflowType, packId)
+    : undefined;
   const task = await store.createTask({
     id: taskId,
     title,
     workflowType,
+    workflowPack,
     variables: source
       ? { SOURCE_PROBLEM_FILE: source.relativePath }
       : undefined,
@@ -237,10 +247,57 @@ async function createNormalTask(
   }
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
   console.log(`Created task "${task.id}" (${title})`);
+  if (workflowPack) {
+    console.log(`Workflow pack: ${workflowPack.id}@${workflowPack.version ?? 'unknown'}`);
+  }
   if (source) {
     console.log(`Source problem stored: ${source.relativePath}`);
   }
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function resolveWorkflowPackRef(
+  workspaceRoot: string,
+  workflowType: string,
+  packId: string
+): Promise<WorkflowPackRef> {
+  const loader = new WorkflowLoader(workspaceRoot);
+  const resolved = await loader.loadResolved(workflowType, { id: packId });
+  return resolved.packRef ?? { id: packId };
+}
+
+async function resolvePlanningContextPaths(
+  workspaceRoot: string,
+  planningTask: TaskRecord
+): Promise<[string, string]> {
+  const workflowLoader = new WorkflowLoader(workspaceRoot);
+  const resolvedWorkflow = await workflowLoader.loadResolved(
+    planningTask.workflowType,
+    planningTask.workflowPack
+  );
+  const workflow = resolvedWorkflow.workflow;
+  const firstPhaseId = workflow.phaseOrder[0] ?? '';
+  const firstPhase = firstPhaseId ? workflow.phases[firstPhaseId] : undefined;
+  const variables = new VariableResolver().resolve(planningTask, firstPhaseId, firstPhase, {
+    packVariables: resolvedWorkflow.packVariables,
+    workflow,
+    workflowVariables: resolvedWorkflow.workflowVariables,
+  });
+
+  const totalSpecVariable = workflow.artifacts?.['totalSpec']?.variable;
+  const phasePlanVariable = workflow.artifacts?.['phasePlan']?.variable;
+  const totalSpec = totalSpecVariable ? variables[totalSpecVariable] : undefined;
+  const phasePlan = phasePlanVariable ? variables[phasePlanVariable] : undefined;
+  if (totalSpec && phasePlan) {
+    return [totalSpec, phasePlan];
+  }
+
+  const featureSlug = planningTask.variables['FEATURE_SLUG'] ?? planningTask.id;
+  const projectDocRoot = planningTask.paths.projectDocRoot;
+  return [
+    path.join(projectDocRoot, `${featureSlug}_total_spec.md`),
+    path.join(projectDocRoot, `${featureSlug}_phase_plan.md`),
+  ];
 }
 
 async function resolveSourceProblem(

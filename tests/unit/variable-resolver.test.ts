@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { VariableResolver } from '#template/variable-resolver.js';
+import { VariableDefaultResolutionError } from '#core/errors.js';
 import type { PhaseDefinition, TaskRecord } from '#core/types.js';
 
 const baseTask: TaskRecord = {
@@ -218,5 +219,67 @@ describe('VariableResolver', () => {
 
     expect(vars.TOTAL_SPEC_FILE).toBe('docs/custom/total.md');
     expect(vars.PHASE_PLAN_FILE).toBe('docs/custom/phases.md');
+  });
+
+  it('resolves declarative pack, workflow, phase, and task variable layers', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      workflowType: 'app-feature',
+      workflowPack: { id: 'team-pack', version: '0.1.0', source: 'user' },
+      variables: {
+        FEATURE_SLUG: 'feature_name',
+        REVIEW_LOG_FILE: 'docs/custom/review.md',
+      },
+    };
+    const vars = resolver.resolve(task, 'draft', {
+      title: 'Draft',
+      template: 'app/draft.md',
+      variables: {
+        DESIGN_REVIEW_FILE: {
+          default: '{{PROJECT_DOC_ROOT}}/{{FEATURE_SLUG}}_design.md',
+        },
+      },
+    }, {
+      packVariables: {
+        TECH_SPEC_FILE: { default: '{{PROJECT_DOC_ROOT}}/tech.md' },
+        REVIEW_LOG_FILE: { default: '{{PROJECT_DOC_ROOT}}/review.md' },
+      },
+      workflow: {
+        id: 'app-feature',
+        mode: 'linear',
+        phaseOrder: ['draft'],
+        variables: {
+          PLAN_FILE: { default: '{{PROJECT_DOC_ROOT}}/custom-plan.md' },
+        },
+        phases: {},
+      },
+      workflowVariables: {
+        TECH_SPEC_FILE: { default: '{{PROJECT_DOC_ROOT}}/{{FEATURE_SLUG}}_tech.md' },
+      },
+    });
+
+    expect(vars.PACK_ID).toBe('team-pack');
+    expect(vars.WORKFLOW_ID).toBe('app-feature');
+    expect(vars.TECH_SPEC_FILE).toBe('docs/features/feature_name/feature_name_tech.md');
+    expect(vars.PLAN_FILE).toBe('docs/features/feature_name/custom-plan.md');
+    expect(vars.DESIGN_REVIEW_FILE).toBe('docs/features/feature_name/feature_name_design.md');
+    expect(vars.REVIEW_LOG_FILE).toBe('docs/custom/review.md');
+  });
+
+  it('fails clearly for unknown placeholders in declarative defaults', () => {
+    expect(() => resolver.resolve(baseTask, 'draft', undefined, {
+      packVariables: {
+        TECH_SPEC_FILE: { default: '{{UNKNOWN_ROOT}}/tech.md' },
+      },
+    })).toThrow(VariableDefaultResolutionError);
+  });
+
+  it('fails clearly for circular declarative defaults', () => {
+    expect(() => resolver.resolve(baseTask, 'draft', undefined, {
+      packVariables: {
+        A_FILE: { default: '{{B_FILE}}' },
+        B_FILE: { default: '{{A_FILE}}' },
+      },
+    })).toThrow(/circular variable defaults/);
   });
 });

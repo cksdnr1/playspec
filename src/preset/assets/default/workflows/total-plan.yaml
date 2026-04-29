@@ -1,5 +1,12 @@
 id: total-plan
 mode: linear
+artifacts:
+  totalSpec:
+    variable: TOTAL_SPEC_FILE
+    role: planning-context
+  phasePlan:
+    variable: PHASE_PLAN_FILE
+    role: planning-context
 phaseOrder:
   - total_spec_draft
   - total_spec_validate

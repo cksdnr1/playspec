@@ -56,7 +56,7 @@ export async function runComplete(
   if (result === undefined) {
     const workflowLoader = new WorkflowLoader(workspaceRoot);
     const phaseResolver = new PhaseResolver();
-    const workflow = await workflowLoader.load(task.workflowType);
+    const workflow = (await workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
     const { phaseId, definition } = phaseResolver.resolveCurrentPhase(task, workflow);
     const display = phaseDisplayInfo(phaseId, definition);
     completedPhaseLabel = definition.stepNumber ? display.label : phaseId;
@@ -75,7 +75,7 @@ export async function runComplete(
   const completionResult = await core.completePhase(task.id, { withReview, result });
   if (!completedPhaseLabel || (completionResult.nextPhase && !nextPhaseLabel)) {
     const workflowLoader = new WorkflowLoader(workspaceRoot);
-    const workflow = await workflowLoader.load(task.workflowType);
+    const workflow = (await workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
     const completedDefinition = workflow.phases[completionResult.completedPhase];
     if (completedDefinition) {
       const display = phaseDisplayInfo(completionResult.completedPhase, completedDefinition);

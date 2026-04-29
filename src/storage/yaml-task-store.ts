@@ -108,6 +108,7 @@ export class YamlTaskStore implements TaskStore {
       id: input.id,
       title: input.title,
       workflowType: input.workflowType,
+      ...(input.workflowPack !== undefined ? { workflowPack: input.workflowPack } : {}),
       status: 'active',
       workflowMode: 'linear',
       currentPhase: null,

@@ -213,7 +213,7 @@ export async function runPhase(
   }
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
-  const workflow = await workflowLoader.load(task.workflowType);
+  const workflow = (await workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
 
   let targetPhaseId: string;
 

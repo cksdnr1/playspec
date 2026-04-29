@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 
 export function getPlayspecRoot(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec');
@@ -42,4 +43,24 @@ export function getMigrationBackupsDir(workspaceRoot: string, planId: string): s
 
 export function getMigrationArchivedDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec', 'migrations', 'archived');
+}
+
+export function getUserDataRoot(env: NodeJS.ProcessEnv = process.env): string {
+  if (process.platform === 'win32') {
+    return path.join(env['APPDATA'] ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'playspec');
+  }
+
+  return path.join(env['XDG_DATA_HOME'] ?? path.join(os.homedir(), '.local', 'share'), 'playspec');
+}
+
+export function getUserPacksRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(getUserDataRoot(env), 'packs');
+}
+
+export function getUserPackRoot(
+  packId: string,
+  version: string,
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  return path.join(getUserPacksRoot(env), packId, version);
 }

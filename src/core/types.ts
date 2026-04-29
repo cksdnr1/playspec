@@ -21,6 +21,12 @@ export interface TaskPaths {
   projectDocRoot: string;
 }
 
+export interface WorkflowPackRef {
+  id: string;
+  version?: string;
+  source?: 'builtin' | 'user' | 'project';
+}
+
 export interface PhaseHistoryEntry {
   phase: PhaseId;
   status: 'active' | 'completed';
@@ -37,6 +43,7 @@ export interface TaskRecord {
   id: TaskId;
   title: string;
   workflowType: WorkflowType;
+  workflowPack?: WorkflowPackRef;
   status: TaskStatus;
   workflowMode: WorkflowMode;
   currentPhase: PhaseId | null;
@@ -81,14 +88,27 @@ export interface CreateTaskInput {
   id: TaskId;
   title: string;
   workflowType: WorkflowType;
+  workflowPack?: WorkflowPackRef;
   variables?: Record<string, string>;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
 }
 
+export interface VariableDefinition {
+  default?: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface WorkflowArtifactDefinition {
+  variable: string;
+  role?: string;
+}
+
 export interface PhaseDefinition {
   title: string;
   template: string;
+  variables?: Record<string, VariableDefinition>;
   stepNumber?: string;
   stepTitle?: string;
   requiredVariables?: string[];
@@ -109,6 +129,8 @@ export interface PhaseDefinition {
 export interface WorkflowDefinition {
   id: string;
   mode: WorkflowMode;
+  variables?: Record<string, VariableDefinition>;
+  artifacts?: Record<string, WorkflowArtifactDefinition>;
   phaseOrder: PhaseId[];
   phases: Record<PhaseId, PhaseDefinition>;
 }

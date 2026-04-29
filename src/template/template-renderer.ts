@@ -13,19 +13,24 @@ import { getPlayspecRoot } from '#utils/paths.js';
 const INCLUDE_REGEX = /\{\{include:([^}]+)\}\}/g;
 const UNRESOLVED_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
 
+export interface TemplateRenderOptions {
+  templateRoot?: string;
+  includeRoot?: string;
+}
+
 export class TemplateRenderer {
   constructor(private readonly workspaceRoot: string) {}
 
-  private resolveIncludePath(includePath: string): string {
-    const playspecRoot = getPlayspecRoot(this.workspaceRoot);
-    const resolvedIncludePath = path.resolve(playspecRoot, includePath);
-    const relative = path.relative(playspecRoot, resolvedIncludePath);
+  private resolveIncludePath(includePath: string, includeRoot?: string): string {
+    const root = includeRoot ?? getPlayspecRoot(this.workspaceRoot);
+    const resolvedIncludePath = path.resolve(root, includePath);
+    const relative = path.relative(root, resolvedIncludePath);
 
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new IncludePathOutsideRootError(
         includePath,
         resolvedIncludePath,
-        playspecRoot
+        root
       );
     }
 
@@ -70,7 +75,8 @@ export class TemplateRenderer {
   private async expandIncludes(
     content: string,
     currentFile: string,
-    includeChain: string[]
+    includeChain: string[],
+    includeRoot?: string
   ): Promise<string> {
     const matches = [...content.matchAll(INCLUDE_REGEX)];
     if (matches.length === 0) {
@@ -80,7 +86,7 @@ export class TemplateRenderer {
     let result = content;
     for (const match of matches) {
       const includePath = match[1].trim();
-      const fullIncludePath = this.resolveIncludePath(includePath);
+      const fullIncludePath = this.resolveIncludePath(includePath, includeRoot);
 
       if (includeChain.includes(fullIncludePath)) {
         throw new CircularIncludeError(includePath, [
@@ -99,7 +105,8 @@ export class TemplateRenderer {
       const expanded = await this.expandIncludes(
         includeContent,
         fullIncludePath,
-        [...includeChain, fullIncludePath]
+        [...includeChain, fullIncludePath],
+        includeRoot
       );
 
       result = result.replace(match[0], expanded);
@@ -110,14 +117,11 @@ export class TemplateRenderer {
 
   async render(
     templatePath: string,
-    variables: Record<string, string>
+    variables: Record<string, string>,
+    options: TemplateRenderOptions = {}
   ): Promise<string> {
-    const fullTemplatePath = path.join(
-      this.workspaceRoot,
-      '.playspec',
-      'templates',
-      templatePath
-    );
+    const templateRoot = options.templateRoot ?? path.join(this.workspaceRoot, '.playspec', 'templates');
+    const fullTemplatePath = path.join(templateRoot, templatePath);
 
     let content: string;
     try {
@@ -129,7 +133,7 @@ export class TemplateRenderer {
     // Step 1: expand {{include:...}} before handing to Handlebars
     const expanded = await this.expandIncludes(content, fullTemplatePath, [
       fullTemplatePath,
-    ]);
+    ], options.includeRoot);
 
     const missingTemplateVariables = this.findMissingTemplateVariables(
       expanded,

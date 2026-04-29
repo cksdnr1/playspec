@@ -81,11 +81,11 @@ export function computeEffectivePhaseDisplay(
 }
 
 export async function resolveEffectivePhaseDisplay(
-  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflowType'>,
+  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflowType'> & Pick<Partial<TaskRecord>, 'workflowPack'>,
   workflowLoader: WorkflowLoader,
 ): Promise<EffectivePhaseDisplay> {
   try {
-    const workflow = await workflowLoader.load(task.workflowType);
+    const workflow = (await workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
     return computeEffectivePhaseDisplay(task, workflow);
   } catch {
     return { phaseDisplay: task.currentPhase ?? '(not started)', phaseLabel: 'Phase', phaseIdDisplay: '', gateRouteLines: [], nextRouteLines: [], isEffective: false, isInvalid: false, allowedPhaseIds: [] };

@@ -3,6 +3,7 @@ import { lstat, readdir, realpath, stat } from 'node:fs/promises';
 import { VariableResolver } from '#template/variable-resolver.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { PhaseDefinition, TaskRecord, WorkflowDefinition } from './types.js';
+import type { ResolvedWorkflow } from '#pack/pack-registry.js';
 
 export type RelevantFileSource =
   | 'context-ref'
@@ -35,6 +36,7 @@ export interface DiscoverRelevantFilesInput {
   workspaceRoot: string;
   task: TaskRecord;
   workflow: WorkflowDefinition;
+  resolvedWorkflow?: ResolvedWorkflow;
   phaseId: string;
   definition: PhaseDefinition;
 }
@@ -71,7 +73,11 @@ export async function discoverRelevantFiles(
   const warnings: RelevantFileWarning[] = [];
   const rawCandidates: RawCandidate[] = [];
   const resolver = new VariableResolver();
-  const variables = resolver.resolve(input.task, input.phaseId, input.definition);
+  const variables = resolver.resolve(input.task, input.phaseId, input.definition, {
+    packVariables: input.resolvedWorkflow?.packVariables,
+    workflow: input.workflow,
+    workflowVariables: input.resolvedWorkflow?.workflowVariables,
+  });
 
   for (const ref of input.task.contextRefs ?? []) {
     rawCandidates.push({
@@ -139,8 +145,24 @@ export async function discoverRelevantFiles(
     });
   }
 
+  for (const [artifactName, artifact] of Object.entries(input.workflow.artifacts ?? {})) {
+    const value = variables[artifact.variable];
+    if (value) {
+      rawCandidates.push({
+        value,
+        source: 'workflow',
+        reason: `workflow artifact ${artifactName}`,
+        variableName: artifact.variable,
+        missingAllowed: true,
+      });
+    }
+  }
+
   try {
-    const rendered = await new TemplateRenderer(workspaceRoot).render(input.definition.template, variables);
+    const rendered = await new TemplateRenderer(workspaceRoot).render(input.definition.template, variables, {
+      templateRoot: input.resolvedWorkflow?.templateRoot,
+      includeRoot: input.resolvedWorkflow?.includeRoot,
+    });
     for (const parsed of parseBacktickedPaths(rendered)) {
       rawCandidates.push({
         value: parsed,

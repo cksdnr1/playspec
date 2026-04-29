@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: default
+name: Default PlaySpec Pack
+version: 0.1.0
+description: Built-in PlaySpec workflows, templates, and rules.
+
+variables:
+  SPEC_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/spec.md"
+  PLAN_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/plan.md"
+  RESULT_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/result.md"
+  PR_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/pr.md"
+  TOTAL_SPEC_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/{{FEATURE_SLUG}}_total_spec.md"
+  PHASE_PLAN_FILE:
+    default: "{{PROJECT_DOC_ROOT}}/{{FEATURE_SLUG}}_phase_plan.md"
+
+workflows:
+  mono-spec:
+    path: workflows/mono-spec.yaml
+  multi-spec:
+    path: workflows/multi-spec.yaml
+  simple-bug:
+    path: workflows/simple-bug.yaml
+  total-plan:
+    path: workflows/total-plan.yaml
+  phase-execution:
+    path: workflows/phase-execution.yaml
+
+templates:
+  root: templates
+
+rules:
+  root: rules

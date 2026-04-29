@@ -42,6 +42,7 @@ import type {
   SetCurrentPhaseResult,
 } from '#core/types.js';
 import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
+import type { ResolvedWorkflow } from '#pack/pack-registry.js';
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -68,10 +69,11 @@ export class PlaySpecCore {
   async renderNextPrompt(taskId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const resolvedWorkflow = await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack);
+    const workflow = resolvedWorkflow.workflow;
     this.validateCurrentPhase(task, workflow);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
-    return this.renderResolvedPhase(task, workflow, phaseId, definition);
+    return this.renderResolvedPhase(task, resolvedWorkflow, phaseId, definition);
   }
 
   async addContextRef(taskId: string, contextPath: string): Promise<boolean> {
@@ -108,9 +110,10 @@ export class PlaySpecCore {
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const resolvedWorkflow = await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack);
+    const workflow = resolvedWorkflow.workflow;
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
-    return this.renderResolvedPhase(task, workflow, phaseId, definition);
+    return this.renderResolvedPhase(task, resolvedWorkflow, phaseId, definition);
   }
 
   async checkTaskDesync(taskId: string): Promise<DesyncCheckResult> {
@@ -140,10 +143,11 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const resolvedWorkflow = await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack);
+    const workflow = resolvedWorkflow.workflow;
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     const taskRoot = this.getAbsoluteTaskRoot(task);
-    const validationTemplate = this.resolveValidationTemplate(definition);
+    const validationTemplate = this.resolveValidationTemplate(definition, resolvedWorkflow);
 
     // Phase 3.7: validate routing and compute visit count before any artifact writes
     const { nextPhase, result, visitCount } = this.resolveRoutedCompletion(
@@ -155,7 +159,7 @@ export class PlaySpecCore {
     );
 
     // Render prompt snapshot only after routing validation passes
-    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
+    const promptSnapshot = await this.renderResolvedPhase(task, resolvedWorkflow, phaseId, definition);
 
     return withWriteLock(taskRoot, async () => {
       const snapshotFiles = await this.writeSnapshots(
@@ -280,7 +284,7 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const workflow = (await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
     if (!workflow.phaseOrder.includes(targetPhaseId) || !workflow.phases[targetPhaseId]) {
       throw new InvalidRecoveryTargetError(targetPhaseId, workflow.id, workflow.phaseOrder);
     }
@@ -295,7 +299,7 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const workflow = (await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack)).workflow;
     const { phaseId } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
@@ -310,9 +314,10 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const resolvedWorkflow = await this.workflowLoader.loadResolved(task.workflowType, task.workflowPack);
+    const workflow = resolvedWorkflow.workflow;
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
-    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
+    const promptSnapshot = await this.renderResolvedPhase(task, resolvedWorkflow, phaseId, definition);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
     return withWriteLock(taskRoot, async () => ({
@@ -345,13 +350,21 @@ export class PlaySpecCore {
 
   private async renderResolvedPhase(
     task: TaskRecord,
-    workflow: WorkflowDefinition,
+    resolvedWorkflow: ResolvedWorkflow,
     phaseId: string,
     definition: PhaseDefinition
   ): Promise<string> {
-    const variables = this.variableResolver.resolve(task, phaseId, definition);
+    const workflow = resolvedWorkflow.workflow;
+    const variables = this.variableResolver.resolve(task, phaseId, definition, {
+      packVariables: resolvedWorkflow.packVariables,
+      workflow,
+      workflowVariables: resolvedWorkflow.workflowVariables,
+    });
     this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
-    return this.templateRenderer.render(definition.template, variables);
+    return this.templateRenderer.render(definition.template, variables, {
+      templateRoot: resolvedWorkflow.templateRoot,
+      includeRoot: resolvedWorkflow.includeRoot,
+    });
   }
 
   private resolveNextPhaseId(
@@ -373,12 +386,15 @@ export class PlaySpecCore {
     }
   }
 
-  private resolveValidationTemplate(definition: PhaseDefinition): string | undefined {
+  private resolveValidationTemplate(definition: PhaseDefinition, resolvedWorkflow: ResolvedWorkflow): string | undefined {
     const templatePath = definition.completion?.validationTemplate;
     if (!templatePath) {
       return undefined;
     }
-    return path.join('.playspec', 'templates', templatePath);
+    if (!resolvedWorkflow.packRef) {
+      return path.join('.playspec', 'templates', templatePath);
+    }
+    return path.join(resolvedWorkflow.templateRoot, templatePath);
   }
 
   private buildRollbackSafePoint(

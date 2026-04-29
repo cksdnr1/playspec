@@ -36,9 +36,10 @@ export async function runSpecs(workspaceRoot: string, opts: SpecsOptions): Promi
     throw new TaskNotActiveError(task.id, task.status);
   }
 
-  const workflow = await new WorkflowLoader(workspaceRoot).load(task.workflowType);
+  const resolvedWorkflow = await new WorkflowLoader(workspaceRoot).loadResolved(task.workflowType, task.workflowPack);
+  const workflow = resolvedWorkflow.workflow;
   const { phaseId, definition } = new PhaseResolver().resolveCurrentPhase(task, workflow);
-  const discovery = await discoverRelevantFiles({ workspaceRoot, task, workflow, phaseId, definition });
+  const discovery = await discoverRelevantFiles({ workspaceRoot, task, workflow, resolvedWorkflow, phaseId, definition });
 
   for (const warning of discovery.warnings) {
     process.stderr.write(`Warning: ${warning.path ? `${warning.path}: ` : ''}${warning.message}\n`);

@@ -5,6 +5,12 @@ export const TaskPathsSchema = z.object({
   projectDocRoot: z.string(),
 });
 
+export const WorkflowPackRefSchema = z.object({
+  id: z.string(),
+  version: z.string().optional(),
+  source: z.enum(['builtin', 'user', 'project']).optional(),
+});
+
 export const PhaseHistoryEntrySchema = z.object({
   phase: z.string(),
   status: z.enum(['active', 'completed']),
@@ -23,7 +29,18 @@ export const PhaseCompletionSchema = z.object({
 
 export const PhaseGateSchema = z.object({
   results: z.array(z.string()).min(1),
-  nextByResult: z.record(z.string()),
+  nextByResult: z.record(z.string(), z.string()),
+});
+
+export const VariableDefinitionSchema = z.object({
+  default: z.string().optional(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+});
+
+export const WorkflowArtifactDefinitionSchema = z.object({
+  variable: z.string(),
+  role: z.string().optional(),
 });
 
 export const TaskStateSyncSchema = z.object({
@@ -58,13 +75,14 @@ export const TaskRecordSchema = z.object({
   id: z.string(),
   title: z.string(),
   workflowType: z.string(),
+  workflowPack: WorkflowPackRefSchema.optional(),
   status: z.enum(['active', 'completed', 'archived']),
   workflowMode: z.enum(['linear']),
   currentPhase: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   paths: TaskPathsSchema,
-  variables: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
   phaseHistory: z.array(PhaseHistoryEntrySchema),
   stateSync: TaskStateSyncSchema.optional(),
   rollback: TaskRollbackStateSchema.optional(),
@@ -83,6 +101,7 @@ export const TaskSummarySchema = z.object({
 export const PhaseDefinitionSchema = z.object({
   title: z.string(),
   template: z.string(),
+  variables: z.record(z.string(), VariableDefinitionSchema).optional(),
   stepNumber: z.string().optional(),
   stepTitle: z.string().optional(),
   requiredVariables: z.array(z.string()).optional(),
@@ -91,15 +110,17 @@ export const PhaseDefinitionSchema = z.object({
   gate: PhaseGateSchema.optional(),
   next: z.string().nullable().optional(),
   results: z.array(z.string()).min(1).optional(),
-  nextByResult: z.record(z.string()).optional(),
+  nextByResult: z.record(z.string(), z.string()).optional(),
   maxVisits: z.number().int().positive().optional(),
 });
 
 export const WorkflowDefinitionSchema = z.object({
   id: z.string(),
   mode: z.enum(['linear']),
+  variables: z.record(z.string(), VariableDefinitionSchema).optional(),
+  artifacts: z.record(z.string(), WorkflowArtifactDefinitionSchema).optional(),
   phaseOrder: z.array(z.string()),
-  phases: z.record(PhaseDefinitionSchema),
+  phases: z.record(z.string(), PhaseDefinitionSchema),
 });
 
 export const SessionRecordSchema = z.object({

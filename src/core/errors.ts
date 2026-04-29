@@ -106,6 +106,16 @@ export class UnresolvedPlaceholderError extends PlaySpecError {
   }
 }
 
+export class VariableDefaultResolutionError extends PlaySpecError {
+  constructor(message: string) {
+    super(
+      `Variable default resolution failed: ${message}`,
+      'Check pack/workflow variable defaults for unknown placeholders or circular references.'
+    );
+    this.name = 'VariableDefaultResolutionError';
+  }
+}
+
 export class MissingRequiredVariablesError extends PlaySpecError {
   constructor(workflowId: string, phaseId: string, missingVariables: string[]) {
     super(

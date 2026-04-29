@@ -15,7 +15,8 @@
     "#preset/*.js": "./dist/preset/*.js",
     "#utils/*.js": "./dist/utils/*.js",
     "#mcp/*.js": "./dist/mcp/*.js",
-    "#migration/*.js": "./dist/migration/*.js"
+    "#migration/*.js": "./dist/migration/*.js",
+    "#pack/*.js": "./dist/pack/*.js"
   },
   "scripts": {
     "build": "tsc && tsc-alias && cp -r src/preset/assets dist/preset/assets",
