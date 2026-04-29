@@ -8,6 +8,7 @@ import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 import { formatContextHeader } from '../context-header.js';
 import { copyToClipboard } from '#utils/clipboard.js';
+import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
@@ -112,7 +113,7 @@ export async function outputPrompt(
     // Default: copy to clipboard
     const result = await copyToClipboard(prompt);
     if (result.ok) {
-      console.log(`Prompt copied to clipboard${result.method ? ` via ${result.method}` : ''}.`);
+      for (const line of formatPromptCopySuccess(result)) console.log(line);
       if (wroteOutputPath) {
         console.log(`Prompt written: ${path.relative(workspaceRoot, wroteOutputPath)}`);
       }

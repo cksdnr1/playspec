@@ -10,6 +10,7 @@ import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
+import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../src/cli/index.ts');
@@ -101,6 +102,20 @@ async function initGitRepo(): Promise<void> {
 }
 
 describe('CLI placeholder', () => {
+  it('formats prompt copy success with PRIMARY status when known', () => {
+    expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: true })).toEqual([
+      'Prompt copied to clipboard via native clipboard.',
+      'PRIMARY selection updated.',
+    ]);
+    expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: false })).toEqual([
+      'Prompt copied to clipboard via native clipboard.',
+      'Warning: PRIMARY selection not available; CLIPBOARD copy succeeded.',
+    ]);
+    expect(formatPromptCopySuccess({ method: 'native clipboard' })).toEqual([
+      'Prompt copied to clipboard via native clipboard.',
+    ]);
+  });
+
   it('prints help output when invoked with --help', async () => {
     const result = await runCli(['--help']);
     // --help exits with 0, output goes to stdout
