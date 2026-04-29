@@ -21,7 +21,7 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
   return {
     id: 'feature_x',
     title: 'Feature X',
-    workflowType: 'mono-spec',
+    workflow: 'mono-spec',
     status: 'active',
     workflowMode: 'linear',
     currentPhase: 'implementation',
@@ -37,11 +37,26 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
   };
 }
 
-function workflow(template = 'mono-spec/implementation.md'): WorkflowDefinition {
+function templateRoot(): string {
+  return path.join(workspace.dir, 'workflow', 'templates');
+}
+
+function workflow(template = 'implementation.md'): WorkflowDefinition {
   return {
     id: 'mono-spec',
     mode: 'linear',
     phaseOrder: ['implementation'],
+    variables: {
+      FEATURE_SLUG: { required: true },
+      SPEC_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/spec.md' },
+      PLAN_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/plan.md' },
+      RESULT_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/result.md' },
+      PR_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/pr.md' },
+    },
+    artifacts: {
+      spec: { path: '{{SPEC_FILE}}', kind: 'spec' },
+      generated: { path: 'docs/features/{{FEATURE_SLUG}}/generated.md', kind: 'generated' },
+    },
     phases: {
       implementation: {
         title: 'Implementation',
@@ -53,8 +68,8 @@ function workflow(template = 'mono-spec/implementation.md'): WorkflowDefinition 
   };
 }
 
-async function writeTemplate(content: string, template = 'mono-spec/implementation.md'): Promise<void> {
-  await writeTextFile(path.join(workspace.dir, '.playspec/templates', template), content);
+async function writeTemplate(content: string, template = 'implementation.md'): Promise<void> {
+  await writeTextFile(path.join(templateRoot(), template), content);
 }
 
 describe('discoverRelevantFiles', () => {
@@ -75,6 +90,7 @@ describe('discoverRelevantFiles', () => {
         },
       }),
       workflow: workflow(),
+      templateDir: templateRoot(),
       phaseId: 'implementation',
       definition: workflow().phases.implementation,
     });
@@ -103,6 +119,7 @@ describe('discoverRelevantFiles', () => {
         variables: { FEATURE_SLUG: 'feature_x', DUPLICATE_FILE: 'docs/context.md' },
       }),
       workflow: workflow(),
+      templateDir: templateRoot(),
       phaseId: 'implementation',
       definition: workflow().phases.implementation,
     });
@@ -131,6 +148,7 @@ describe('discoverRelevantFiles', () => {
         },
       }),
       workflow: workflow(),
+      templateDir: templateRoot(),
       phaseId: 'implementation',
       definition: workflow().phases.implementation,
     });
@@ -157,6 +175,7 @@ describe('discoverRelevantFiles', () => {
       workspaceRoot: workspace.dir,
       task: task({ variables: { FEATURE_SLUG: 'feature_x', SECRET_FILE: 'docs/features/feature_x/secret.md' } }),
       workflow: workflow(),
+      templateDir: templateRoot(),
       phaseId: 'implementation',
       definition: workflow().phases.implementation,
     });
@@ -166,19 +185,28 @@ describe('discoverRelevantFiles', () => {
   });
 
   it('discovers legacy non-mono derived files through variables', async () => {
-    await writeTemplate('Use {{PHASE_SPEC_FILE}} and {{PHASE_HANDOFF_FILE}}.', 'multi-spec/phase_template.md');
+    await writeTemplate('Use {{PHASE_SPEC_FILE}} and {{PHASE_HANDOFF_FILE}}.', 'phase_template.md');
     const legacyTask = task({
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
       currentPhase: '3',
       variables: { FEATURE_SLUG: 'feature_x' },
     });
-    const legacyWorkflow = workflow('multi-spec/phase_template.md');
+    const legacyWorkflow = workflow('phase_template.md');
     legacyWorkflow.id = 'multi-spec';
     legacyWorkflow.phaseOrder = ['3'];
+    legacyWorkflow.variables = {
+      FEATURE_SLUG: { required: true },
+      PHASE_SPEC_FILE: {
+        default: 'docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_implementation_spec.md',
+      },
+      PHASE_HANDOFF_FILE: {
+        default: 'docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_handoff.md',
+      },
+    };
     legacyWorkflow.phases = {
       '3': {
         title: 'Phase 3',
-        template: 'multi-spec/phase_template.md',
+        template: 'phase_template.md',
         requiredVariables: ['PHASE_SPEC_FILE', 'PHASE_HANDOFF_FILE'],
       },
     };
@@ -187,6 +215,7 @@ describe('discoverRelevantFiles', () => {
       workspaceRoot: workspace.dir,
       task: legacyTask,
       workflow: legacyWorkflow,
+      templateDir: templateRoot(),
       phaseId: '3',
       definition: legacyWorkflow.phases['3'],
     });

@@ -15,7 +15,7 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
 
   console.log(`ID:           ${task.id}`);
   console.log(`Title:        ${task.title}`);
-  console.log(`Workflow:     ${task.workflowType}`);
+  console.log(`Workflow:     ${task.workflow}`);
   console.log(`Status:       ${task.status}`);
   console.log(`${`${eph.phaseLabel}:`.padEnd(13)}${eph.phaseDisplay}`);
   if (eph.phaseIdDisplay) {

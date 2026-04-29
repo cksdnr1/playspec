@@ -1,5 +1,48 @@
 id: mono-spec
+name: Mono Spec
+description: Built-in workflow for one feature spec, implementation, tests, and PR prep.
+version: 1
 mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+    description: Feature folder name.
+  TARGET_BRANCH:
+    default: origin/master
+    description: Branch used during final refactor review.
+  SPEC_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/spec.md"
+    description: Technical spec document.
+  PLAN_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/plan.md"
+    description: Implementation plan document.
+  RESULT_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/result.md"
+    description: Implementation and test result document.
+  PR_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/pr.md"
+    description: PR preparation document.
+  IMPLEMENTATION_PLAN_FILE:
+    default: "{{PLAN_FILE}}"
+  IMPLEMENTATION_RESULT_FILE:
+    default: "{{RESULT_FILE}}"
+  TEST_RESULT_FILE:
+    default: "{{RESULT_FILE}}"
+  PR_BODY_FILE:
+    default: "{{PR_FILE}}"
+artifacts:
+  spec:
+    path: "{{SPEC_FILE}}"
+    kind: spec
+  plan:
+    path: "{{PLAN_FILE}}"
+    kind: plan
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
+  pr:
+    path: "{{PR_FILE}}"
+    kind: pr
 phaseOrder:
   - tech_spec_draft
   - tech_spec_validate
@@ -16,7 +59,7 @@ phases:
     title: "기술 명세서 업데이트"
     stepNumber: "1"
     stepTitle: "기술 명세서 업데이트"
-    template: mono-spec/tech_spec_draft.md
+    template: tech_spec_draft.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -29,7 +72,7 @@ phases:
     title: "기술 교차 검증"
     stepNumber: "2"
     stepTitle: "기술 교차 검증"
-    template: mono-spec/tech_spec_validate.md
+    template: tech_spec_validate.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -49,7 +92,7 @@ phases:
     title: "기술 명세서 업데이트"
     stepNumber: "3"
     stepTitle: "기술 명세서 업데이트"
-    template: mono-spec/tech_spec_patch.md
+    template: tech_spec_patch.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -62,7 +105,7 @@ phases:
     title: "구현 계획서 생성"
     stepNumber: "4"
     stepTitle: "구현 계획서 생성"
-    template: mono-spec/implementation_plan_create.md
+    template: implementation_plan_create.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -74,7 +117,7 @@ phases:
     title: "구현 계획서 교차 검증"
     stepNumber: "5"
     stepTitle: "구현 계획서 교차 검증"
-    template: mono-spec/implementation_plan_validate.md
+    template: implementation_plan_validate.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -93,7 +136,7 @@ phases:
     title: "구현 계획서 업데이트"
     stepNumber: "6"
     stepTitle: "구현 계획서 업데이트"
-    template: mono-spec/implementation_plan_patch.md
+    template: implementation_plan_patch.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -106,7 +149,7 @@ phases:
     title: "기술 구현"
     stepNumber: "7"
     stepTitle: "기술 구현"
-    template: mono-spec/implementation.md
+    template: implementation.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -118,7 +161,7 @@ phases:
     title: "테스트"
     stepNumber: "8"
     stepTitle: "테스트"
-    template: mono-spec/focused_tests.md
+    template: focused_tests.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -130,7 +173,7 @@ phases:
     title: "리팩토링"
     stepNumber: "9"
     stepTitle: "리팩토링"
-    template: mono-spec/safe_refactor.md
+    template: safe_refactor.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -143,7 +186,7 @@ phases:
     title: "PR 준비"
     stepNumber: "10"
     stepTitle: "PR 준비"
-    template: mono-spec/pr_prepare.md
+    template: pr_prepare.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE

@@ -26,6 +26,14 @@ import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
 import { runMigrate } from './commands/migrate.js';
+import {
+  runWorkflowExport,
+  runWorkflowInstall,
+  runWorkflowList,
+  runWorkflowRemove,
+  runWorkflowShow,
+  runWorkflowValidate,
+} from './commands/workflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -67,6 +75,76 @@ program
   .description('PlaySpec — LLM workflow engine')
   .version(pkg.version);
 
+const workflowCommand = program
+  .command('workflow')
+  .description('Manage workflow runtime assets');
+
+workflowCommand
+  .command('list')
+  .description('List available workflows')
+  .action(async () => {
+    try {
+      await runWorkflowList(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('show <id>')
+  .description('Show workflow details')
+  .action(async (id: string) => {
+    try {
+      await runWorkflowShow(process.cwd(), id);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('validate <path>')
+  .description('Validate a workflow directory')
+  .action(async (workflowPath: string) => {
+    try {
+      await runWorkflowValidate(process.cwd(), workflowPath);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('install <path>')
+  .description('Install a user workflow directory')
+  .action(async (workflowPath: string) => {
+    try {
+      await runWorkflowInstall(process.cwd(), workflowPath);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('remove <id>')
+  .description('Remove a user workflow')
+  .action(async (id: string) => {
+    try {
+      await runWorkflowRemove(process.cwd(), id);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('export <id> [outDir]')
+  .description('Export a workflow directory')
+  .action(async (id: string, outDir: string | undefined) => {
+    try {
+      await runWorkflowExport(process.cwd(), id, outDir);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
 // init
 program
   .command('init')
@@ -82,19 +160,20 @@ program
 
 // create
 program
-  .command('create [workflowType] [title]')
+  .command('create [first] [second]')
   .description('Create a new task (omit both arguments to launch the interactive wizard)')
+  .option('--workflow <id>', 'Workflow to use', 'mono-spec')
   .option('--phase <n>', 'Target workflow phase for phase-execution tasks')
   .option('--from <value>', 'Source problem file path (without --phase) or planning task ID (with --phase)')
   .option('--from-file <path>', 'Seed the task from a source problem file')
   .option('--stdin', 'Seed the task from stdin (for scripts and automation)', false)
   .option('--edit', 'Open $EDITOR to write the source problem', false)
-  .action(async (workflowType: string | undefined, title: string | undefined, opts: { phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean }) => {
-    if (!workflowType && !title) {
+  .action(async (first: string | undefined, second: string | undefined, opts: { workflow: string; phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean }) => {
+    if (!first && !second) {
       const isInteractive = process.stdout.isTTY === true && !process.env['PLAY_SPEC_NON_INTERACTIVE'];
       if (!isInteractive) {
         console.error(chalk.red('Error: Interactive wizard requires a terminal.'));
-        console.error(chalk.yellow('Hint: Use: playspec create <workflowType> "<title>"'));
+        console.error(chalk.yellow('Hint: Use: playspec create "<title>" --workflow mono-spec'));
         process.exit(1);
       }
       try {
@@ -104,12 +183,14 @@ program
       }
       return;
     }
-    if (!workflowType || !title) {
-      console.error(chalk.red('Error: Both workflow type and title are required, or omit both for the interactive wizard.'));
+    const workflow = second ? first : opts.workflow;
+    const title = second ?? first;
+    if (!workflow || !title) {
+      console.error(chalk.red('Error: Task title is required, or omit all arguments for the interactive wizard.'));
       process.exit(1);
     }
     try {
-      await runCreate(process.cwd(), workflowType, title, opts);
+      await runCreate(process.cwd(), workflow, title, opts);
     } catch (err) {
       handleError(err);
     }
@@ -130,7 +211,7 @@ program
 // list-tasks
 program
   .command('list-tasks')
-  .description('List active tasks with workflow type and phase state')
+  .description('List active tasks with workflow and phase state')
   .action(async () => {
     try {
       await runListTasks(process.cwd());

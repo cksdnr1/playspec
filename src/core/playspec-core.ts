@@ -32,6 +32,7 @@ import type {
   TaskRecord,
   TaskContextRef,
   WorkflowDefinition,
+  ResolvedWorkflow,
   CompletionResult,
   EvidenceResult,
   SnapshotResult,
@@ -68,9 +69,9 @@ export class PlaySpecCore {
   async renderNextPrompt(taskId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
-    const workflow = await this.workflowLoader.load(task.workflowType);
-    this.validateCurrentPhase(task, workflow);
-    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const workflow = await this.workflowLoader.resolve(task.workflow);
+    this.validateCurrentPhase(task, workflow.definition);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
   }
 
@@ -108,8 +109,8 @@ export class PlaySpecCore {
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
-    const workflow = await this.workflowLoader.load(task.workflowType);
-    const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow);
+    const workflow = await this.workflowLoader.resolve(task.workflow);
+    const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow.definition);
     return this.renderResolvedPhase(task, workflow, phaseId, definition);
   }
 
@@ -140,15 +141,15 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
-    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const workflow = await this.workflowLoader.resolve(task.workflow);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
     const taskRoot = this.getAbsoluteTaskRoot(task);
-    const validationTemplate = this.resolveValidationTemplate(definition);
+    const validationTemplate = this.resolveValidationTemplate(workflow, definition);
 
     // Phase 3.7: validate routing and compute visit count before any artifact writes
     const { nextPhase, result, visitCount } = this.resolveRoutedCompletion(
       task,
-      workflow,
+      workflow.definition,
       phaseId,
       definition,
       options.result
@@ -280,7 +281,7 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const workflow = await this.workflowLoader.load(task.workflow);
     if (!workflow.phaseOrder.includes(targetPhaseId) || !workflow.phases[targetPhaseId]) {
       throw new InvalidRecoveryTargetError(targetPhaseId, workflow.id, workflow.phaseOrder);
     }
@@ -295,7 +296,7 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
+    const workflow = await this.workflowLoader.load(task.workflow);
     const { phaseId } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
@@ -310,8 +311,8 @@ export class PlaySpecCore {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
 
-    const workflow = await this.workflowLoader.load(task.workflowType);
-    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    const workflow = await this.workflowLoader.resolve(task.workflow);
+    const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
     const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
@@ -328,7 +329,12 @@ export class PlaySpecCore {
     definition: PhaseDefinition,
     variables: Record<string, string>
   ): void {
-    const requiredVariables = definition.requiredVariables ?? [];
+    const requiredVariables = [
+      ...Object.entries(definition.variables ?? {})
+        .filter(([, declaration]) => declaration.required === true)
+        .map(([name]) => name),
+      ...(definition.requiredVariables ?? []),
+    ];
     const missingVariables = requiredVariables.filter((name) => {
       const value = variables[name];
       return value === undefined || value === '';
@@ -345,13 +351,19 @@ export class PlaySpecCore {
 
   private async renderResolvedPhase(
     task: TaskRecord,
-    workflow: WorkflowDefinition,
+    workflow: ResolvedWorkflow,
     phaseId: string,
     definition: PhaseDefinition
   ): Promise<string> {
-    const variables = this.variableResolver.resolve(task, phaseId, definition);
-    this.assertRequiredVariables(workflow.id, phaseId, definition, variables);
-    return this.templateRenderer.render(definition.template, variables);
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
+    this.assertRequiredVariables(workflow.id, phaseId, {
+      ...definition,
+      variables: {
+        ...(workflow.definition.variables ?? {}),
+        ...(definition.variables ?? {}),
+      },
+    }, variables);
+    return this.templateRenderer.render(definition.template, variables, workflow.templateDir);
   }
 
   private resolveNextPhaseId(
@@ -373,12 +385,12 @@ export class PlaySpecCore {
     }
   }
 
-  private resolveValidationTemplate(definition: PhaseDefinition): string | undefined {
+  private resolveValidationTemplate(workflow: ResolvedWorkflow, definition: PhaseDefinition): string | undefined {
     const templatePath = definition.completion?.validationTemplate;
     if (!templatePath) {
       return undefined;
     }
-    return path.join('.playspec', 'templates', templatePath);
+    return path.join('workflow', workflow.id, 'templates', templatePath);
   }
 
   private buildRollbackSafePoint(

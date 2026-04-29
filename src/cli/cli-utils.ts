@@ -40,7 +40,7 @@ export interface EffectivePhaseDisplay {
 }
 
 export function computeEffectivePhaseDisplay(
-  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflowType'>,
+  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflow'>,
   workflow: WorkflowDefinition,
 ): EffectivePhaseDisplay {
   const phaseOrder = workflow.phaseOrder;
@@ -81,11 +81,11 @@ export function computeEffectivePhaseDisplay(
 }
 
 export async function resolveEffectivePhaseDisplay(
-  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflowType'>,
+  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflow'>,
   workflowLoader: WorkflowLoader,
 ): Promise<EffectivePhaseDisplay> {
   try {
-    const workflow = await workflowLoader.load(task.workflowType);
+    const workflow = await workflowLoader.load(task.workflow);
     return computeEffectivePhaseDisplay(task, workflow);
   } catch {
     return { phaseDisplay: task.currentPhase ?? '(not started)', phaseLabel: 'Phase', phaseIdDisplay: '', gateRouteLines: [], nextRouteLines: [], isEffective: false, isInvalid: false, allowedPhaseIds: [] };

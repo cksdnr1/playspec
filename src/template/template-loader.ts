@@ -1,12 +1,11 @@
 import { TemplateNotFoundError } from '#core/errors.js';
 import { readTextFile } from '#utils/fs.js';
-import { getTemplatePath } from '#utils/paths.js';
 
 export class TemplateLoader {
-  constructor(private readonly workspaceRoot: string) {}
+  constructor(private readonly templateRoot: string) {}
 
   async load(templatePath: string): Promise<string> {
-    const fullPath = getTemplatePath(this.workspaceRoot, templatePath);
+    const fullPath = `${this.templateRoot}/${templatePath}`;
     try {
       return await readTextFile(fullPath);
     } catch {

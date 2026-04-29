@@ -1,5 +1,31 @@
 id: total-plan
+name: Total Plan
+description: Built-in workflow for planning a larger feature across implementation phases.
+version: 1
 mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+    description: Feature folder name.
+  TOTAL_SPEC_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_total_spec.md"
+    description: Total technical spec document.
+  PHASE_PLAN_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase_plan.md"
+    description: Phase implementation plan document.
+  RESULT_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/result.md"
+    description: Final planning review result.
+artifacts:
+  totalSpec:
+    path: "{{TOTAL_SPEC_FILE}}"
+    kind: total-spec
+  phasePlan:
+    path: "{{PHASE_PLAN_FILE}}"
+    kind: phase-plan
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
 phaseOrder:
   - total_spec_draft
   - total_spec_validate
@@ -13,7 +39,7 @@ phases:
     title: "Total Technical Spec Draft"
     stepNumber: "1"
     stepTitle: "Total Technical Spec Draft"
-    template: total-plan/total_spec_draft.md
+    template: total_spec_draft.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -29,7 +55,7 @@ phases:
     title: "Total Technical Spec Validation"
     stepNumber: "2"
     stepTitle: "Total Technical Spec Validation"
-    template: total-plan/total_spec_validate.md
+    template: total_spec_validate.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -52,7 +78,7 @@ phases:
     title: "Total Technical Spec Patch"
     stepNumber: "3"
     stepTitle: "Total Technical Spec Patch"
-    template: total-plan/total_spec_patch.md
+    template: total_spec_patch.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -66,7 +92,7 @@ phases:
     title: "Phase Implementation Plan Create"
     stepNumber: "4"
     stepTitle: "Phase Implementation Plan Create"
-    template: total-plan/phase_plan_create.md
+    template: phase_plan_create.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -82,7 +108,7 @@ phases:
     title: "Phase Implementation Plan Validation"
     stepNumber: "5"
     stepTitle: "Phase Implementation Plan Validation"
-    template: total-plan/phase_plan_validate.md
+    template: phase_plan_validate.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -102,7 +128,7 @@ phases:
     title: "Phase Implementation Plan Patch"
     stepNumber: "6"
     stepTitle: "Phase Implementation Plan Patch"
-    template: total-plan/phase_plan_patch.md
+    template: phase_plan_patch.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE
@@ -116,7 +142,7 @@ phases:
     title: "Final Planning Review"
     stepNumber: "7"
     stepTitle: "Final Planning Review"
-    template: total-plan/final_review.md
+    template: final_review.md
     requiredVariables:
       - FEATURE_SLUG
       - TASK_TITLE

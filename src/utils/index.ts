@@ -5,6 +5,4 @@ export {
   getTasksRoot,
   getTaskRoot,
   getHeadPath,
-  getWorkflowPath,
-  getTemplatePath,
 } from './paths.js';

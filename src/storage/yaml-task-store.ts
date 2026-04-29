@@ -33,7 +33,7 @@ export class YamlTaskStore implements TaskStore {
     } catch {
       throw new TaskNotFoundError(taskId);
     }
-    const raw = parseYaml(content) as unknown;
+    const raw = normalizeLegacyTask(parseYaml(content) as unknown);
     return TaskRecordSchema.parse(raw);
   }
 
@@ -61,7 +61,7 @@ export class YamlTaskStore implements TaskStore {
             title: task.title,
             status: task.status,
             currentPhase: task.currentPhase,
-            workflowType: task.workflowType,
+            workflow: task.workflow,
           });
         }
       } catch {
@@ -89,7 +89,7 @@ export class YamlTaskStore implements TaskStore {
             title: task.title,
             status: task.status,
             currentPhase: task.currentPhase,
-            workflowType: task.workflowType,
+            workflow: task.workflow,
           });
         }
       } catch {
@@ -107,7 +107,7 @@ export class YamlTaskStore implements TaskStore {
     const task: TaskRecord = {
       id: input.id,
       title: input.title,
-      workflowType: input.workflowType,
+      workflow: input.workflow,
       status: 'active',
       workflowMode: 'linear',
       currentPhase: null,
@@ -222,4 +222,18 @@ export class YamlTaskStore implements TaskStore {
     retainedHistory.push(newEntry);
     return retainedHistory;
   }
+}
+
+function normalizeLegacyTask(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return raw;
+  }
+  const record = raw as Record<string, unknown>;
+  if (typeof record['workflow'] !== 'string' && typeof record['workflowType'] === 'string') {
+    return {
+      ...record,
+      workflow: record['workflowType'],
+    };
+  }
+  return raw;
 }

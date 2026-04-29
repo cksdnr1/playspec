@@ -32,7 +32,7 @@ export async function renderPromptWithContext(
   const prompt = await core.renderNextPrompt(task.id);
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const phaseResolver = new PhaseResolver();
-  const workflow = await workflowLoader.load(task.workflowType);
+  const workflow = await workflowLoader.load(task.workflow);
   const { phaseId, definition } = phaseResolver.resolveCurrentPhase(task, workflow);
   const display = phaseDisplayInfo(phaseId, definition);
   const gateRouteLines = definition.stepNumber && gateResults(definition).length > 0
@@ -62,7 +62,7 @@ export async function outputPrompt(
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const phaseResolver = new PhaseResolver();
-  const workflow = await workflowLoader.load(task.workflowType);
+  const workflow = await workflowLoader.load(task.workflow);
   const { phaseId, definition } = phaseResolver.resolveCurrentPhase(task, workflow);
   const display = phaseDisplayInfo(phaseId, definition);
   const gateRouteLines = definition.stepNumber && gateResults(definition).length > 0

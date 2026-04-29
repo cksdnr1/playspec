@@ -26,6 +26,18 @@ export const PhaseGateSchema = z.object({
   nextByResult: z.record(z.string()),
 });
 
+export const VariableDeclarationSchema = z.object({
+  required: z.boolean().optional(),
+  default: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const ArtifactDeclarationSchema = z.object({
+  path: z.string(),
+  kind: z.string().optional(),
+  description: z.string().optional(),
+});
+
 export const TaskStateSyncSchema = z.object({
   lastKnownGitHead: z.string().nullable(),
   lastCompletedAt: z.string().nullable(),
@@ -57,7 +69,7 @@ export const TaskContextRefSchema = z.object({
 export const TaskRecordSchema = z.object({
   id: z.string(),
   title: z.string(),
-  workflowType: z.string(),
+  workflow: z.string(),
   status: z.enum(['active', 'completed', 'archived']),
   workflowMode: z.enum(['linear']),
   currentPhase: z.string().nullable(),
@@ -77,7 +89,7 @@ export const TaskSummarySchema = z.object({
   title: z.string(),
   status: z.enum(['active', 'completed', 'archived']),
   currentPhase: z.string().nullable(),
-  workflowType: z.string(),
+  workflow: z.string(),
 });
 
 export const PhaseDefinitionSchema = z.object({
@@ -85,6 +97,7 @@ export const PhaseDefinitionSchema = z.object({
   template: z.string(),
   stepNumber: z.string().optional(),
   stepTitle: z.string().optional(),
+  variables: z.record(VariableDeclarationSchema).optional(),
   requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   completion: PhaseCompletionSchema.optional(),
@@ -97,7 +110,12 @@ export const PhaseDefinitionSchema = z.object({
 
 export const WorkflowDefinitionSchema = z.object({
   id: z.string(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  version: z.union([z.string(), z.number()]).optional(),
   mode: z.enum(['linear']),
+  variables: z.record(VariableDeclarationSchema).optional(),
+  artifacts: z.record(ArtifactDeclarationSchema).optional(),
   phaseOrder: z.array(z.string()),
   phases: z.record(PhaseDefinitionSchema),
 });

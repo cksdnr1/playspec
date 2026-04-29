@@ -22,12 +22,12 @@ describe('YamlTaskStore', () => {
     const task = await store.createTask({
       id: 'my_feature',
       title: 'My Feature',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
     });
 
     expect(task.id).toBe('my_feature');
     expect(task.title).toBe('My Feature');
-    expect(task.workflowType).toBe('multi-spec');
+    expect(task.workflow).toBe('multi-spec');
     expect(task.status).toBe('active');
     expect(task.currentPhase).toBeNull();
     expect(task.stateSync).toEqual({
@@ -50,8 +50,8 @@ describe('YamlTaskStore', () => {
 
   it('lists active tasks', async () => {
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'task_a', title: 'Task A', workflowType: 'multi-spec' });
-    await store.createTask({ id: 'task_b', title: 'Task B', workflowType: 'mono-spec' });
+    await store.createTask({ id: 'task_a', title: 'Task A', workflow: 'multi-spec' });
+    await store.createTask({ id: 'task_b', title: 'Task B', workflow: 'mono-spec' });
 
     const tasks = await store.listActiveTasks();
     expect(tasks).toHaveLength(2);
@@ -62,7 +62,7 @@ describe('YamlTaskStore', () => {
 
   it('updates a task', async () => {
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'my_task', title: 'My Task', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'my_task', title: 'My Task', workflow: 'multi-spec' });
 
     const updated = await store.updateTask('my_task', { currentPhase: '2' });
     expect(updated.currentPhase).toBe('2');
@@ -75,7 +75,7 @@ describe('YamlTaskStore', () => {
     const { access } = await import('node:fs/promises');
     const path = await import('node:path');
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'dir_test', title: 'Dir Test', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'dir_test', title: 'Dir Test', workflow: 'multi-spec' });
 
     const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', 'dir_test');
     await expect(access(path.join(taskRoot, 'outputs'))).resolves.not.toThrow();
@@ -93,7 +93,7 @@ describe('YamlTaskStore', () => {
     const task = await store.createTask({
       id: 'exec_task',
       title: 'Exec Task',
-      workflowType: 'phase-execution',
+      workflow: 'phase-execution',
       target: { phaseNumber: '1' },
       contextRefs: [
         { path: 'docs/features/planning/planning_total_spec.md', role: 'planning-context', source: 'planning' },
@@ -116,7 +116,7 @@ describe('YamlTaskStore', () => {
     const task = await store.createTask({
       id: 'source_task',
       title: 'Source Task',
-      workflowType: 'mono-spec',
+      workflow: 'mono-spec',
       variables: {
         SOURCE_PROBLEM_FILE: '.playspec/tasks/active/source_task/sources/source_problem.md',
       },
@@ -150,7 +150,7 @@ describe('YamlTaskStore', () => {
       path.join(taskRoot, 'task.yaml'),
       `id: legacy_task
 title: Legacy Task
-workflowType: multi-spec
+workflow: multi-spec
 status: active
 workflowMode: linear
 currentPhase: null
@@ -174,8 +174,8 @@ phaseHistory: []
 
   it('listCompletedTasks returns only completed tasks', async () => {
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'active_task', title: 'Active Task', workflowType: 'multi-spec' });
-    await store.createTask({ id: 'done_task', title: 'Done Task', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'active_task', title: 'Active Task', workflow: 'multi-spec' });
+    await store.createTask({ id: 'done_task', title: 'Done Task', workflow: 'multi-spec' });
     // Mark done_task as completed
     await store.updateTask('done_task', { status: 'completed' });
 
@@ -197,7 +197,7 @@ phaseHistory: []
       path.join(taskRoot, 'task.yaml'),
       `id: old_task
 title: Old Task
-workflowType: multi-spec
+workflow: multi-spec
 status: active
 workflowMode: linear
 currentPhase: null
