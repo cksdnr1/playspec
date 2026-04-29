@@ -18,6 +18,12 @@
 - Updated relevant-file discovery to account for workflow artifacts and
   pack-aware template rendering.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/33
+- Branch: `agent/issue-30-workflow-template-packs`
+- Initial implementation commit: `ae04625`
+
 ## Files Changed
 
 - `package.json`

@@ -2,6 +2,8 @@
 
 Fixes #30
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/33
+
 ## Summary
 
 - Added workflow/template pack manifests, validation, install/remove/list/show,
