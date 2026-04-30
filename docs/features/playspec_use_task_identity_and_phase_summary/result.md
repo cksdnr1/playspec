@@ -54,5 +54,5 @@
 ## PR Preparation Notes
 
 - Reusable agent guidance: not needed. The issue is a one-off CLI UX fix and did not reveal a durable project-agent rule.
-- PR link: pending draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/39
 - Final limitations: none beyond the intentional wording changes and deterministic, non-autoselecting suggestions.

@@ -43,4 +43,4 @@ Skipped: none.
 
 ## PR Link
 
-Pending draft PR creation.
+https://github.com/cksdnr1/playspec/pull/39
