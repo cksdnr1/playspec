@@ -16,7 +16,7 @@ Variables:
 
 Source of truth:
 - `{{PLAN_FILE}}`
-- Latest implementation plan validation output.
+- Latest markdown implementation plan validation/risk score output from Step 5, including `Score: X/100`.
 - Current repository code only where needed to verify a disputed plan point.
 
 Scope rules:
@@ -28,7 +28,7 @@ Scope rules:
 
 Output requirements:
 - Update `{{PLAN_FILE}}`.
-- Record resolved validation findings and remaining risks.
+- Record resolved validation findings and remaining risks, and reference the latest Step 5 score.
 - Leave clear implementation steps and focused test targets.
 
 Approval/gate handling:

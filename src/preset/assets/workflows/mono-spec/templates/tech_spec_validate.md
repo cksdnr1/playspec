@@ -1,10 +1,10 @@
 # {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
-Prepare an external GPT validation prompt for the current technical spec.
+Validate the current technical spec and produce a markdown validation/risk ledger.
 
 This step does not edit files directly.
-This step is for asking an external Web GPT to review the pasted technical spec, then the human/user reviews the GPT answer before the next patch step.
+This step is for Codex/the code agent to review the current technical spec against the repository and decide the gated result.
 
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
@@ -22,27 +22,19 @@ Variables:
 - RESULT_FILE=`{{RESULT_FILE}}`
 - PR_FILE=`{{PR_FILE}}`
 
-Operator instructions:
-1. Open the current technical spec from `{{SPEC_FILE}}`.
-2. Copy the full spec content.
-3. Paste the external GPT prompt below into Web GPT.
-4. Paste the copied spec content into the `PASTED TECHNICAL SPEC` section.
-5. Review GPT's answer manually.
-6. Use the reviewed answer as input for the next step: technical spec patch.
+Source of truth:
+- `{{SPEC_FILE}}`
+- Linked source problem and context files when present.
+- Current repository code.
 
-External GPT prompt to copy:
+Validation instructions:
+Review the technical spec and produce a compact markdown validation plus patch-ready risk ledger.
 
-```text
-Task:
-Review the pasted technical spec and produce a compact validation plus patch-ready risk ledger.
-
-Do not assume repo files, hidden docs, code, paths, or external context.
-Use ONLY the pasted technical spec below.
 This is review only.
 Do not implement, rewrite the spec, or write code.
 
 Start with a readiness score X/100 and a one-line reason.
-The score means implementation confidence based only on the pasted spec readiness, not whether the implementation already exists.
+The score means implementation confidence based on spec readiness against the current repository, not whether the implementation already exists.
 
 Validate:
 - phase/workflow boundary
@@ -66,13 +58,13 @@ Rules:
 - The workflow/spec boundary is the source of truth, but proof wording is not proof of correctness.
 - Do not treat helper, interface, callback, command option, function, or data-structure existence as end-to-end implementation.
 - Judge end-to-end from active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior.
-- If unclear, say "unclear from pasted context."
+- If unclear, say "unclear from current context."
 - Prefer narrow clarification or small patch actions over redesign.
 
-Output exactly:
+Output markdown exactly:
 
 0. Readiness score
-- Score:
+- Score: X/100
 - Why:
 
 1. Final verdict
@@ -127,15 +119,12 @@ For each:
 - Minimum remaining spec work:
 - Must not carry unresolved:
 
-PASTED TECHNICAL SPEC:
-<<<PASTE SPEC CONTENT HERE>>>
-
 Approval/gate handling:
 - This validation step has an approval gate.
-- If the technical spec is good enough to proceed:
+- If the technical spec readiness score is `>= 95/100` and no blockers remain:
   - run `playspec complete --result approved`
   - routes to Step 4. 구현 계획서 생성
-- If the technical spec needs revision:
+- If the technical spec readiness score is below `95/100` or unresolved blockers remain:
   - run `playspec complete --result needs_revision`
   - routes to Step 3. 기술 명세서 업데이트
 - Plain `playspec complete` must not silently choose a route for this gated step.

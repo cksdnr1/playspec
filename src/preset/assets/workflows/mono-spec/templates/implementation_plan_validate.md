@@ -28,16 +28,19 @@ Scope rules:
 
 Output requirements:
 - Update the validation/risk ledger in `{{PLAN_FILE}}`.
+- Include markdown validation/risk output with `Score: X/100`.
 - List blockers, medium risks, low risks, and recommended minimal patches to the plan.
 - Separately list unresolved blockers after considering valid proposed fixes.
-- State whether the next update step should be completed as `approved` or `needs_revision`.
+- State the exact result to pass to completion:
+  - Use `playspec complete --result approved` only when the readiness score is `>= 95/100` and no blockers remain.
+  - Use `playspec complete --result needs_revision` when the readiness score is below `95/100` or unresolved blockers remain.
 
 Approval/gate handling:
 - This implementation plan validation step has an approval gate.
-- If the implementation plan is good enough to execute:
+- If the implementation plan readiness score is `>= 95/100` and no blockers remain:
   - run `playspec complete --result approved`
   - routes to Step 7. 기술 구현
-- If the implementation plan needs revision:
+- If the implementation plan readiness score is below `95/100` or unresolved blockers remain:
   - run `playspec complete --result needs_revision`
   - routes to Step 6. 구현 계획서 업데이트
 - Plain `playspec complete` must not silently choose a route for this gated step.

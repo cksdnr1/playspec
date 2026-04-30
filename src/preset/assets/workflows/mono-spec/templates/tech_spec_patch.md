@@ -16,7 +16,7 @@ Variables:
 
 Source of truth:
 - `{{SPEC_FILE}}`
-- Latest technical validation output.
+- Latest markdown technical validation/risk score output from Step 2, including `Score: X/100`.
 - Current repository code for directly related verification only.
 
 Scope rules:
@@ -28,7 +28,7 @@ Scope rules:
 
 Output requirements:
 - Update `{{SPEC_FILE}}`.
-- Record which validation issues were resolved, downgraded, or remain blockers.
+- Record which validation issues were resolved, downgraded, or remain blockers, and reference the latest Step 2 score.
 - Keep markdown readable for the implementation planner.
 
 Approval/gate handling:
