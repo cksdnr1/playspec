@@ -188,6 +188,26 @@ describe('init → create → next (end-to-end)', () => {
     expect(validationPrompt).toContain('Minimum remaining spec work');
     expect(validationPrompt).toContain('Do not treat helper, interface, callback, command option, function, or data-structure existence');
     expect(validationPrompt).toContain('active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior');
+    expect(validationPrompt).toContain('Codex/the code agent');
+    expect(validationPrompt).toContain('Score: X/100');
+    expect(validationPrompt).toContain('technical spec readiness score is `>= 95/100` and no blockers remain');
+    expect(validationPrompt).toContain('technical spec readiness score is below `95/100` or unresolved blockers remain');
+    expect(validationPrompt).not.toMatch(/external GPT|Web GPT|pasted|PASTED|Paste the|Copy the full spec/);
+
+    const specPatchPrompt = await core.renderExplicitPhasePrompt(taskId, 'tech_spec_patch');
+    expect(specPatchPrompt).toContain('Latest markdown technical validation/risk score output from Step 2');
+    expect(specPatchPrompt).toContain('Score: X/100');
+    expect(specPatchPrompt).toContain('reference the latest Step 2 score');
+
+    const planValidationPrompt = await core.renderExplicitPhasePrompt(taskId, 'implementation_plan_validate');
+    expect(planValidationPrompt).toContain('Score: X/100');
+    expect(planValidationPrompt).toContain('implementation plan readiness score is `>= 95/100` and no blockers remain');
+    expect(planValidationPrompt).toContain('implementation plan readiness score is below `95/100` or unresolved blockers remain');
+
+    const planPatchPrompt = await core.renderExplicitPhasePrompt(taskId, 'implementation_plan_patch');
+    expect(planPatchPrompt).toContain('Latest markdown implementation plan validation/risk score output from Step 5');
+    expect(planPatchPrompt).toContain('Score: X/100');
+    expect(planPatchPrompt).toContain('reference the latest Step 5 score');
 
     const refactorPrompt = await core.renderExplicitPhasePrompt(taskId, 'safe_refactor');
     expect(refactorPrompt).toContain('TARGET_BRANCH=`origin/master`');

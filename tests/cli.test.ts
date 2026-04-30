@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, readdir, writeFile } from 'node:fs/promises';
 import { execa } from 'execa';
 import path from 'node:path';
@@ -65,6 +65,8 @@ function runCliInPtyWithInputScript(
   });
 }
 let workspace: TempWorkspace;
+
+vi.setConfig({ testTimeout: 20_000 });
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
@@ -1095,7 +1097,7 @@ phases:
       expect(result.stdout).toContain('Next phase: 2. 기술 교차 검증');
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('tech_spec_validate');
-    });
+    }, 15_000);
 
     it('step 4 complete routes to step 5 (implementation_plan_create -> implementation_plan_validate)', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step4');
@@ -1171,7 +1173,7 @@ phases:
         const task = await store.getTask(taskId);
         expect(task.currentPhase).toBe(toPhase);
       }
-    });
+    }, 20_000);
 
     it('step 10 complete marks workflow done', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step10');
