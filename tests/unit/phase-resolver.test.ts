@@ -17,7 +17,7 @@ const workflow: WorkflowDefinition = {
 const baseTask: TaskRecord = {
   id: 'feature_name',
   title: 'Feature Name',
-  workflowType: 'multi-spec',
+  workflow: 'multi-spec',
   status: 'active',
   workflowMode: 'linear',
   currentPhase: null,

@@ -1,5 +1,9 @@
 import { slugify } from '#utils/slug.js';
-import type { PhaseDefinition, TaskRecord } from '#core/types.js';
+import {
+  CircularVariableDefaultError,
+  UnknownVariableDefaultError,
+} from '#core/errors.js';
+import type { PhaseDefinition, TaskRecord, VariableDeclaration, WorkflowDefinition } from '#core/types.js';
 
 export interface ResolvedVariables {
   FEATURE_SLUG: string;
@@ -32,7 +36,12 @@ export interface ResolvedVariables {
 }
 
 export class VariableResolver {
-  resolve(task: TaskRecord, phaseId: string, definition?: PhaseDefinition): ResolvedVariables {
+  resolve(
+    task: TaskRecord,
+    phaseId: string,
+    workflow?: WorkflowDefinition,
+    definition?: PhaseDefinition
+  ): ResolvedVariables {
     const featureSlug =
       task.variables['FEATURE_SLUG'] ?? slugify(task.title);
 
@@ -41,73 +50,130 @@ export class VariableResolver {
     const stepTitle = definition?.stepTitle ?? definition?.title ?? phaseId;
     const phaseNumber = stepNumber;
 
-    const isMonoSpec = task.workflowType === 'mono-spec';
-    const stepFilePrefix = `${featureSlug}_step${stepNumber}_${stepId}`;
-    const phaseSpecFile = isMonoSpec
-      ? `docs/${featureSlug}/${stepFilePrefix}_implementation_spec.md`
-      : `docs/${featureSlug}/${featureSlug}_phase${phaseNumber}_implementation_spec.md`;
-    const phaseHandoffFile = isMonoSpec
-      ? `docs/${featureSlug}/${stepFilePrefix}_handoff.md`
-      : `docs/${featureSlug}/${featureSlug}_phase${phaseNumber}_handoff.md`;
     const projectDocRoot = task.paths.projectDocRoot;
-    const defaultSpecFile = `${projectDocRoot}/spec.md`;
-    const defaultPlanFile = `${projectDocRoot}/plan.md`;
-    const defaultResultFile = `${projectDocRoot}/result.md`;
-    const defaultPrFile = `${projectDocRoot}/pr.md`;
-    const specFile = task.variables['SPEC_FILE'] ?? defaultSpecFile;
-    const planFile = task.variables['PLAN_FILE'] ?? defaultPlanFile;
-    const resultFile = task.variables['RESULT_FILE'] ?? defaultResultFile;
-    const prFile = task.variables['PR_FILE'] ?? defaultPrFile;
-    const totalSpecFile =
-      task.variables['TOTAL_SPEC_FILE'] ??
-      `${projectDocRoot}/${featureSlug}_total_spec.md`;
-    const phasePlanFile =
-      task.variables['PHASE_PLAN_FILE'] ??
-      `${projectDocRoot}/${featureSlug}_phase_plan.md`;
     const contextVariables = resolveContextVariables(task);
 
-    return {
-      ...task.variables,
+    const engineVariables: ResolvedVariables = {
       FEATURE_SLUG: featureSlug,
       PHASE_NUMBER: phaseNumber,
       STEP_NUMBER: stepNumber,
       STEP_ID: stepId,
       STEP_TITLE: stepTitle,
-      PHASE_SPEC_FILE: phaseSpecFile,
-      PHASE_HANDOFF_FILE: phaseHandoffFile,
+      PHASE_SPEC_FILE: '',
+      PHASE_HANDOFF_FILE: '',
       TASK_ID: task.id,
       TASK_TITLE: task.title,
-      WORKFLOW_TYPE: task.workflowType,
-      TARGET_BRANCH: task.variables['TARGET_BRANCH'] ?? 'origin/master',
+      WORKFLOW_TYPE: task.workflow,
+      TARGET_BRANCH: 'origin/master',
       SOURCE_PROBLEM_FILE: contextVariables.SOURCE_PROBLEM_FILE,
       CONTEXT_FILES: contextVariables.CONTEXT_FILES,
       CONTEXT_REFS_DETAIL: contextVariables.CONTEXT_REFS_DETAIL,
-      SPEC_FILE: specFile,
-      PLAN_FILE: planFile,
-      RESULT_FILE: resultFile,
-      PR_FILE: prFile,
-      TOTAL_SPEC_FILE: totalSpecFile,
-      PHASE_PLAN_FILE: phasePlanFile,
-      MASTER_SPEC_FILE:
-        task.variables['MASTER_SPEC_FILE'] ??
-        `${projectDocRoot}/${featureSlug}_master_spec.md`,
-      MASTER_PHASE_FILE:
-        task.variables['MASTER_PHASE_FILE'] ??
-        `${projectDocRoot}/${featureSlug}_phase_plan.md`,
-      IMPLEMENTATION_PLAN_FILE:
-        task.variables['IMPLEMENTATION_PLAN_FILE'] ??
-        (isMonoSpec ? planFile : `${projectDocRoot}/${featureSlug}_implementation_plan.md`),
-      IMPLEMENTATION_RESULT_FILE:
-        task.variables['IMPLEMENTATION_RESULT_FILE'] ??
-        (isMonoSpec ? resultFile : `${projectDocRoot}/${featureSlug}_implementation_result.md`),
-      TEST_RESULT_FILE:
-        task.variables['TEST_RESULT_FILE'] ??
-        (isMonoSpec ? resultFile : `${projectDocRoot}/${featureSlug}_test_result.md`),
-      PR_BODY_FILE:
-        task.variables['PR_BODY_FILE'] ??
-        (isMonoSpec ? prFile : `${projectDocRoot}/${featureSlug}_pr_body.md`),
+      SPEC_FILE: '',
+      PLAN_FILE: '',
+      RESULT_FILE: '',
+      PR_FILE: '',
+      TOTAL_SPEC_FILE: '',
+      PHASE_PLAN_FILE: '',
+      MASTER_SPEC_FILE: '',
+      MASTER_PHASE_FILE: '',
+      IMPLEMENTATION_PLAN_FILE: '',
+      IMPLEMENTATION_RESULT_FILE: '',
+      TEST_RESULT_FILE: '',
+      PR_BODY_FILE: '',
+      PROJECT_DOC_ROOT: projectDocRoot,
+    };
+
+    const declarations = {
+      ...(workflow?.variables ?? {}),
+      ...(definition?.variables ?? {}),
+    };
+    const resolvedDefaults = resolveDeclaredDefaults(
+      workflow?.id ?? task.workflow,
+      engineVariables,
+      declarations,
+      task.variables
+    );
+
+    return {
+      ...engineVariables,
+      ...resolvedDefaults,
+      ...task.variables,
     };
   }
+}
+
+const DEFAULT_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
+
+function resolveDeclaredDefaults(
+  workflowId: string,
+  engineVariables: Record<string, string>,
+  declarations: Record<string, VariableDeclaration>,
+  taskVariables: Record<string, string>
+): Record<string, string> {
+  const resolved: Record<string, string> = { ...engineVariables };
+  const resolving = new Set<string>();
+  const knownVariables = new Set([
+    ...Object.keys(engineVariables),
+    ...Object.keys(declarations),
+    ...Object.keys(taskVariables),
+  ]);
+
+  const resolveOne = (name: string, chain: string[]): string | undefined => {
+    if (name in resolved && resolved[name] !== '') {
+      return resolved[name];
+    }
+
+    const declaration = declarations[name];
+    if (!declaration?.default) {
+      return resolved[name];
+    }
+
+    if (resolving.has(name)) {
+      const cycleStart = chain.indexOf(name);
+      const cycle = cycleStart >= 0 ? [...chain.slice(cycleStart), name] : [...chain, name];
+      throw new CircularVariableDefaultError(workflowId, cycle);
+    }
+
+    resolving.add(name);
+    const value = renderDefault(
+      workflowId,
+      name,
+      declaration.default,
+      (dependency) => {
+        if (!knownVariables.has(dependency)) {
+          throw new UnknownVariableDefaultError(workflowId, name, dependency);
+        }
+        return resolveOne(dependency, [...chain, name]) ?? '';
+      }
+    );
+    resolving.delete(name);
+    resolved[name] = value;
+    return value;
+  };
+
+  for (const name of Object.keys(declarations)) {
+    resolveOne(name, []);
+  }
+
+  return Object.fromEntries(
+    Object.entries(resolved).filter(([name]) => !(name in engineVariables) || resolved[name] !== '')
+  );
+}
+
+function renderDefault(
+  workflowId: string,
+  variableName: string,
+  template: string,
+  lookup: (name: string) => string
+): string {
+  return template.replace(DEFAULT_PLACEHOLDER_REGEX, (_token, body: string) => {
+    const dependency = body.trim().split(/\s+/)[0] ?? body.trim();
+    const value = lookup(dependency);
+    if (value === '') {
+      throw new UnknownVariableDefaultError(workflowId, variableName, dependency);
+    }
+    return value;
+  });
 }
 
 function resolveContextVariables(task: TaskRecord): Pick<

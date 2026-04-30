@@ -15,7 +15,7 @@ export async function runCurrent(workspaceRoot: string): Promise<void> {
 
   console.log(`ID:      ${task.id}`);
   console.log(`Title:   ${task.title}`);
-  console.log(`Workflow: ${task.workflowType}`);
+  console.log(`Workflow: ${task.workflow}`);
   console.log(`Status:  ${task.status}`);
   console.log(`Phase:   ${eph.phaseDisplay}`);
   if (task.contextRefs && task.contextRefs.length > 0) {

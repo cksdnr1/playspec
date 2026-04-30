@@ -66,7 +66,7 @@ afterEach(async () => {
   await workspace.cleanup();
 });
 
-async function createActiveTask(title: string, workflowType = 'multi-spec') {
+async function createActiveTask(title: string, workflow = 'multi-spec') {
   const manager = new PresetManager();
   await manager.initWorkspace(workspace.dir, 'default');
 
@@ -75,20 +75,20 @@ async function createActiveTask(title: string, workflowType = 'multi-spec') {
   await store.createTask({
     id: taskId,
     title,
-    workflowType,
+    workflow,
   });
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
   return taskId;
 }
 
-async function createAdditionalActiveTask(title: string, workflowType = 'multi-spec') {
+async function createAdditionalActiveTask(title: string, workflow = 'multi-spec') {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspace.dir);
   await store.createTask({
     id: taskId,
     title,
-    workflowType,
+    workflow,
   });
   return taskId;
 }
@@ -121,6 +121,39 @@ describe('CLI placeholder', () => {
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
     expect(output).toMatch(/playspec/i);
+  });
+
+  it('lists and shows built-in workflow assets', async () => {
+    const result = await runCli(['workflow', 'list'], workspace.dir);
+    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('mono-spec');
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('Workflow: mono-spec');
+    expect(show.stdout).toContain('Artifacts:');
+  });
+
+  it('validates a workflow directory', async () => {
+    const workflowRoot = path.join(workspace.dir, 'custom-workflow');
+    await writeTextFile(
+      path.join(workflowRoot, 'workflow.yaml'),
+      `id: custom-workflow
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`
+    );
+    await writeTextFile(path.join(workflowRoot, 'templates', 'start.md'), '# {{TASK_TITLE}}\n');
+
+    const result = await runCli(['workflow', 'validate', workflowRoot], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Valid workflow: custom-workflow');
   });
 
   it('renders the next prompt for the active task via the CLI', async () => {
@@ -232,7 +265,7 @@ describe('CLI placeholder', () => {
 
     expect(result.exitCode).toBe(1);
     expect(output).toContain('No active tasks found.');
-    expect(output).toContain('playspec create <workflowType> "<title>"');
+    expect(output).toContain('playspec create <workflow> "<title>"');
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe('stale_head\n');
   });
 
@@ -535,10 +568,14 @@ describe('CLI placeholder', () => {
 
   it('reports the missing template path via the CLI when rendering fails', async () => {
     await createActiveTask('Broken Template Task');
+    const userWorkflows = path.join(workspace.dir, 'user-workflows');
     await writeTextFile(
-      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec.yaml'),
+      path.join(userWorkflows, 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
 phaseOrder:
   - "1"
 phases:
@@ -548,20 +585,22 @@ phases:
 `
     );
 
-    const result = await runCli(['next'], workspace.dir);
+    const result = await runCli(['next'], workspace.dir, {
+      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
+    });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Template file not found');
     expect(result.stderr).toContain(
       path.join(
-        workspace.dir,
-        '.playspec',
+        userWorkflows,
+        'multi-spec',
         'templates',
         'missing',
         'phase_template.md'
       )
     );
-    expect(result.stderr).toContain('Re-run `playspec init` if needed.');
+    expect(result.stderr).toContain('workflow template exists');
   });
 
   it('completes the current phase and writes review artifacts via the CLI', async () => {
@@ -1321,14 +1360,26 @@ phases:
     expect(result.stderr).toContain('Interactive wizard requires a terminal');
   });
 
-  it('rejects partial args (only workflowType, no title)', async () => {
+  it('creates a default-workflow task when only a title is provided', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
 
-    const result = await runCli(['create', 'mono-spec'], workspace.dir);
+    const result = await runCli(['create', 'Default Workflow Task'], workspace.dir);
+    const task = await new YamlTaskStore(workspace.dir).getTask('default_workflow_task');
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Both workflow type and title are required');
+    expect(result.exitCode).toBe(0);
+    expect(task.workflow).toBe('mono-spec');
+  });
+
+  it('creates a task with explicit --workflow', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(['create', 'Explicit Workflow Task', '--workflow', 'total-plan'], workspace.dir);
+    const task = await new YamlTaskStore(workspace.dir).getTask('explicit_workflow_task');
+
+    expect(result.exitCode).toBe(0);
+    expect(task.workflow).toBe('total-plan');
   });
 
   it('creates a task via interactive wizard with piped skip input', async () => {

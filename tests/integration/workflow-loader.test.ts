@@ -136,7 +136,7 @@ describe('WorkflowLoader', () => {
     expect(requiredVariables).toContain('PHASE_PLAN_FILE');
   });
 
-  it('throws WorkflowNotFoundError for unknown workflow type', async () => {
+  it('throws WorkflowNotFoundError for unknown workflow', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);
   });

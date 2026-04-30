@@ -24,7 +24,7 @@ afterEach(async () => {
 describe('ActiveTaskResolver', () => {
   it('resolves task by explicit taskId without reading HEAD', async () => {
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'my_task', title: 'My Task', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'my_task', title: 'My Task', workflow: 'multi-spec' });
 
     const resolver = new ActiveTaskResolver(workspace.dir, store);
     const task = await resolver.resolveTask('my_task');
@@ -35,7 +35,7 @@ describe('ActiveTaskResolver', () => {
 
   it('resolves task from HEAD when no taskId is given', async () => {
     const store = new YamlTaskStore(workspace.dir);
-    await store.createTask({ id: 'head_task', title: 'Head Task', workflowType: 'multi-spec' });
+    await store.createTask({ id: 'head_task', title: 'Head Task', workflow: 'multi-spec' });
     await writeTextFile(getHeadPath(workspace.dir), 'head_task\n');
 
     const resolver = new ActiveTaskResolver(workspace.dir, store);

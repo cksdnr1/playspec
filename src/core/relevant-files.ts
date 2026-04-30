@@ -35,6 +35,7 @@ export interface DiscoverRelevantFilesInput {
   workspaceRoot: string;
   task: TaskRecord;
   workflow: WorkflowDefinition;
+  templateDir: string;
   phaseId: string;
   definition: PhaseDefinition;
 }
@@ -71,7 +72,7 @@ export async function discoverRelevantFiles(
   const warnings: RelevantFileWarning[] = [];
   const rawCandidates: RawCandidate[] = [];
   const resolver = new VariableResolver();
-  const variables = resolver.resolve(input.task, input.phaseId, input.definition);
+  const variables = resolver.resolve(input.task, input.phaseId, input.workflow, input.definition);
 
   for (const ref of input.task.contextRefs ?? []) {
     rawCandidates.push({
@@ -139,8 +140,23 @@ export async function discoverRelevantFiles(
     });
   }
 
+  for (const [artifactName, artifact] of Object.entries(input.workflow.artifacts ?? {})) {
+    const resolvedArtifact = resolveWorkflowPathValue(artifact.path, variables);
+    rawCandidates.push({
+      value: resolvedArtifact.value,
+      source: 'workflow',
+      reason: `workflow artifact ${artifactName}`,
+      variableName: resolvedArtifact.variableName,
+      missingAllowed: true,
+    });
+  }
+
   try {
-    const rendered = await new TemplateRenderer(workspaceRoot).render(input.definition.template, variables);
+    const rendered = await new TemplateRenderer(workspaceRoot).render(
+      input.definition.template,
+      variables,
+      input.templateDir
+    );
     for (const parsed of parseBacktickedPaths(rendered)) {
       rawCandidates.push({
         value: parsed,
@@ -273,7 +289,7 @@ function invalidPathReason(value: string): string | null {
 
 function isTemplatePath(value: string): boolean {
   const normalized = value.split(path.sep).join('/');
-  return normalized.startsWith('.playspec/templates/');
+  return normalized.startsWith('.playspec/templates/') || normalized.includes('/templates/');
 }
 
 function isPotentialPathValue(value: string): boolean {

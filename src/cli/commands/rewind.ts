@@ -77,7 +77,7 @@ export async function runRewind(workspaceRoot: string, opts: RewindOptions): Pro
   }
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
-  const workflow = await workflowLoader.load(task.workflowType);
+  const workflow = await workflowLoader.load(task.workflow);
 
   if (task.currentPhase === null) {
     throw new NoExplicitPhasePointerError(task.id);

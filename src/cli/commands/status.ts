@@ -18,7 +18,7 @@ export async function runStatus(
   }
 
   console.log(`ID:       ${task.id}`);
-  console.log(`Workflow: ${task.workflowType}`);
+  console.log(`Workflow: ${task.workflow}`);
   console.log(`Status:   ${task.status}`);
   console.log(`Created:  ${task.createdAt}`);
   console.log(`Updated:  ${task.updatedAt}`);

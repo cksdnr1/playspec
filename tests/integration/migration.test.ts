@@ -25,7 +25,7 @@ beforeEach(async () => {
 
   const store = new YamlTaskStore(workspace.dir);
   taskId = 'migration_test_task';
-  await store.createTask({ id: taskId, title: TASK_TITLE, workflowType: 'multi-spec' });
+  await store.createTask({ id: taskId, title: TASK_TITLE, workflow: 'multi-spec' });
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
 
   // Create sample docs
@@ -502,7 +502,7 @@ describe('MigrationRunner — update_task_state whitelist', () => {
           preview: '',
           backupRequired: true,
           requiresReview: false,
-          fieldPath: 'workflowType', // NOT in whitelist
+          fieldPath: 'workflow', // NOT in whitelist
           previousValue: 'multi-spec',
           proposedValue: 'malicious-type',
         },

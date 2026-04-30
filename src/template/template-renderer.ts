@@ -8,7 +8,6 @@ import {
   TemplateNotFoundError,
   UnresolvedPlaceholderError,
 } from '#core/errors.js';
-import { getPlayspecRoot } from '#utils/paths.js';
 
 const INCLUDE_REGEX = /\{\{include:([^}]+)\}\}/g;
 const UNRESOLVED_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
@@ -16,20 +15,23 @@ const UNRESOLVED_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
 export class TemplateRenderer {
   constructor(private readonly workspaceRoot: string) {}
 
-  private resolveIncludePath(includePath: string): string {
-    const playspecRoot = getPlayspecRoot(this.workspaceRoot);
-    const resolvedIncludePath = path.resolve(playspecRoot, includePath);
-    const relative = path.relative(playspecRoot, resolvedIncludePath);
+  private resolveTemplatePath(templateRoot: string, templatePath: string): string {
+    if (path.isAbsolute(templatePath)) {
+      throw new IncludePathOutsideRootError(templatePath, templatePath, templateRoot);
+    }
+
+    const resolvedTemplatePath = path.resolve(templateRoot, templatePath);
+    const relative = path.relative(templateRoot, resolvedTemplatePath);
 
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new IncludePathOutsideRootError(
-        includePath,
-        resolvedIncludePath,
-        playspecRoot
+        templatePath,
+        resolvedTemplatePath,
+        templateRoot
       );
     }
 
-    return resolvedIncludePath;
+    return resolvedTemplatePath;
   }
 
   private findMissingTemplateVariables(
@@ -65,12 +67,13 @@ export class TemplateRenderer {
 
   /**
    * Recursively expand {{include:path/to/file.md}} directives.
-   * Paths are relative to .playspec/ directory.
+   * Paths are relative to the selected workflow templates directory.
    */
   private async expandIncludes(
     content: string,
     currentFile: string,
-    includeChain: string[]
+    includeChain: string[],
+    templateRoot: string
   ): Promise<string> {
     const matches = [...content.matchAll(INCLUDE_REGEX)];
     if (matches.length === 0) {
@@ -80,7 +83,7 @@ export class TemplateRenderer {
     let result = content;
     for (const match of matches) {
       const includePath = match[1].trim();
-      const fullIncludePath = this.resolveIncludePath(includePath);
+      const fullIncludePath = this.resolveTemplatePath(templateRoot, includePath);
 
       if (includeChain.includes(fullIncludePath)) {
         throw new CircularIncludeError(includePath, [
@@ -99,7 +102,8 @@ export class TemplateRenderer {
       const expanded = await this.expandIncludes(
         includeContent,
         fullIncludePath,
-        [...includeChain, fullIncludePath]
+        [...includeChain, fullIncludePath],
+        templateRoot
       );
 
       result = result.replace(match[0], expanded);
@@ -110,14 +114,10 @@ export class TemplateRenderer {
 
   async render(
     templatePath: string,
-    variables: Record<string, string>
+    variables: Record<string, string>,
+    templateRoot: string
   ): Promise<string> {
-    const fullTemplatePath = path.join(
-      this.workspaceRoot,
-      '.playspec',
-      'templates',
-      templatePath
-    );
+    const fullTemplatePath = this.resolveTemplatePath(templateRoot, templatePath);
 
     let content: string;
     try {
@@ -127,9 +127,12 @@ export class TemplateRenderer {
     }
 
     // Step 1: expand {{include:...}} before handing to Handlebars
-    const expanded = await this.expandIncludes(content, fullTemplatePath, [
+    const expanded = await this.expandIncludes(
+      content,
       fullTemplatePath,
-    ]);
+      [fullTemplatePath],
+      templateRoot
+    );
 
     const missingTemplateVariables = this.findMissingTemplateVariables(
       expanded,

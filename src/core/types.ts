@@ -1,7 +1,7 @@
 // Phase 0 skeleton — expanded in Phase 1
 export type TaskId = string;
 export type PhaseId = string;
-export type WorkflowType = string;
+export type WorkflowId = string;
 
 export type TaskStatus = 'active' | 'completed' | 'archived';
 export type WorkflowMode = 'linear';
@@ -36,7 +36,7 @@ export interface PhaseHistoryEntry {
 export interface TaskRecord {
   id: TaskId;
   title: string;
-  workflowType: WorkflowType;
+  workflow: WorkflowId;
   status: TaskStatus;
   workflowMode: WorkflowMode;
   currentPhase: PhaseId | null;
@@ -74,13 +74,13 @@ export interface TaskSummary {
   title: string;
   status: TaskStatus;
   currentPhase: PhaseId | null;
-  workflowType: WorkflowType;
+  workflow: WorkflowId;
 }
 
 export interface CreateTaskInput {
   id: TaskId;
   title: string;
-  workflowType: WorkflowType;
+  workflow: WorkflowId;
   variables?: Record<string, string>;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
@@ -91,6 +91,7 @@ export interface PhaseDefinition {
   template: string;
   stepNumber?: string;
   stepTitle?: string;
+  variables?: Record<string, VariableDeclaration>;
   requiredVariables?: string[];
   outputs?: string[];
   completion?: {
@@ -108,9 +109,36 @@ export interface PhaseDefinition {
 
 export interface WorkflowDefinition {
   id: string;
+  name?: string;
+  description?: string;
+  version?: string | number;
   mode: WorkflowMode;
+  variables?: Record<string, VariableDeclaration>;
+  artifacts?: Record<string, ArtifactDeclaration>;
   phaseOrder: PhaseId[];
   phases: Record<PhaseId, PhaseDefinition>;
+}
+
+export interface VariableDeclaration {
+  required?: boolean;
+  default?: string;
+  description?: string;
+}
+
+export interface ArtifactDeclaration {
+  path: string;
+  kind?: string;
+  description?: string;
+}
+
+export type WorkflowSource = 'builtin' | 'user';
+
+export interface ResolvedWorkflow {
+  id: string;
+  rootDir: string;
+  templateDir: string;
+  source: WorkflowSource;
+  definition: WorkflowDefinition;
 }
 
 export interface SessionRecord {

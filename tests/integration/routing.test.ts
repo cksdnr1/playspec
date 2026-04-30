@@ -23,6 +23,7 @@ const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
 
 let workspace: TempWorkspace;
+let previousUserWorkflows: string | undefined;
 
 // Routed workflow with validation -> implementation | spec_patch
 const ROUTED_WORKFLOW_YAML = `id: routed-spec
@@ -34,7 +35,7 @@ phaseOrder:
 phases:
   validation:
     title: Spec Validation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
     results:
       - approved
       - needs_patch
@@ -44,10 +45,10 @@ phases:
     maxVisits: 2
   implementation:
     title: Implementation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
   spec_patch:
     title: Spec Patch
-    template: routed-spec/phase_template.md
+    template: phase_template.md
 `;
 
 const SIMPLE_TEMPLATE = `# {{TASK_TITLE}} — {{PHASE_NUMBER}}
@@ -55,9 +56,16 @@ const SIMPLE_TEMPLATE = `# {{TASK_TITLE}} — {{PHASE_NUMBER}}
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
+  previousUserWorkflows = process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  process.env['PLAY_SPEC_USER_WORKFLOWS'] = path.join(workspace.dir, 'user-workflows');
 });
 
 afterEach(async () => {
+  if (previousUserWorkflows === undefined) {
+    delete process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  } else {
+    process.env['PLAY_SPEC_USER_WORKFLOWS'] = previousUserWorkflows;
+  }
   await workspace.cleanup();
 });
 
@@ -65,14 +73,13 @@ async function initRoutedWorkspace(taskId = 'routed_task') {
   const manager = new PresetManager();
   await manager.initWorkspace(workspace.dir, 'default');
 
-  // Write routed workflow
+  // Write routed workflow as an isolated user workflow.
   await writeTextFile(
-    path.join(workspace.dir, '.playspec', 'workflows', 'routed-spec.yaml'),
+    path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'routed-spec', 'workflow.yaml'),
     ROUTED_WORKFLOW_YAML
   );
-  // Write minimal template
   await writeTextFile(
-    path.join(workspace.dir, '.playspec', 'templates', 'routed-spec', 'phase_template.md'),
+    path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'routed-spec', 'templates', 'phase_template.md'),
     SIMPLE_TEMPLATE
   );
 
@@ -80,7 +87,7 @@ async function initRoutedWorkspace(taskId = 'routed_task') {
   await store.createTask({
     id: taskId,
     title: 'Routed Task',
-    workflowType: 'routed-spec',
+    workflow: 'routed-spec',
   });
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
@@ -102,7 +109,7 @@ async function initMonoSpecWorkspace(taskId = 'mono_task') {
   await store.createTask({
     id: taskId,
     title: 'Migration Bug Fix',
-    workflowType: 'mono-spec',
+    workflow: 'mono-spec',
   });
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
@@ -224,7 +231,7 @@ describe('Phase 3.7 — Simple Conditional Routing', () => {
       await initRoutedWorkspace();
       // Write a workflow with a bad mapping
       await writeTextFile(
-        path.join(workspace.dir, '.playspec', 'workflows', 'routed-spec.yaml'),
+        path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'routed-spec', 'workflow.yaml'),
         `id: routed-spec
 mode: linear
 phaseOrder:
@@ -233,20 +240,20 @@ phaseOrder:
 phases:
   validation:
     title: Spec Validation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
     results:
       - approved
     nextByResult:
       approved: nonexistent_phase
   implementation:
     title: Implementation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
 `
       );
 
       const store = new YamlTaskStore(workspace.dir);
       const taskId = 'bad_routing_task';
-      await store.createTask({ id: taskId, title: 'Bad Routing', workflowType: 'routed-spec' });
+      await store.createTask({ id: taskId, title: 'Bad Routing', workflow: 'routed-spec' });
       await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
 
       const core = new PlaySpecCore(workspace.dir, store);
@@ -465,7 +472,7 @@ phases:
     it('throws when nextByResult does not include the given result', async () => {
       // Write a workflow with results but only partial nextByResult mapping
       await writeTextFile(
-        path.join(workspace.dir, '.playspec', 'workflows', 'partial-routing.yaml'),
+        path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'partial-routing', 'workflow.yaml'),
         `id: partial-routing
 mode: linear
 phaseOrder:
@@ -474,7 +481,7 @@ phaseOrder:
 phases:
   validation:
     title: Validation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
     results:
       - approved
       - needs_patch
@@ -482,14 +489,18 @@ phases:
       approved: implementation
   implementation:
     title: Implementation
-    template: routed-spec/phase_template.md
+    template: phase_template.md
 `
+      );
+      await writeTextFile(
+        path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'partial-routing', 'templates', 'phase_template.md'),
+        SIMPLE_TEMPLATE
       );
 
       await initRoutedWorkspace();
       const store = new YamlTaskStore(workspace.dir);
       const taskId = 'partial_routing_task';
-      await store.createTask({ id: taskId, title: 'Partial Routing', workflowType: 'partial-routing' });
+      await store.createTask({ id: taskId, title: 'Partial Routing', workflow: 'partial-routing' });
       await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
 
       const core = new PlaySpecCore(workspace.dir, store);

@@ -18,6 +18,7 @@ const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
 
 let workspace: TempWorkspace;
+let previousUserWorkflows: string | undefined;
 
 function runCli(args: string[]) {
   return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
@@ -28,9 +29,16 @@ function runCli(args: string[]) {
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
+  previousUserWorkflows = process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  process.env['PLAY_SPEC_USER_WORKFLOWS'] = path.join(workspace.dir, 'user-workflows');
 });
 
 afterEach(async () => {
+  if (previousUserWorkflows === undefined) {
+    delete process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  } else {
+    process.env['PLAY_SPEC_USER_WORKFLOWS'] = previousUserWorkflows;
+  }
   await workspace.cleanup();
 });
 
@@ -50,9 +58,6 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     const ps = path.join(workspace.dir, '.playspec');
     await expect(access(path.join(ps, 'HEAD'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'config.yaml'))).resolves.not.toThrow();
-    await expect(access(path.join(ps, 'workflows', 'multi-spec.yaml'))).resolves.not.toThrow();
-    await expect(access(path.join(ps, 'templates'))).resolves.not.toThrow();
-    await expect(access(path.join(ps, 'rules', 'global_rules.md'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'sessions', 'cli.default.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'tasks', 'active'))).resolves.not.toThrow();
   });
@@ -79,7 +84,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Feature Name',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
     });
 
     // 3. Set HEAD
@@ -105,7 +110,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'My Task',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -126,7 +131,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Exec Task',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
       contextRefs: [
         { path: 'docs/features/exec_task/nonexistent_spec.md', role: 'planning-context', source: 'planning_task' },
       ],
@@ -146,7 +151,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Normal Task',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -163,7 +168,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Migration Bug Fix',
-      workflowType: 'mono-spec',
+      workflow: 'mono-spec',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -205,7 +210,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Large Feature',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
       variables: { SOURCE_PROBLEM_FILE: sourcePath },
       contextRefs: [{ path: sourcePath, role: 'source-problem', source: 'stdin' }],
     });
@@ -231,7 +236,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Template Smoke',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
       variables: { SOURCE_PROBLEM_FILE: sourcePath },
       contextRefs: [{ path: sourcePath, role: 'source-problem', source: 'stdin' }],
     });
@@ -265,7 +270,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'No Source Planning',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -285,7 +290,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Validation Rules',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -310,7 +315,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: taskId,
       title: 'Planning Routes',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);
@@ -342,7 +347,7 @@ describe('init → create → next (end-to-end)', () => {
     await store.createTask({
       id: planningTaskId,
       title: 'Compatible Planning',
-      workflowType: 'total-plan',
+      workflow: 'total-plan',
     });
     await writeTextFile(
       path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_total_spec.md`),
@@ -385,7 +390,7 @@ describe('init → create → next (end-to-end)', () => {
     await manager.initWorkspace(workspace.dir, 'default');
 
     await writeTextFile(
-      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec.yaml'),
+      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
 phaseOrder:
@@ -393,11 +398,15 @@ phaseOrder:
 phases:
   "1":
     title: "Phase 1"
-    template: multi-spec/phase_template.md
+    template: phase_template.md
     requiredVariables:
       - FEATURE_SLUG
       - CUSTOM_REQUIRED
 `
+    );
+    await writeTextFile(
+      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n'
     );
 
     const taskId = slugify('Missing Variable Task');
@@ -405,7 +414,7 @@ phases:
     await store.createTask({
       id: taskId,
       title: 'Missing Variable Task',
-      workflowType: 'multi-spec',
+      workflow: 'multi-spec',
     });
 
     const core = new PlaySpecCore(workspace.dir, store);

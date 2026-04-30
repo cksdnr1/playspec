@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { VariableResolver } from '#template/variable-resolver.js';
-import type { PhaseDefinition, TaskRecord } from '#core/types.js';
+import {
+  CircularVariableDefaultError,
+  UnknownVariableDefaultError,
+} from '#core/errors.js';
+import type { PhaseDefinition, TaskRecord, WorkflowDefinition } from '#core/types.js';
 
 const baseTask: TaskRecord = {
   id: 'feature_name',
   title: 'Feature Name',
-  workflowType: 'multi-spec',
+  workflow: 'multi-spec',
   status: 'active',
   workflowMode: 'linear',
   currentPhase: null,
@@ -19,6 +23,73 @@ const baseTask: TaskRecord = {
     FEATURE_SLUG: 'feature_name',
   },
   phaseHistory: [],
+};
+
+const multiWorkflow: WorkflowDefinition = {
+  id: 'multi-spec',
+  mode: 'linear',
+  phaseOrder: ['1', '2', '3'],
+  variables: {
+    FEATURE_SLUG: { required: true },
+    PHASE_SPEC_FILE: {
+      default: 'docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_implementation_spec.md',
+    },
+    PHASE_HANDOFF_FILE: {
+      default: 'docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_handoff.md',
+    },
+  },
+  phases: {
+    '1': { title: 'Phase 1', template: 'phase_template.md' },
+    '2': { title: 'Phase 2', template: 'phase_template.md' },
+    '3': { title: 'Phase 3', template: 'phase_template.md' },
+  },
+};
+
+const monoWorkflow: WorkflowDefinition = {
+  id: 'mono-spec',
+  mode: 'linear',
+  phaseOrder: ['safe_refactor', 'tech_spec_patch', 'implementation_plan_patch'],
+  variables: {
+    FEATURE_SLUG: { required: true },
+    TARGET_BRANCH: { default: 'origin/master' },
+    SPEC_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/spec.md' },
+    PLAN_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/plan.md' },
+    RESULT_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/result.md' },
+    PR_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/pr.md' },
+    IMPLEMENTATION_PLAN_FILE: { default: '{{PLAN_FILE}}' },
+    IMPLEMENTATION_RESULT_FILE: { default: '{{RESULT_FILE}}' },
+    TEST_RESULT_FILE: { default: '{{RESULT_FILE}}' },
+    PR_BODY_FILE: { default: '{{PR_FILE}}' },
+  },
+  phases: {
+    safe_refactor: { title: 'Refactor', template: 'safe_refactor.md' },
+    tech_spec_patch: {
+      title: '기술 명세서 업데이트',
+      stepNumber: '3',
+      stepTitle: '기술 명세서 업데이트',
+      template: 'tech_spec_patch.md',
+    },
+    implementation_plan_patch: {
+      title: '구현 계획서 업데이트',
+      stepNumber: '6',
+      stepTitle: '구현 계획서 업데이트',
+      template: 'implementation_plan_patch.md',
+    },
+  },
+};
+
+const totalPlanWorkflow: WorkflowDefinition = {
+  id: 'total-plan',
+  mode: 'linear',
+  phaseOrder: ['total_spec_draft'],
+  variables: {
+    FEATURE_SLUG: { required: true },
+    TOTAL_SPEC_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_total_spec.md' },
+    PHASE_PLAN_FILE: { default: 'docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase_plan.md' },
+  },
+  phases: {
+    total_spec_draft: { title: 'Total Spec Draft', template: 'total_spec_draft.md' },
+  },
 };
 
 describe('VariableResolver', () => {
@@ -37,14 +108,14 @@ describe('VariableResolver', () => {
   });
 
   it('derives PHASE_SPEC_FILE correctly', () => {
-    const vars = resolver.resolve(baseTask, '3');
+    const vars = resolver.resolve(baseTask, '3', multiWorkflow, multiWorkflow.phases['3']);
     expect(vars.PHASE_SPEC_FILE).toBe(
       'docs/feature_name/feature_name_phase3_implementation_spec.md'
     );
   });
 
   it('derives PHASE_HANDOFF_FILE correctly', () => {
-    const vars = resolver.resolve(baseTask, '3');
+    const vars = resolver.resolve(baseTask, '3', multiWorkflow, multiWorkflow.phases['3']);
     expect(vars.PHASE_HANDOFF_FILE).toBe(
       'docs/feature_name/feature_name_phase3_handoff.md'
     );
@@ -57,8 +128,8 @@ describe('VariableResolver', () => {
   });
 
   it('resolves mono-spec standard file variables', () => {
-    const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
-    const vars = resolver.resolve(monoTask, 'safe_refactor');
+    const monoTask: TaskRecord = { ...baseTask, workflow: 'mono-spec' };
+    const vars = resolver.resolve(monoTask, 'safe_refactor', monoWorkflow, monoWorkflow.phases.safe_refactor);
     expect(vars.TARGET_BRANCH).toBe('origin/master');
     expect(vars.SOURCE_PROBLEM_FILE).toBe('(not provided)');
     expect(vars.CONTEXT_FILES).toBe('(none)');
@@ -73,24 +144,14 @@ describe('VariableResolver', () => {
     expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/pr.md');
   });
 
-  it('keeps legacy phase-based file variables available for non-mono workflows', () => {
-    const vars = resolver.resolve(baseTask, 'safe_refactor');
-    expect(vars.TOTAL_SPEC_FILE).toBe('docs/features/feature_name/feature_name_total_spec.md');
-    expect(vars.PHASE_PLAN_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
-    expect(vars.MASTER_SPEC_FILE).toBe('docs/features/feature_name/feature_name_master_spec.md');
-    expect(vars.MASTER_PHASE_FILE).toBe('docs/features/feature_name/feature_name_phase_plan.md');
-    expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
-      'docs/features/feature_name/feature_name_implementation_plan.md'
-    );
-    expect(vars.IMPLEMENTATION_RESULT_FILE).toBe(
-      'docs/features/feature_name/feature_name_implementation_result.md'
-    );
-    expect(vars.TEST_RESULT_FILE).toBe('docs/features/feature_name/feature_name_test_result.md');
-    expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/feature_name_pr_body.md');
+  it('resolves non-mono path variables from workflow declarations', () => {
+    const vars = resolver.resolve(baseTask, '3', multiWorkflow, multiWorkflow.phases['3']);
+    expect(vars.PHASE_SPEC_FILE).toBe('docs/feature_name/feature_name_phase3_implementation_spec.md');
+    expect(vars.PHASE_HANDOFF_FILE).toBe('docs/feature_name/feature_name_phase3_handoff.md');
   });
 
   it('uses mono-spec step metadata without changing stable document files', () => {
-    const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
+    const monoTask: TaskRecord = { ...baseTask, workflow: 'mono-spec' };
     const definition: PhaseDefinition = {
       title: '기술 명세서 업데이트',
       stepNumber: '3',
@@ -98,7 +159,7 @@ describe('VariableResolver', () => {
       template: 'mono-spec/tech_spec_patch.md',
     };
 
-    const vars = resolver.resolve(monoTask, 'tech_spec_patch', definition);
+    const vars = resolver.resolve(monoTask, 'tech_spec_patch', monoWorkflow, definition);
 
     expect(vars.PHASE_NUMBER).toBe('3');
     expect(vars.STEP_NUMBER).toBe('3');
@@ -111,7 +172,7 @@ describe('VariableResolver', () => {
   });
 
   it('uses stable mono-spec files across implementation and review steps', () => {
-    const monoTask: TaskRecord = { ...baseTask, workflowType: 'mono-spec' };
+    const monoTask: TaskRecord = { ...baseTask, workflow: 'mono-spec' };
     const definition: PhaseDefinition = {
       title: '구현 계획서 업데이트',
       stepNumber: '6',
@@ -119,7 +180,7 @@ describe('VariableResolver', () => {
       template: 'mono-spec/implementation_plan_patch.md',
     };
 
-    const vars = resolver.resolve(monoTask, 'implementation_plan_patch', definition);
+    const vars = resolver.resolve(monoTask, 'implementation_plan_patch', monoWorkflow, definition);
 
     expect(vars.IMPLEMENTATION_PLAN_FILE).toBe(
       'docs/features/feature_name/plan.md'
@@ -214,9 +275,46 @@ describe('VariableResolver', () => {
       },
     };
 
-    const vars = resolver.resolve(task, 'total_spec_draft');
+    const vars = resolver.resolve(task, 'total_spec_draft', totalPlanWorkflow, totalPlanWorkflow.phases.total_spec_draft);
 
     expect(vars.TOTAL_SPEC_FILE).toBe('docs/custom/total.md');
     expect(vars.PHASE_PLAN_FILE).toBe('docs/custom/phases.md');
+  });
+
+  it('throws a clear error for unknown default references', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'bad-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        BAD_FILE: { default: 'docs/{{UNKNOWN_SLUG}}/spec.md' },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      UnknownVariableDefaultError
+    );
+  });
+
+  it('throws a clear error for circular default references', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'cycle-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        A: { default: '{{B}}' },
+        B: { default: '{{A}}' },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      CircularVariableDefaultError
+    );
   });
 });

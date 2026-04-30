@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { execa } from 'execa';
 import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { VariableResolver } from '#template/variable-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
@@ -34,7 +36,7 @@ interface SourceResult {
 
 export async function runCreate(
   workspaceRoot: string,
-  workflowType: string,
+  workflow: string,
   title: string,
   options: CreateOptions = {}
 ): Promise<void> {
@@ -58,7 +60,7 @@ export async function runCreate(
       stdin: options.stdin,
       edit: options.edit,
     });
-    await createNormalTask(workspaceRoot, workflowType, title, source);
+    await createNormalTask(workspaceRoot, workflow, title, source);
     return;
   }
 
@@ -102,11 +104,9 @@ export async function runCreate(
   }
 
   const planningTask = await store.getTask(planningTaskId);
-  const featureSlug = planningTask.variables['FEATURE_SLUG'] ?? planningTask.id;
-  const projectDocRoot = planningTask.paths.projectDocRoot;
-
-  const totalSpecRelPath = path.join(projectDocRoot, `${featureSlug}_total_spec.md`);
-  const phasePlanRelPath = path.join(projectDocRoot, `${featureSlug}_phase_plan.md`);
+  const planningArtifacts = await resolvePlanningArtifacts(workspaceRoot, planningTask);
+  const totalSpecRelPath = planningArtifacts.totalSpec;
+  const phasePlanRelPath = planningArtifacts.phasePlan;
 
   const totalSpecAbsPath = path.resolve(workspaceRoot, totalSpecRelPath);
   const phasePlanAbsPath = path.resolve(workspaceRoot, phasePlanRelPath);
@@ -142,11 +142,39 @@ export async function runCreate(
     }
   }
 
-  const task = await store.createTask({ id: taskId, title: finalTitle, workflowType, target, contextRefs });
+  const task = await store.createTask({ id: taskId, title: finalTitle, workflow, target, contextRefs });
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function resolvePlanningArtifacts(
+  workspaceRoot: string,
+  planningTask: Awaited<ReturnType<YamlTaskStore['getTask']>>
+): Promise<{ totalSpec: string; phasePlan: string }> {
+  const workflow = await new WorkflowLoader(workspaceRoot).load(planningTask.workflow);
+  const phaseId = planningTask.phaseHistory.at(-1)?.phase ?? workflow.phaseOrder[0];
+  const definition = workflow.phases[phaseId] ?? workflow.phases[workflow.phaseOrder[0]];
+  const variables = new VariableResolver().resolve(planningTask, phaseId, workflow, definition);
+  const artifacts = Object.entries(workflow.artifacts ?? {}).map(([name, artifact]) => ({
+    name,
+    kind: artifact.kind,
+    path: renderPathValue(artifact.path, variables),
+  }));
+  const totalSpec = artifacts.find((artifact) => artifact.kind === 'total-spec' || artifact.name === 'totalSpec');
+  const phasePlan = artifacts.find((artifact) => artifact.kind === 'phase-plan' || artifact.name === 'phasePlan');
+  if (!totalSpec || !phasePlan) {
+    throw new PlanningContextNotFoundError(
+      planningTask.id,
+      'workflow artifacts totalSpec/phasePlan'
+    );
+  }
+  return { totalSpec: totalSpec.path, phasePlan: phasePlan.path };
+}
+
+function renderPathValue(template: string, variables: Record<string, string>): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_token, name: string) => variables[name.trim()] ?? '');
 }
 
 export async function runInteractiveCreate(workspaceRoot: string): Promise<void> {
@@ -157,8 +185,8 @@ export async function runInteractiveCreate(workspaceRoot: string): Promise<void>
     throw new WorkspaceNotInitializedError(workspaceRoot);
   }
 
-  const workflowTypeInput = (await askQuestion('Workflow type [mono-spec]: ')).trim();
-  const workflowType = workflowTypeInput || 'mono-spec';
+  const workflowInput = (await askQuestion('Workflow [mono-spec]: ')).trim();
+  const workflow = workflowInput || 'mono-spec';
 
   const titleInput = (await askQuestion('Task title: ')).trim();
   if (!titleInput) {
@@ -210,12 +238,12 @@ export async function runInteractiveCreate(workspaceRoot: string): Promise<void>
     };
   }
 
-  await createNormalTask(workspaceRoot, workflowType, titleInput, sourceResult);
+  await createNormalTask(workspaceRoot, workflow, titleInput, sourceResult);
 }
 
 async function createNormalTask(
   workspaceRoot: string,
-  workflowType: string,
+  workflow: string,
   title: string,
   source: SourceResult | undefined
 ): Promise<void> {
@@ -224,7 +252,7 @@ async function createNormalTask(
   const task = await store.createTask({
     id: taskId,
     title,
-    workflowType,
+    workflow,
     variables: source
       ? { SOURCE_PROBLEM_FILE: source.relativePath }
       : undefined,

@@ -18,12 +18,20 @@ const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
 
 let workspace: TempWorkspace;
+let previousUserWorkflows: string | undefined;
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
+  previousUserWorkflows = process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  process.env['PLAY_SPEC_USER_WORKFLOWS'] = path.join(workspace.dir, 'user-workflows');
 });
 
 afterEach(async () => {
+  if (previousUserWorkflows === undefined) {
+    delete process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  } else {
+    process.env['PLAY_SPEC_USER_WORKFLOWS'] = previousUserWorkflows;
+  }
   await workspace.cleanup();
 });
 
@@ -35,7 +43,7 @@ async function initWorkspaceWithTask(taskId = 'phase_two_task') {
   await store.createTask({
     id: taskId,
     title: 'Phase Two Task',
-    workflowType: 'multi-spec',
+    workflow: 'multi-spec',
   });
 
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
@@ -194,15 +202,22 @@ describe('Phase 2 completion engine', () => {
   it('records the validation template reference when configured', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     await writeTextFile(
-      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec.yaml'),
+      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+  PHASE_SPEC_FILE:
+    default: "docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_implementation_spec.md"
+  PHASE_HANDOFF_FILE:
+    default: "docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_handoff.md"
 phaseOrder:
   - "1"
 phases:
   "1":
     title: "Phase 1"
-    template: multi-spec/phase_template.md
+    template: phase_template.md
     requiredVariables:
       - FEATURE_SLUG
       - PHASE_NUMBER
@@ -215,6 +230,10 @@ phases:
       validationTemplate: validation/checklist.md
 `
     );
+    await writeTextFile(
+      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n'
+    );
 
     const core = new PlaySpecCore(workspace.dir, store);
     await core.completePhase(taskId, { withReview: true });
@@ -223,7 +242,7 @@ phases:
     expect(task.phaseHistory).toContainEqual(
       expect.objectContaining({
         phase: '1',
-        validationTemplate: '.playspec/templates/validation/checklist.md',
+        validationTemplate: 'workflow/multi-spec/templates/validation/checklist.md',
       })
     );
 
@@ -239,7 +258,7 @@ phases:
       ),
       'utf8'
     );
-    expect(reviewContent).toContain('.playspec/templates/validation/checklist.md');
+    expect(reviewContent).toContain('workflow/multi-spec/templates/validation/checklist.md');
   });
 
   it('reports medium desync for tracked source edits after completion', async () => {

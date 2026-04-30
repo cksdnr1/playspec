@@ -39,7 +39,7 @@ export class WorkflowNotFoundError extends PlaySpecError {
   constructor(filePath: string) {
     super(
       `Workflow file not found: ${filePath}`,
-      'Ensure the workflow YAML exists in .playspec/workflows/. Re-run `playspec init` if needed.'
+      'Run `playspec workflow list` to see installed workflows, or install one with `playspec workflow install <path>`.'
     );
     this.name = 'WorkflowNotFoundError';
   }
@@ -59,7 +59,7 @@ export class TemplateNotFoundError extends PlaySpecError {
   constructor(filePath: string) {
     super(
       `Template file not found: ${filePath}`,
-      'Ensure the template file exists in .playspec/templates/. Re-run `playspec init` if needed.'
+      'Ensure the workflow template exists under the selected workflow templates directory.'
     );
     this.name = 'TemplateNotFoundError';
   }
@@ -68,7 +68,7 @@ export class TemplateNotFoundError extends PlaySpecError {
 export class IncludePathOutsideRootError extends PlaySpecError {
   constructor(includePath: string, resolvedPath: string, rootPath: string) {
     super(
-      `Include path escapes .playspec root: ${includePath} -> ${resolvedPath}`,
+      `Include path escapes template root: ${includePath} -> ${resolvedPath}`,
       `Keep include paths inside ${rootPath}.`
     );
     this.name = 'IncludePathOutsideRootError';
@@ -88,8 +88,8 @@ export class IncludeNotFoundError extends PlaySpecError {
 export class CircularIncludeError extends PlaySpecError {
   constructor(includePath: string, chain: string[]) {
     super(
-      `Circular include detected: "${includePath}" (chain: ${chain.join(' → ')})`,
-      'Fix the circular include in the template files under .playspec/templates/ or .playspec/rules/.'
+      `Circular include detected: "${includePath}" (chain: ${chain.join(' -> ')})`,
+      'Fix the circular include in the workflow template files.'
     );
     this.name = 'CircularIncludeError';
   }
@@ -113,6 +113,26 @@ export class MissingRequiredVariablesError extends PlaySpecError {
       'Define the missing variables in task variables or remove them from workflow requiredVariables.'
     );
     this.name = 'MissingRequiredVariablesError';
+  }
+}
+
+export class UnknownVariableDefaultError extends PlaySpecError {
+  constructor(workflowId: string, variableName: string, unknownName: string) {
+    super(
+      `Unknown variable ${unknownName} used in default for ${variableName} in workflow ${workflowId}`,
+      'Declare the referenced variable in workflow variables, phase variables, or task variables.'
+    );
+    this.name = 'UnknownVariableDefaultError';
+  }
+}
+
+export class CircularVariableDefaultError extends PlaySpecError {
+  constructor(workflowId: string, chain: string[]) {
+    super(
+      `Circular variable default detected in workflow ${workflowId}: ${chain.join(' -> ')}`,
+      'Remove the cycle from workflow or phase variable defaults.'
+    );
+    this.name = 'CircularVariableDefaultError';
   }
 }
 

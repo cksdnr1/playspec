@@ -17,6 +17,6 @@ export async function runListTasks(workspaceRoot: string): Promise<void> {
   for (const task of tasks) {
     const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);
     const marker = task.id === headTaskId ? ' [HEAD]' : '';
-    console.log(`${task.id}${marker}  [${task.workflowType}]  phase: ${eph.phaseDisplay}  — ${task.title}`);
+    console.log(`${task.id}${marker}  [${task.workflow}]  phase: ${eph.phaseDisplay}  — ${task.title}`);
   }
 }

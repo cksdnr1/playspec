@@ -29,12 +29,12 @@ afterEach(async () => {
   await workspace.cleanup();
 });
 
-async function initWorkspaceWithTask(title: string, workflowType = 'multi-spec') {
+async function initWorkspaceWithTask(title: string, workflow = 'multi-spec') {
   const manager = new PresetManager();
   await manager.initWorkspace(workspace.dir, 'default');
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspace.dir);
-  await store.createTask({ id: taskId, title, workflowType });
+  await store.createTask({ id: taskId, title, workflow });
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
   return { taskId, store };
 }
@@ -72,7 +72,7 @@ describe('McpSessionStore', () => {
   it('updates currentTaskId when setSessionTask is called again', async () => {
     const { store } = await initWorkspaceWithTask('Feature X');
     const taskId2 = slugify('Feature Y');
-    await store.createTask({ id: taskId2, title: 'Feature Y', workflowType: 'multi-spec' });
+    await store.createTask({ id: taskId2, title: 'Feature Y', workflow: 'multi-spec' });
     const sessionStore = new McpSessionStore(workspace.dir);
     const first = await sessionStore.setSessionTask('mcp.codex', slugify('Feature X'), 'codex');
     expect(first.currentTaskId).toBe(slugify('Feature X'));
@@ -148,7 +148,7 @@ describe('resolveMcpTaskId', () => {
     const { store } = await initWorkspaceWithTask('Feature A');
     const taskIdA = slugify('Feature A');
     const taskIdB = slugify('Feature B');
-    await store.createTask({ id: taskIdB, title: 'Feature B', workflowType: 'multi-spec' });
+    await store.createTask({ id: taskIdB, title: 'Feature B', workflow: 'multi-spec' });
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.codex', taskIdB, 'codex');
     // session points to B, but explicit taskId A should take precedence

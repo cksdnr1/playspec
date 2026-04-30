@@ -31,7 +31,7 @@ export async function runUse(workspaceRoot: string, taskId?: string): Promise<vo
   if (tasks.length === 0) {
     throw new PlaySpecError(
       'No active tasks found.',
-      'Run: playspec create <workflowType> "<title>"'
+      'Run: playspec create <workflow> "<title>"'
     );
   }
 
@@ -50,12 +50,12 @@ async function setHeadToTask(workspaceRoot: string, store: TaskStore, taskId: st
 }
 
 function formatUseSelectorRow(
-  task: Pick<TaskSummary, 'id' | 'title' | 'workflowType'>,
+  task: Pick<TaskSummary, 'id' | 'title' | 'workflow'>,
   phaseDisplay: string,
   isHead: boolean,
 ): string {
   const marker = isHead ? ' [HEAD]' : '';
-  return `${task.id}${marker}  [${task.workflowType}]  Phase: ${phaseDisplay}  - ${task.title}`;
+  return `${task.id}${marker}  [${task.workflow}]  Phase: ${phaseDisplay}  - ${task.title}`;
 }
 
 async function buildSelectorItems(workspaceRoot: string, tasks: TaskSummary[]): Promise<SelectorItem[]> {

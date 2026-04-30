@@ -15,11 +15,11 @@ export class PresetManager {
     const presetAssetsDir = path.join(__dirname, 'assets', presetName);
     const playspecRoot = getPlayspecRoot(workspaceRoot);
 
-    // Ensure .playspec root and tasks/active directory exist
+    // Ensure .playspec state directories exist.
     await mkdir(path.join(playspecRoot, 'tasks', 'active'), { recursive: true });
 
-    // Copy all preset assets into .playspec/
-    await cp(presetAssetsDir, playspecRoot, { recursive: true });
+    await cp(path.join(presetAssetsDir, 'sessions'), path.join(playspecRoot, 'sessions'), { recursive: true });
+    await cp(path.join(presetAssetsDir, 'config.yaml'), path.join(playspecRoot, 'config.yaml'));
 
     // Create HEAD file (empty — updated by `create` when a task is added)
     const headPath = getHeadPath(workspaceRoot);
