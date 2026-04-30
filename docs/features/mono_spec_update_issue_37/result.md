@@ -46,5 +46,6 @@
 
 - PR body drafted in `docs/features/mono_spec_update_issue_37/pr.md`.
 - Reusable agent guidance: not documented separately because this is a mono-spec preset wording change, not a reusable operating procedure.
-- Branch push and draft PR creation are handled after commit.
+- Branch pushed: `agent/issue-37-mono-spec-update`.
+- Draft PR created: https://github.com/cksdnr1/playspec/pull/38
 - Returning this isolated worktree to `master` is intentionally skipped because the operator required work to remain on branch `agent/issue-37-mono-spec-update` in this isolated worktree.
