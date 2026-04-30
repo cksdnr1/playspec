@@ -40,3 +40,8 @@
 - No additional safe refactor was applied after implementation and tests.
 - `refactor_guard` reported the final scope as allowed.
 - The only behavior adjacent to the selector extraction is honoring existing `phase --yes` during interactive `phase --select`, which keeps the documented confirmation-bypass option usable for the newly covered command-level selection path.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/36
+- Branch: `agent/issue-29-selection-prompt-redraw-wrap-bug`
