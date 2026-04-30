@@ -1,11 +1,17 @@
 import type { TaskSummary } from '#core/types.js';
-import { PlaySpecError } from '#core/errors.js';
+import { PlaySpecError, TaskNotFoundError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { getHeadPath } from '#utils/paths.js';
 import { writeTextFile } from '#utils/fs.js';
-import { isInteractiveCli, readHeadTaskId, resolveEffectivePhaseDisplay } from '../cli-utils.js';
+import { slugify } from '#utils/slug.js';
+import {
+  formatCompactCurrentTaskSummary,
+  isInteractiveCli,
+  readHeadTaskId,
+  resolveEffectivePhaseDisplay,
+} from '../cli-utils.js';
 import { selectInteractiveItem } from '../interactive-selector.js';
 
 export async function runUse(workspaceRoot: string, taskId?: string): Promise<void> {
@@ -38,11 +44,20 @@ export async function runUse(workspaceRoot: string, taskId?: string): Promise<vo
 }
 
 async function setHeadToTask(workspaceRoot: string, store: TaskStore, taskId: string): Promise<void> {
-  // Validate the task exists
-  await store.getTask(taskId);
-  // Write to HEAD
+  let task;
+  try {
+    task = await store.getTask(taskId);
+  } catch (err) {
+    if (err instanceof TaskNotFoundError) {
+      await throwUseSuggestionError(store, taskId, err);
+    }
+    throw err;
+  }
+
   await writeTextFile(getHeadPath(workspaceRoot), taskId + '\n');
   console.log(`HEAD set to: ${taskId}`);
+  console.log('');
+  console.log(await formatCompactCurrentTaskSummary(task, new WorkflowLoader(workspaceRoot)));
 }
 
 function formatUseSelectorRow(
@@ -51,7 +66,7 @@ function formatUseSelectorRow(
   isHead: boolean,
 ): string {
   const marker = isHead ? ' [HEAD]' : '';
-  return `${task.id}${marker}  [${task.workflow}]  Phase: ${phaseDisplay}  - ${task.title}`;
+  return `Task ID: ${task.id}${marker}  [${task.workflow}]  Phase: ${phaseDisplay}  - ${task.title}`;
 }
 
 async function buildSelectorItems(workspaceRoot: string, tasks: TaskSummary[]) {
@@ -75,4 +90,65 @@ async function selectTask(items: { value: TaskSummary; label: string }[]): Promi
     header: 'Select an active task:',
     cancelMessage: 'Cancelled. No task selected.',
   });
+}
+
+async function throwUseSuggestionError(store: TaskStore, input: string, originalError: TaskNotFoundError): Promise<never> {
+  const tasks = await store.listActiveTasks();
+  const matches = findTaskSuggestions(input, tasks);
+
+  if (matches.length === 0) {
+    throw originalError;
+  }
+
+  const inputLabel = `Task not found: ${input}`;
+  if (matches.length === 1) {
+    const match = matches[0]!;
+    throw new PlaySpecError(
+      inputLabel,
+      [
+        'Did you mean this task ID?',
+        `  playspec use ${match.id}`,
+        `  Task ID: ${match.id}`,
+        `  Title:   ${match.title}`,
+      ].join('\n')
+    );
+  }
+
+  throw new PlaySpecError(
+    inputLabel,
+    [
+      'Multiple similar tasks found. Use one of these task IDs:',
+      ...matches.map((task) => `  Task ID: ${task.id}  Title: ${task.title}`),
+    ].join('\n')
+  );
+}
+
+function findTaskSuggestions(input: string, tasks: TaskSummary[]): TaskSummary[] {
+  const normalizedInput = normalizeForMatch(input);
+  const slugInput = slugify(input);
+  const matches = tasks.filter((task) => {
+    const normalizedId = normalizeForMatch(task.id);
+    const normalizedTitle = normalizeForMatch(task.title);
+    const titleSlug = slugify(task.title);
+
+    return (
+      normalizedInput === normalizedId ||
+      normalizedInput === normalizedTitle ||
+      slugInput === task.id ||
+      slugInput === titleSlug ||
+      normalizedId.includes(normalizedInput) ||
+      normalizedTitle.includes(normalizedInput) ||
+      normalizedInput.includes(normalizedTitle)
+    );
+  });
+
+  const byId = new Map<string, TaskSummary>();
+  for (const match of matches) {
+    byId.set(match.id, match);
+  }
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function normalizeForMatch(value: string): string {
+  return value.trim().toLowerCase();
 }

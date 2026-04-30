@@ -67,7 +67,7 @@ export function computeEffectivePhaseDisplay(
   const definition = workflow.phases[task.currentPhase];
 
   if (!inOrder || !definition) {
-    const invalidMsg = chalk.red(`INVALID (${task.currentPhase}) — allowed: ${phaseOrder.join(', ')}`);
+    const invalidMsg = chalk.red(`INVALID (${task.currentPhase}) — Allowed: ${phaseOrder.join(', ')}`);
     return { phaseDisplay: invalidMsg, phaseLabel: 'Phase', phaseIdDisplay: '', gateRouteLines: [], nextRouteLines: [], isEffective: false, isInvalid: true, allowedPhaseIds: phaseOrder };
   }
 
@@ -90,6 +90,65 @@ export async function resolveEffectivePhaseDisplay(
   } catch {
     return { phaseDisplay: task.currentPhase ?? '(not started)', phaseLabel: 'Phase', phaseIdDisplay: '', gateRouteLines: [], nextRouteLines: [], isEffective: false, isInvalid: false, allowedPhaseIds: [] };
   }
+}
+
+export function formatCompactPhaseDisplay(
+  task: Pick<TaskRecord | TaskSummary, 'currentPhase' | 'workflow'>,
+  workflow: WorkflowDefinition,
+): { phase: string; allowed?: string } {
+  const phaseOrder = workflow.phaseOrder;
+  const phaseId = task.currentPhase ?? phaseOrder[0];
+
+  if (!phaseId) {
+    return { phase: '(not started)' };
+  }
+
+  const definition = workflow.phases[phaseId];
+  if (!phaseOrder.includes(phaseId) || !definition) {
+    return {
+      phase: `INVALID (${phaseId})`,
+      allowed: phaseOrder.join(', '),
+    };
+  }
+
+  const display = phaseDisplayInfo(phaseId, definition);
+  return { phase: `${display.number} — ${display.title}` };
+}
+
+export async function formatCompactCurrentTaskSummary(
+  task: Pick<TaskRecord, 'id' | 'title' | 'workflow' | 'currentPhase' | 'contextRefs'>,
+  workflowLoader: WorkflowLoader,
+): Promise<string> {
+  let phase = task.currentPhase ?? '(not started)';
+  let allowed: string | undefined;
+  try {
+    const workflow = await workflowLoader.load(task.workflow);
+    const compact = formatCompactPhaseDisplay(task, workflow);
+    phase = compact.phase;
+    allowed = compact.allowed;
+  } catch {
+    // Keep summary display-only even if workflow assets are unavailable.
+  }
+
+  const lines = [
+    'Current task:',
+    `  Task ID:  ${task.id}`,
+    `  Title:    ${task.title}`,
+    `  Workflow: ${task.workflow}`,
+    `  Phase:    ${phase}`,
+  ];
+
+  if (allowed) {
+    lines.push(`  Allowed:  ${allowed}`);
+  }
+
+  const contextRefsCount = task.contextRefs?.length ?? 0;
+  if (contextRefsCount > 0) {
+    lines.push(`  Context:  ${contextRefsCount} linked file(s)`);
+  }
+
+  lines.push('', 'Next:', '  playspec prompt');
+  return lines.join('\n');
 }
 
 export async function resolveOutputFilePath(workspaceRoot: string, outputPath: string): Promise<string> {

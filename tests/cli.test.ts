@@ -201,21 +201,67 @@ phases:
     const listTasks = await runCli(['list-tasks'], workspace.dir);
 
     expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain('Task ID');
     expect(list.stdout).toContain('head_marker_task [HEAD]');
     expect(listTasks.exitCode).toBe(0);
+    expect(listTasks.stdout).toContain('Task ID');
     expect(listTasks.stdout).toContain('head_marker_task [HEAD]');
   });
 
-  it('sets HEAD with explicit use <taskId>', async () => {
+  it('sets HEAD with explicit use <taskId> and prints current-task summary', async () => {
     const firstTaskId = await createActiveTask('Use Explicit First Task');
-    const secondTaskId = await createAdditionalActiveTask('Use Explicit Second Task');
+    const secondTaskId = await createAdditionalActiveTask('Use Explicit Second Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(secondTaskId, {
+      contextRefs: [{ path: 'docs/missing-context.md', role: 'planning-context', source: 'manual_task' }],
+    });
+    const before = await store.getTask(secondTaskId);
 
     const result = await runCli(['use', secondTaskId], workspace.dir);
+    const after = await store.getTask(secondTaskId);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`HEAD set to: ${secondTaskId}`);
+    expect(result.stdout).toContain('Current task:');
+    expect(result.stdout).toContain(`  Task ID:  ${secondTaskId}`);
+    expect(result.stdout).toContain('  Title:    Use Explicit Second Task');
+    expect(result.stdout).toContain('  Workflow: mono-spec');
+    expect(result.stdout).toContain('  Phase:    1');
+    expect(result.stdout).toContain('  Context:  1 linked file(s)');
+    expect(result.stdout).toContain('Next:');
+    expect(result.stdout).toContain('  playspec prompt');
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${secondTaskId}\n`);
     expect(firstTaskId).not.toBe(secondTaskId);
+    expect(after.currentPhase).toBe(before.currentPhase);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('suggests the matching task ID when use receives a title', async () => {
+    await createActiveTask('Use Suggestion Existing Task');
+    const suggestedTaskId = await createAdditionalActiveTask('Use Suggestion Target Task');
+
+    const result = await runCli(['use', 'Use Suggestion Target Task'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Task not found: Use Suggestion Target Task');
+    expect(result.stderr).toContain('Did you mean this task ID?');
+    expect(result.stderr).toContain(`playspec use ${suggestedTaskId}`);
+    expect(result.stderr).toContain(`Task ID: ${suggestedTaskId}`);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('use_suggestion_existing_task\n');
+  });
+
+  it('shows multiple candidate task IDs when use receives an ambiguous title fragment', async () => {
+    const headTaskId = await createActiveTask('Use Ambiguous Head Task');
+    const firstCandidate = await createAdditionalActiveTask('Use Ambiguous Alpha Task');
+    const secondCandidate = await createAdditionalActiveTask('Use Ambiguous Beta Task');
+
+    const result = await runCli(['use', 'Use Ambiguous'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Multiple similar tasks found.');
+    expect(result.stderr).toContain(`Task ID: ${firstCandidate}  Title: Use Ambiguous Alpha Task`);
+    expect(result.stderr).toContain(`Task ID: ${secondCandidate}  Title: Use Ambiguous Beta Task`);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${headTaskId}\n`);
   });
 
   it('rejects no-arg use in non-interactive mode without changing HEAD', async () => {
@@ -244,6 +290,7 @@ phases:
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain('Select an active task:');
+    expect(output).toContain(`Task ID: ${firstTaskId}`);
     expect(output).toContain(firstTaskId);
     expect(output).toContain('[HEAD]');
     expect(output).toContain(`[multi-spec]  Phase:`);
@@ -309,9 +356,11 @@ phases:
     const currentTask = await runCli(['current-task'], workspace.dir);
 
     expect(current.exitCode).toBe(0);
+    expect(current.stdout).toContain(`Task ID: ${taskId}`);
     expect(current.stdout).toContain('Context:');
     expect(current.stdout).toContain(`- ${contextPath}`);
     expect(currentTask.exitCode).toBe(0);
+    expect(currentTask.stdout).toContain(`Task ID:      ${taskId}`);
     expect(currentTask.stdout).toContain('Docs root:');
     expect(currentTask.stdout).toContain('Context refs detail:');
     expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual_task)`);
@@ -1653,7 +1702,7 @@ phases:
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('INVALID');
     expect(result.stdout).toContain('nonexistent_phase');
-    expect(result.stdout).toContain('allowed:');
+    expect(result.stdout).toContain('Allowed:');
   });
 
   it('list-tasks shows INVALID with allowed phases for unknown currentPhase', async () => {
@@ -1666,7 +1715,7 @@ phases:
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('INVALID');
     expect(result.stdout).toContain('bogus_phase');
-    expect(result.stdout).toContain('allowed:');
+    expect(result.stdout).toContain('Allowed:');
   });
 
   it('get-task --json emits task record as JSON', async () => {
