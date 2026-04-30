@@ -11,6 +11,7 @@ import {
 import { phaseDisplayInfo } from '#workflow/phase-display.js';
 import { isInteractiveCli } from '../cli-utils.js';
 import type { WorkflowDefinition } from '#core/types.js';
+import { selectInteractiveItem } from '../interactive-selector.js';
 
 export interface PhaseOptions {
   task?: string;
@@ -38,102 +39,21 @@ async function selectPhase(
   phases: { phaseId: string; label: string }[],
   initialIndex: number
 ): Promise<string | null> {
-  let selectedIndex = Math.max(0, Math.min(initialIndex, phases.length - 1));
-  let renderedLines = 0;
-  const stdin = process.stdin;
-  const stdout = process.stdout;
-  const wasRaw = stdin.isRaw === true;
-
-  return new Promise<string | null>((resolve) => {
-    let isDone = false;
-
-    const restore = () => {
-      stdin.off('data', onData);
-      if (stdin.isTTY && typeof stdin.setRawMode === 'function') {
-        stdin.setRawMode(wasRaw);
+  try {
+    return await selectInteractiveItem(
+      phases.map((phase) => ({ value: phase.phaseId, label: phase.label })),
+      {
+        header: 'Select a phase:',
+        cancelMessage: 'Cancelled. Phase not changed.',
+        initialIndex,
       }
-      stdout.write('\x1b[?25h');
-      if (!wasRaw) {
-        stdin.pause();
-      }
-    };
-
-    const finish = (phaseId: string) => {
-      if (isDone) return;
-      isDone = true;
-      restore();
-      stdout.write('\n');
-      resolve(phaseId);
-    };
-
-    const cancel = () => {
-      if (isDone) return;
-      isDone = true;
-      restore();
-      stdout.write('\n');
-      resolve(null);
-    };
-
-    const render = () => {
-      if (renderedLines > 0) {
-        stdout.write('\x1b[' + String(renderedLines) + 'A');
-        stdout.write('\x1b[J');
-      }
-      const lines = [
-        'Select a phase:',
-        ...phases.map((p, i) => `${i === selectedIndex ? '>' : ' '} ${p.label}`),
-        'Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.',
-      ];
-      stdout.write(`${lines.join('\n')}\n`);
-      renderedLines = lines.length;
-    };
-
-    const onData = (data: Buffer) => {
-      try {
-        const input = data.toString('utf8');
-        let cursor = 0;
-
-        while (cursor < input.length) {
-          if (input.startsWith('\x1b[A', cursor)) {
-            selectedIndex = selectedIndex === 0 ? phases.length - 1 : selectedIndex - 1;
-            render();
-            cursor += 3;
-            continue;
-          }
-          if (input.startsWith('\x1b[B', cursor)) {
-            selectedIndex = selectedIndex === phases.length - 1 ? 0 : selectedIndex + 1;
-            render();
-            cursor += 3;
-            continue;
-          }
-          const char = input[cursor];
-          if (char === '\x03' || char === '\x1b') {
-            cancel();
-            return;
-          }
-          if (char === '\r' || char === '\n') {
-            finish(phases[selectedIndex]!.phaseId);
-            return;
-          }
-          cursor += 1;
-        }
-      } catch {
-        cancel();
-      }
-    };
-
-    try {
-      stdout.write('\x1b[?25l');
-      if (stdin.isTTY && typeof stdin.setRawMode === 'function') {
-        stdin.setRawMode(true);
-      }
-      stdin.resume();
-      stdin.on('data', onData);
-      render();
-    } catch {
-      cancel();
+    );
+  } catch (error) {
+    if (error instanceof PlaySpecError && error.message === 'Cancelled. Phase not changed.') {
+      return null;
     }
-  });
+    throw error;
+  }
 }
 
 export async function runPhase(
@@ -257,10 +177,12 @@ export async function runPhase(
     console.log(`Target phase:  ${targetLabel}`);
     console.log('This will change task currentPhase.');
     console.log('phaseHistory will not be deleted.');
-    const confirmed = await askConfirm('Proceed? [y/N] ');
-    if (!confirmed) {
-      console.log('Cancelled. Phase not changed.');
-      return;
+    if (!autoConfirm) {
+      const confirmed = await askConfirm('Proceed? [y/N] ');
+      if (!confirmed) {
+        console.log('Cancelled. Phase not changed.');
+        return;
+      }
     }
   }
 

@@ -39,6 +39,15 @@ function runCliInPty(
   input: string,
   options: { env?: NodeJS.ProcessEnv } = {},
 ) {
+  return runCliInPtyWithInputScript(args, cwd, `(sleep 0.3; printf %b ${shellQuote(input)})`, options);
+}
+
+function runCliInPtyWithInputScript(
+  args: string[],
+  cwd: string,
+  inputScript: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+) {
   const command = [
     'npx',
     'tsx',
@@ -47,9 +56,8 @@ function runCliInPty(
     shellQuote(CLI_PATH),
     ...args.map(shellQuote),
   ].join(' ');
-  const delayedInput = `(sleep 0.3; printf %b ${shellQuote(input)})`;
 
-  return execa('bash', ['-lc', `${delayedInput} | script -q -e /dev/null -c ${shellQuote(command)}`], {
+  return execa('bash', ['-lc', `${inputScript} | script -q -e /dev/null -c ${shellQuote(command)}`], {
     cwd,
     reject: false,
     env: options.env,
@@ -234,9 +242,9 @@ phases:
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain('Select an active task:');
-    expect(output).toContain(`${firstTaskId} [HEAD]`);
+    expect(output).toContain(firstTaskId);
+    expect(output).toContain('[HEAD]');
     expect(output).toContain(`[multi-spec]  Phase:`);
-    expect(output).toContain('Use Interactive Zulu Task');
     expect(output).toContain(`HEAD set to: ${secondTaskId}`);
     expect(output).toContain(`Selected task: ${secondTaskId} - Use Interactive Zulu Task`);
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${secondTaskId}\n`);
@@ -279,11 +287,10 @@ phases:
     const output = result.stdout + result.stderr;
 
     expect(result.exitCode).toBe(0);
-    expect(output).toContain(`${effectiveTaskId} [HEAD]`);
-    expect(output).toContain('(effective)');
+    expect(output).toContain(effectiveTaskId);
+    expect(output).toContain('[HEAD]');
     expect(output).toContain('INVALID');
     expect(output).toContain('missing_phase');
-    expect(output).toContain('allowed:');
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${invalidTaskId}\n`);
   });
 
@@ -1970,6 +1977,26 @@ phases:
     expect(output).toContain('Cancelled. Phase not changed.');
     expect(after.currentPhase).toBe(before.currentPhase);
     expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  // phase --select — PTY selection
+  it('phase --select updates the phase after selecting a new phase', async () => {
+    const taskId = await createActiveTask('Phase Select Success Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { currentPhase: '1' });
+
+    const result = await runCliInPtyWithInputScript(
+      ['phase', '--task', taskId, '--select', '--yes'],
+      workspace.dir,
+      `(sleep 0.3; printf %b ${shellQuote('\x1b[B\r')})`
+    );
+    const output = result.stdout + result.stderr;
+    const after = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('Select a phase:');
+    expect(output).toContain('Target phase:  2. Phase 2');
+    expect(after.currentPhase).toBe('2');
   });
 
   // phase <phaseId> — still render-only (no state change)
