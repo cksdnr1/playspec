@@ -11,6 +11,7 @@ import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { copyToClipboard } from '#utils/clipboard.js';
 import { isInteractiveCli } from '../cli-utils.js';
+import { selectInteractiveItem } from '../interactive-selector.js';
 
 const LARGE_FILE_BYTES = 1024 * 1024;
 
@@ -21,11 +22,6 @@ export interface SpecsOptions {
   copy?: boolean;
   showMissing?: boolean;
   forceLarge?: boolean;
-}
-
-interface SelectorItem {
-  candidate: RelevantFileCandidate;
-  label: string;
 }
 
 export async function runSpecs(workspaceRoot: string, opts: SpecsOptions): Promise<void> {
@@ -193,118 +189,12 @@ function formatBytes(bytes: number): string {
 
 async function selectFile(candidates: RelevantFileCandidate[]): Promise<RelevantFileCandidate> {
   const items = candidates.map((candidate) => ({
-    candidate,
+    value: candidate,
     label: `${candidate.path}  [${candidate.source}] ${candidate.reason}`,
   }));
-  return selectCandidate(items);
-}
-
-async function selectCandidate(items: SelectorItem[]): Promise<RelevantFileCandidate> {
-  let selectedIndex = 0;
-  let renderedLines = 0;
-  const stdin = process.stdin;
-  const stdout = process.stdout;
-  const wasRaw = stdin.isRaw === true;
-
-  return new Promise<RelevantFileCandidate>((resolve, reject) => {
-    let isDone = false;
-
-    const restore = () => {
-      stdin.off('data', onData);
-      if (stdin.isTTY && typeof stdin.setRawMode === 'function') {
-        stdin.setRawMode(wasRaw);
-      }
-      stdout.write('\x1b[?25h');
-      if (!wasRaw) {
-        stdin.pause();
-      }
-    };
-
-    const finish = (result: RelevantFileCandidate) => {
-      if (isDone) return;
-      isDone = true;
-      restore();
-      stdout.write('\n');
-      resolve(result);
-    };
-
-    const cancel = () => {
-      if (isDone) return;
-      isDone = true;
-      restore();
-      stdout.write('\n');
-      reject(new PlaySpecError('Cancelled. No file selected.'));
-    };
-
-    const fail = (error: unknown) => {
-      if (isDone) return;
-      isDone = true;
-      restore();
-      stdout.write('\n');
-      reject(error);
-    };
-
-    const render = () => {
-      if (renderedLines > 0) {
-        stdout.write(`\x1b[${renderedLines}A`);
-        stdout.write('\x1b[J');
-      }
-
-      const lines = [
-        'Select a relevant file:',
-        ...items.map((item, index) => `${index === selectedIndex ? '>' : ' '} ${item.label}`),
-        'Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.',
-      ];
-      stdout.write(`${lines.join('\n')}\n`);
-      const termWidth = stdout.columns || 80;
-      renderedLines = lines.reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / termWidth)), 0);
-    };
-
-    const onData = (data: Buffer) => {
-      try {
-        const value = data.toString('utf8');
-        let cursor = 0;
-        while (cursor < value.length) {
-          if (value.startsWith('\u001b[A', cursor)) {
-            selectedIndex = selectedIndex === 0 ? items.length - 1 : selectedIndex - 1;
-            render();
-            cursor += 3;
-            continue;
-          }
-          if (value.startsWith('\u001b[B', cursor)) {
-            selectedIndex = selectedIndex === items.length - 1 ? 0 : selectedIndex + 1;
-            render();
-            cursor += 3;
-            continue;
-          }
-
-          const char = value[cursor];
-          if (char === '\u0003' || char === '\u001b') {
-            cancel();
-            return;
-          }
-          if (char === '\r' || char === '\n') {
-            finish(items[selectedIndex].candidate);
-            return;
-          }
-          cursor += 1;
-        }
-      } catch (error) {
-        fail(error);
-      }
-    };
-
-    try {
-      stdout.write('\x1b[?25l');
-      if (stdin.isTTY && typeof stdin.setRawMode === 'function') {
-        stdin.setRawMode(true);
-      }
-      stdin.resume();
-      stdin.on('data', onData);
-      render();
-    } catch (error) {
-      fail(error);
-    }
+  return selectInteractiveItem(items, {
+    header: 'Select a relevant file:',
+    cancelMessage: 'Cancelled. No file selected.',
   });
 }
 
