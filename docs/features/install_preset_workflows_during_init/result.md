@@ -39,4 +39,5 @@
 ## Final PR Prep
 
 - Branch: `agent/issue-40-install-presets`
-- PR: pending creation
+- PR: https://github.com/cksdnr1/playspec/pull/41
+- Issue label `agent-pr-created` added.
