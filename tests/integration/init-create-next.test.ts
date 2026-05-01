@@ -202,18 +202,69 @@ describe('init → create → next (end-to-end)', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('does not register archive list/show CLI behavior in Phase 5', async () => {
+  it('lists and shows archived tasks without mixing them into active lists', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
 
+    const taskId = slugify('Archived CLI Task');
+    const activeTaskId = slugify('Still Active Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Archived CLI Task',
+      workflow: 'mono-spec',
+    });
+    await store.createTask({
+      id: activeTaskId,
+      title: 'Still Active Task',
+      workflow: 'multi-spec',
+    });
+    await store.updateTask(taskId, {
+      status: 'completed',
+      phaseHistory: [
+        {
+          phase: 'implementation',
+          status: 'completed',
+          completedAt: '2026-05-01T00:00:00.000Z',
+        },
+      ],
+    });
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'outputs', 'result.md'),
+      '# Result\n'
+    );
+    await store.archiveCompletedTask(taskId);
+
     const rootHelp = await runCli(['--help']);
+    const archiveHelp = await runCli(['archive', '--help']);
+    const archiveList = await runCli(['archive', 'list']);
+    const archiveShow = await runCli(['archive', 'show', '--task', taskId]);
+    const activeList = await runCli(['list']);
+    const activeListTasks = await runCli(['list-tasks']);
 
     expect(rootHelp.exitCode).toBe(0);
     expect(rootHelp.stdout).toContain('close');
-    expect(rootHelp.stdout).not.toMatch(/^\s+archive\b/m);
-    expect(rootHelp.stdout).not.toMatch(/^\s+archive\s+list\b/m);
-    expect(rootHelp.stdout).not.toMatch(/^\s+archive\s+show\b/m);
-  });
+    expect(rootHelp.stdout).toMatch(/^\s+archive\b/m);
+    expect(archiveHelp.exitCode).toBe(0);
+    expect(archiveHelp.stdout).toMatch(/^\s+list\b/m);
+    expect(archiveHelp.stdout).toMatch(/^\s+show\b/m);
+    expect(archiveList.exitCode).toBe(0);
+    expect(archiveList.stdout).toContain('Archived tasks:');
+    expect(archiveList.stdout).toContain(`${taskId} | Archived CLI Task | mono-spec`);
+    expect(archiveList.stdout).not.toContain(activeTaskId);
+    expect(archiveShow.exitCode).toBe(0);
+    expect(archiveShow.stdout).toContain(`Task ID:      ${taskId}`);
+    expect(archiveShow.stdout).toContain('Title:        Archived CLI Task');
+    expect(archiveShow.stdout).toContain('Status:       archived');
+    expect(archiveShow.stdout).toContain(`Task root:    .playspec/tasks/archived/${taskId}`);
+    expect(archiveShow.stdout).toContain('Phase history:');
+    expect(activeList.exitCode).toBe(0);
+    expect(activeList.stdout).toContain(activeTaskId);
+    expect(activeList.stdout).not.toContain(taskId);
+    expect(activeListTasks.exitCode).toBe(0);
+    expect(activeListTasks.stdout).toContain(activeTaskId);
+    expect(activeListTasks.stdout).not.toContain(taskId);
+  }, 30_000);
 
   it('renders mono-spec prompts with validation criteria and target branch guidance', async () => {
     const manager = new PresetManager();
