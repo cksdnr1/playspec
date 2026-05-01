@@ -292,6 +292,10 @@ export class PlaySpecCore {
     return { taskId, previousPhase, currentPhase: targetPhaseId };
   }
 
+  async closeTask(taskId: string): Promise<TaskRecord> {
+    return this.taskStore.archiveCompletedTask(taskId);
+  }
+
   async collectEvidence(taskId: string): Promise<EvidenceResult> {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -164,6 +165,19 @@ describe('resolveMcpTaskId', () => {
 describe('buildMcpServer', () => {
   it('instantiates McpServer without throwing', () => {
     expect(() => buildMcpServer(workspace.dir)).not.toThrow();
+  });
+
+  it('does not register archive lookup tools in Phase 5', () => {
+    const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
+    try {
+      buildMcpServer(workspace.dir);
+      const toolNames = toolSpy.mock.calls.map((call) => String(call[0]));
+      expect(toolNames.filter((name) => name.includes('archive'))).toEqual([]);
+      expect(toolNames).not.toContain('playspec_get_archived_task');
+      expect(toolNames).not.toContain('playspec_list_archived_tasks');
+    } finally {
+      toolSpy.mockRestore();
+    }
   });
 });
 

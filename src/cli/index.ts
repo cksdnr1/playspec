@@ -26,6 +26,7 @@ import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
 import { runMigrate } from './commands/migrate.js';
+import { runClose } from './commands/close.js';
 import {
   runWorkflowExport,
   runWorkflowInstall,
@@ -454,6 +455,19 @@ program
   }) => {
     try {
       await runRollback(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// close
+program
+  .command('close')
+  .description('Close a completed task into archive storage')
+  .requiredOption('--task <id>', 'Completed task ID to close')
+  .action(async (opts: { task: string }) => {
+    try {
+      await runClose(process.cwd(), opts.task);
     } catch (err) {
       handleError(err);
     }
