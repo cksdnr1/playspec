@@ -52,3 +52,10 @@ Both full-suite attempts executed all visible integration/unit files through `te
 - `refactor_guard`: allowed; no scope drift reported.
 - `build_validator`: no blockers; `pnpm build` and focused Phase 5 tests are sufficient for build safety.
 - Safe refactor phase: no additional refactor applied because the implementation is already narrow and local.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/46
+- Branch: `agent/issue-45-update-5`
+- Initial implementation commit: `05550a594af0aa166dbca09b98d1b17832631724`
+- Reusable agent guidance: no new guidance needed; existing Phase 5 rules and AGENTS.md constraints were sufficient.
