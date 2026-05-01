@@ -1,7 +1,7 @@
 # {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
-Validate the current technical spec and produce a markdown validation/risk ledger.
+Validate the current implementation technical spec and produce a markdown validation/risk ledger.
 
 This step does not edit files directly.
 This step is for Codex/the code agent to review the current technical spec against the repository and decide the gated result.
@@ -34,32 +34,55 @@ This is review only.
 Do not implement, rewrite the spec, or write code.
 
 Start with a readiness score X/100 and a one-line reason.
-The score means implementation confidence based on spec readiness against the current repository, not whether the implementation already exists.
+The score means implementation confidence based on whether this spec is safe for a code agent to implement against the current repository without making unresolved architecture, ownership, lifecycle, state, mutation, or testing decisions during coding.
 
 Validate:
 - phase/workflow boundary
+- implementation scope and mono-spec size
 - architecture legality
 - hidden risks
 - ownership/lifecycle/migration/fallback ambiguity
 - old paths and bypass paths
+- persistence/state propagation
+- reset/clear behavior
+- mutation boundaries and allow-lists
+- CLI/MCP/API entry point contracts
 - contradictions
 - over-engineering
 - premature readiness claims
 - acceptance criteria quality
+- test coverage quality
 - interface vs concrete boundary safety
 - build/include workaround risk
 - diagram truthfulness
 - end-to-end user-visible behavior chain
 
 Rules:
+- This is an implementation technical spec validation, not a high-level planning review.
+- The spec must be specific enough for a code agent to implement without making architecture decisions during coding.
 - "Not implemented" alone is not a blocker.
-- Blocker = unresolved architecture, ownership, lifecycle, migration, fallback, or correctness risk.
-- "Answered but not implemented" = implementation gap.
+- However, missing implementation path, missing API contract, missing persistence model, missing state propagation, missing reset/clear behavior, missing mutation boundary, missing ownership, or missing tests is a blocker when it affects correctness, safety, or user-visible behaviour.
+- Blocker = unresolved architecture, ownership, lifecycle, migration, fallback, correctness, state propagation, API contract, persistence, reset/clear, mutation safety, or user-visible behavior risk.
+- Medium = important implementation ambiguity that can be patched narrowly before coding, but does not invalidate the main architecture.
+- Low = wording, documentation, minor test, or clarity issue that does not block safe implementation.
+- "Answered but not implemented" = implementation gap only if the spec gives a clear path, contract, tests, and boundaries.
+- If the spec says "decide during implementation", "for example", "optional", "TBD", or leaves storage/API/mutation boundaries open, classify it as at least Medium, and Blocker if it affects correctness or safety.
 - The workflow/spec boundary is the source of truth, but proof wording is not proof of correctness.
 - Do not treat helper, interface, callback, command option, function, or data-structure existence as end-to-end implementation.
-- Judge end-to-end from active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior.
-- If unclear, say "unclear from current context."
-- Prefer narrow clarification or small patch actions over redesign.
+- Judge end-to-end from active entry point -> validation -> state/data update -> persistence -> propagation/callback/event -> reset/clear -> final user-visible behavior -> tests.
+- Missing tests for changed persistence, mutation, routing, archive, MCP, migration, prompt-rendering, workflow, or lifecycle behavior are at least Medium risk.
+- Hidden write paths, direct file mutation, broad workspace-relative writes, or unclear allow-lists are Blockers unless explicitly gated by schema validation, backup, report, and approval.
+- Future work may be deferred only if the current phase does not depend on it.
+- If unclear, mark it as risk; do not assume implementation will solve it safely.
+- Prefer patch-ready fixes, but do not lower severity just because the fix is small.
+- Avoid redesign unless the current spec cannot be safely patched.
+
+Scoring guidance:
+- 95-100: implementation-ready; no blockers; only minor wording or small test additions.
+- 90-94: mostly ready, but still needs small spec patches before approval.
+- 80-89: useful draft, but not implementation-ready; unresolved medium/high risks remain.
+- 70-79: major gaps in ownership, state propagation, tests, safety boundaries, or user-visible behaviour.
+- <70: not safe to implement from this spec.
 
 Output markdown exactly:
 
@@ -99,12 +122,22 @@ For each:
 5. Architecture and E2E review
 - Layer legality:
 - Interface/concrete clarity:
+- State/persistence clarity:
+- Reset/clear clarity:
+- Mutation boundary clarity:
 - Build workaround risk:
 - Diagram result:
 - Missing verification chains:
 - Required spec statements:
 
-6. Patch-ready ledger
+6. Test and acceptance review
+- Existing tests relevant to this spec:
+- Missing required tests:
+- Acceptance criteria quality:
+- User-visible verification:
+- Regression coverage needed:
+
+7. Patch-ready ledger
 For each:
 - Risk ID:
 - Classification:
@@ -114,17 +147,17 @@ For each:
 - Patch intent:
 - Keep active?: yes/no
 
-7. Final readiness
+8. Final readiness
 - Safe to implement now:
 - Minimum remaining spec work:
 - Must not carry unresolved:
 
 Approval/gate handling:
 - This validation step has an approval gate.
-- If the technical spec readiness score is `>= 95/100` and no blockers remain:
+- If the technical spec readiness score is `>= 95/100`, no blockers remain, and the spec is implementation-ready without requiring the code agent to make architecture, storage, API, mutation-boundary, reset/clear, or test-strategy decisions:
   - run `playspec complete --result approved`
   - routes to Step 4. 구현 계획서 생성
-- If the technical spec readiness score is below `95/100` or unresolved blockers remain:
+- If the technical spec readiness score is below `95/100`, any blocker remains, or implementation would require deciding storage model, API contract, mutation boundary, reset/clear behavior, ownership, lifecycle, or test strategy during coding:
   - run `playspec complete --result needs_revision`
   - routes to Step 3. 기술 명세서 업데이트
 - Plain `playspec complete` must not silently choose a route for this gated step.
