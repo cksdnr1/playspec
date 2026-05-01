@@ -13,7 +13,7 @@ export async function runCurrent(workspaceRoot: string): Promise<void> {
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);
 
-  console.log(`ID:      ${task.id}`);
+  console.log(`Task ID: ${task.id}`);
   console.log(`Title:   ${task.title}`);
   console.log(`Workflow: ${task.workflow}`);
   console.log(`Status:  ${task.status}`);

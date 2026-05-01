@@ -13,6 +13,7 @@ export async function runListTasks(workspaceRoot: string): Promise<void> {
   }
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
+  console.log('Task ID  Workflow  Phase  Title');
 
   for (const task of tasks) {
     const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);

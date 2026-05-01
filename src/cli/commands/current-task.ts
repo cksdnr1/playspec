@@ -13,7 +13,7 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
 
   const contextRefsCount = task.contextRefs?.length ?? 0;
 
-  console.log(`ID:           ${task.id}`);
+  console.log(`Task ID:      ${task.id}`);
   console.log(`Title:        ${task.title}`);
   console.log(`Workflow:     ${task.workflow}`);
   console.log(`Status:       ${task.status}`);
