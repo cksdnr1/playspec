@@ -72,4 +72,4 @@ None.
 ## PR Preparation
 
 - Reusable agent guidance: not documented separately because this issue only records a Phase 4.2 baseline confirmation and a test assertion alignment.
-- PR link: pending creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/44
