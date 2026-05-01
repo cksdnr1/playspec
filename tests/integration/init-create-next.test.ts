@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { access } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -60,6 +60,11 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     await expect(access(path.join(ps, 'config.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'sessions', 'cli.default.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'tasks', 'active'))).resolves.not.toThrow();
+    await expect(access(path.join(workspace.dir, 'user-workflows', 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(
+      access(path.join(workspace.dir, 'user-workflows', 'mono-spec', 'templates', 'tech_spec_draft.md'))
+    ).resolves.not.toThrow();
+    await expect(access(path.join(workspace.dir, 'user-workflows', 'multi-spec', 'workflow.yaml'))).resolves.not.toThrow();
   });
 
   it('creates HEAD as an empty file on init', async () => {
@@ -69,6 +74,19 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     const { readFile } = await import('node:fs/promises');
     const headContent = await readFile(getHeadPath(workspace.dir), 'utf8');
     expect(headContent.trim()).toBe('');
+  });
+
+  it('does not overwrite already installed workflows on init', async () => {
+    const workflowDir = path.join(workspace.dir, 'user-workflows', 'mono-spec');
+    const workflowFile = path.join(workflowDir, 'workflow.yaml');
+    const customWorkflow = 'id: mono-spec\nmode: linear\nphaseOrder: []\nphases: {}\n';
+    await mkdir(workflowDir, { recursive: true });
+    await writeFile(workflowFile, customWorkflow, 'utf8');
+
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await expect(readFile(workflowFile, 'utf8')).resolves.toBe(customWorkflow);
   });
 });
 

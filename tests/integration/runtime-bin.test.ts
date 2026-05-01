@@ -91,16 +91,22 @@ describe('package runtime bins', () => {
 
   it('initializes an external workspace through the compiled CLI entrypoint', async () => {
     const workspace = await createTempWorkspace();
+    const userWorkflowRoot = path.join(workspace.dir, 'user-workflows');
 
     try {
       const result = await execa('node', [CLI_BIN, 'init', '--preset', 'default'], {
         cwd: workspace.dir,
+        env: {
+          ...process.env,
+          PLAY_SPEC_USER_WORKFLOWS: userWorkflowRoot,
+        },
         reject: false,
       });
 
       expect(result.exitCode).toBe(0);
       expect(result.stderr).not.toContain('ERR_PACKAGE_IMPORT_NOT_DEFINED');
       await expect(access(path.join(workspace.dir, '.playspec/HEAD'))).resolves.not.toThrow();
+      await expect(access(path.join(userWorkflowRoot, 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
     } finally {
       await workspace.cleanup();
     }
