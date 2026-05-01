@@ -15,7 +15,8 @@
       "#preset/*.js": ["./src/preset/*.js"],
       "#utils/*.js": ["./src/utils/*.js"],
       "#mcp/*.js": ["./src/mcp/*.js"],
-      "#migration/*.js": ["./src/migration/*.js"]
+      "#migration/*.js": ["./src/migration/*.js"],
+      "#pack/*.js": ["./src/pack/*.js"]
     },
     "esModuleInterop": true,
     "skipLibCheck": true
