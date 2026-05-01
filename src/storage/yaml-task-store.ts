@@ -124,6 +124,34 @@ export class YamlTaskStore implements TaskStore {
     return summaries;
   }
 
+  async listArchivedTasks(): Promise<TaskSummary[]> {
+    let entries: string[];
+    try {
+      entries = await readdir(getArchivedTasksRoot(this.workspaceRoot));
+    } catch {
+      return [];
+    }
+
+    const summaries: TaskSummary[] = [];
+    for (const entry of entries) {
+      try {
+        const task = await this.getArchivedTask(entry);
+        if (task.status === 'archived') {
+          summaries.push({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            currentPhase: task.currentPhase,
+            workflow: task.workflow,
+          });
+        }
+      } catch {
+        // Skip unreadable entries
+      }
+    }
+    return summaries.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   async createTask(input: CreateTaskInput): Promise<TaskRecord> {
     const now = new Date().toISOString();
     const taskRoot = path.join('.playspec', 'tasks', 'active', input.id);

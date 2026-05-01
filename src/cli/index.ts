@@ -27,6 +27,7 @@ import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
 import { runMigrate } from './commands/migrate.js';
 import { runClose } from './commands/close.js';
+import { runArchiveList, runArchiveShow } from './commands/archive.js';
 import {
   runWorkflowExport,
   runWorkflowInstall,
@@ -468,6 +469,34 @@ program
   .action(async (opts: { task: string }) => {
     try {
       await runClose(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// archive
+const archiveCommand = program
+  .command('archive')
+  .description('Inspect archived tasks');
+
+archiveCommand
+  .command('list')
+  .description('List archived tasks')
+  .action(async () => {
+    try {
+      await runArchiveList(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+archiveCommand
+  .command('show')
+  .description('Show an archived task')
+  .requiredOption('--task <id>', 'Archived task ID to show')
+  .action(async (opts: { task: string }) => {
+    try {
+      await runArchiveShow(process.cwd(), opts.task);
     } catch (err) {
       handleError(err);
     }

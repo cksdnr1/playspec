@@ -385,6 +385,57 @@ phases:
     expect(next.stdout).toContain(`- \`${contextPath}\` (role: planning-context, source: manual)`);
   });
 
+  it('renders an explicit archived artifact context ref in prompt variables', async () => {
+    const archivedTaskId = await createActiveTask('Archived Knowledge Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    const artifactPath = path.join(
+      '.playspec',
+      'tasks',
+      'active',
+      archivedTaskId,
+      'outputs',
+      'result.md'
+    );
+    await writeTextFile(path.join(workspace.dir, artifactPath), '# Archived Result\n');
+    await store.updateTask(archivedTaskId, { status: 'completed' });
+    await store.archiveCompletedTask(archivedTaskId);
+
+    const activeTaskId = await createAdditionalActiveTask('Archive Context Consumer', 'mono-spec');
+    await writeTextFile(getHeadPath(workspace.dir), `${activeTaskId}\n`);
+    const archivedArtifactPath = path.join(
+      '.playspec',
+      'tasks',
+      'archived',
+      archivedTaskId,
+      'outputs',
+      'result.md'
+    );
+
+    const addContext = await runCli(['add-context', archivedArtifactPath, '--task', activeTaskId], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const prompt = await runCli(['prompt', '--no-copy', '--quiet'], workspace.dir);
+
+    expect(addContext.exitCode).toBe(0);
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.stdout).toContain(`- \`${archivedArtifactPath}\``);
+    expect(prompt.stdout).toContain(`- \`${archivedArtifactPath}\` (role: planning-context, source: manual)`);
+  });
+
+  it('rejects missing archived artifact context refs during prompt rendering', async () => {
+    const taskId = await createActiveTask('Missing Archived Context Task', 'mono-spec');
+    const missingPath = '.playspec/tasks/archived/missing_task/outputs/result.md';
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      contextRefs: [{ path: missingPath, role: 'planning-context', source: 'manual' }],
+    });
+
+    const result = await runCli(['prompt', '--no-copy', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Context ref file not found: ${missingPath}`);
+  });
+
   it('lists relevant existing files for HEAD with specs --path-only', async () => {
     const taskId = await createActiveTask('Specs Path Only Task', 'mono-spec');
     const specPath = `docs/features/${taskId}/spec.md`;

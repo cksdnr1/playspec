@@ -11,6 +11,7 @@ export interface TaskStore {
   saveTask(task: TaskRecord): Promise<void>;
   listActiveTasks(): Promise<TaskSummary[]>;
   listCompletedTasks(): Promise<TaskSummary[]>;
+  listArchivedTasks(): Promise<TaskSummary[]>;
   createTask(input: CreateTaskInput): Promise<TaskRecord>;
   updateTask(taskId: string, patch: Partial<TaskRecord>): Promise<TaskRecord>;
   completePhase(taskId: string, input: CompletePhaseInput): Promise<TaskRecord>;

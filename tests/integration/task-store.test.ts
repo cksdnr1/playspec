@@ -255,6 +255,32 @@ phaseHistory: []
     expect(archived.id).toBe('done_task');
   });
 
+  it('lists archived tasks without mixing active or completed tasks', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'active_task', title: 'Active Task', workflow: 'mono-spec' });
+    await store.createTask({ id: 'completed_task', title: 'Completed Task', workflow: 'mono-spec' });
+    await store.createTask({ id: 'archived_b', title: 'Archived B', workflow: 'mono-spec' });
+    await store.createTask({ id: 'archived_a', title: 'Archived A', workflow: 'multi-spec' });
+    await store.updateTask('completed_task', { status: 'completed' });
+    await store.updateTask('archived_b', { status: 'completed' });
+    await store.updateTask('archived_a', { status: 'completed' });
+    await store.archiveCompletedTask('archived_b');
+    await store.archiveCompletedTask('archived_a');
+
+    const archived = await store.listArchivedTasks();
+
+    expect(archived.map((task) => task.id)).toEqual(['archived_a', 'archived_b']);
+    expect(archived).toContainEqual({
+      id: 'archived_a',
+      title: 'Archived A',
+      status: 'archived',
+      currentPhase: null,
+      workflow: 'multi-spec',
+    });
+    expect(archived.map((task) => task.id)).not.toContain('active_task');
+    expect(archived.map((task) => task.id)).not.toContain('completed_task');
+  });
+
   it('loads pre-Phase-3 task YAML without sync or rollback metadata', async () => {
     const taskRoot = path.join(
       workspace.dir,
