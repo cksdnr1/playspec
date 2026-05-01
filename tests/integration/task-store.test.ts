@@ -4,6 +4,7 @@ import { TaskNotFoundError } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
+import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
 let workspace: TempWorkspace;
@@ -183,6 +184,75 @@ phaseHistory: []
     const ids = completed.map((t) => t.id);
     expect(ids).toContain('done_task');
     expect(ids).not.toContain('active_task');
+  });
+
+  it('archives a completed task into canonical archive storage', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'done_task', title: 'Done Task', workflow: 'mono-spec' });
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', 'done_task', 'outputs', 'result.md'),
+      'done'
+    );
+    await store.updateTask('done_task', { status: 'completed' });
+
+    const archived = await store.archiveCompletedTask('done_task');
+
+    expect(archived.status).toBe('archived');
+    expect(archived.paths.taskRoot).toBe('.playspec/tasks/archived/done_task');
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'done_task'))
+    ).rejects.toThrow();
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'archived', 'done_task', 'outputs', 'result.md'))
+    ).resolves.toBeUndefined();
+
+    const fetched = await store.getArchivedTask('done_task');
+    expect(fetched.status).toBe('archived');
+    expect(fetched.paths.taskRoot).toBe('.playspec/tasks/archived/done_task');
+  });
+
+  it('rejects archiving an active task', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'active_task', title: 'Active Task', workflow: 'mono-spec' });
+
+    await expect(store.archiveCompletedTask('active_task')).rejects.toThrow(
+      'is not completed'
+    );
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'active_task', 'task.yaml'))
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects archive destination collisions before moving the task', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'done_task', title: 'Done Task', workflow: 'mono-spec' });
+    await store.updateTask('done_task', { status: 'completed' });
+    await mkdir(path.join(workspace.dir, '.playspec', 'tasks', 'archived', 'done_task'), {
+      recursive: true,
+    });
+
+    await expect(store.archiveCompletedTask('done_task')).rejects.toThrow(
+      'Archived task already exists'
+    );
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'done_task', 'task.yaml'))
+    ).resolves.toBeUndefined();
+  });
+
+  it('keeps active and archived task lookup separate', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({ id: 'done_task', title: 'Done Task', workflow: 'mono-spec' });
+    await store.updateTask('done_task', { status: 'completed' });
+    await store.archiveCompletedTask('done_task');
+
+    await expect(store.getTask('done_task')).rejects.toThrow(TaskNotFoundError);
+    const active = await store.listActiveTasks();
+    const completed = await store.listCompletedTasks();
+    expect(active.map((task) => task.id)).not.toContain('done_task');
+    expect(completed.map((task) => task.id)).not.toContain('done_task');
+
+    const archived = await store.getArchivedTask('done_task');
+    expect(archived.id).toBe('done_task');
   });
 
   it('loads pre-Phase-3 task YAML without sync or rollback metadata', async () => {

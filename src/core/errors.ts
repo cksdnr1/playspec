@@ -156,6 +156,26 @@ export class TaskNotActiveError extends PlaySpecError {
   }
 }
 
+export class TaskNotCompletedError extends PlaySpecError {
+  constructor(taskId: string, status: string) {
+    super(
+      `Task "${taskId}" is not completed (status: ${status}).`,
+      'Only completed tasks can be closed into archive storage.'
+    );
+    this.name = 'TaskNotCompletedError';
+  }
+}
+
+export class ArchivedTaskAlreadyExistsError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Archived task already exists: ${taskId}`,
+      'Choose a different task ID or inspect the existing archived task before retrying.'
+    );
+    this.name = 'ArchivedTaskAlreadyExistsError';
+  }
+}
+
 export class GitEvidenceCollectionError extends PlaySpecError {
   constructor(message: string) {
     super(

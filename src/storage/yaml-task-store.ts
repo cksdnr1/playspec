@@ -1,8 +1,12 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { access, mkdir, readdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
-import { TaskNotFoundError } from '#core/errors.js';
+import {
+  ArchivedTaskAlreadyExistsError,
+  TaskNotCompletedError,
+  TaskNotFoundError,
+} from '#core/errors.js';
 import type { TaskStore } from './task-store.js';
 import type {
   TaskRecord,
@@ -12,21 +16,42 @@ import type {
   PhaseHistoryEntry,
 } from '#core/types.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
-import { getTasksRoot, getTaskRoot } from '#utils/paths.js';
+import {
+  getActiveTaskRoot,
+  getActiveTasksRoot,
+  getArchivedTaskRoot,
+  getArchivedTasksRoot,
+} from '#utils/paths.js';
 
 export class YamlTaskStore implements TaskStore {
-  private readonly tasksRoot: string;
+  private readonly activeTasksRoot: string;
 
   constructor(private readonly workspaceRoot: string) {
-    this.tasksRoot = getTasksRoot(workspaceRoot);
+    this.activeTasksRoot = getActiveTasksRoot(workspaceRoot);
   }
 
   private taskYamlPath(taskId: string): string {
-    return path.join(getTaskRoot(this.workspaceRoot, taskId), 'task.yaml');
+    return path.join(getActiveTaskRoot(this.workspaceRoot, taskId), 'task.yaml');
+  }
+
+  private archivedTaskYamlPath(taskId: string): string {
+    return path.join(getArchivedTaskRoot(this.workspaceRoot, taskId), 'task.yaml');
   }
 
   async getTask(taskId: string): Promise<TaskRecord> {
     const yamlPath = this.taskYamlPath(taskId);
+    let content: string;
+    try {
+      content = await readTextFile(yamlPath);
+    } catch {
+      throw new TaskNotFoundError(taskId);
+    }
+    const raw = normalizeLegacyTask(parseYaml(content) as unknown);
+    return TaskRecordSchema.parse(raw);
+  }
+
+  async getArchivedTask(taskId: string): Promise<TaskRecord> {
+    const yamlPath = this.archivedTaskYamlPath(taskId);
     let content: string;
     try {
       content = await readTextFile(yamlPath);
@@ -46,7 +71,7 @@ export class YamlTaskStore implements TaskStore {
   async listActiveTasks(): Promise<TaskSummary[]> {
     let entries: string[];
     try {
-      entries = await readdir(this.tasksRoot);
+      entries = await readdir(this.activeTasksRoot);
     } catch {
       return [];
     }
@@ -74,7 +99,7 @@ export class YamlTaskStore implements TaskStore {
   async listCompletedTasks(): Promise<TaskSummary[]> {
     let entries: string[];
     try {
-      entries = await readdir(this.tasksRoot);
+      entries = await readdir(this.activeTasksRoot);
     } catch {
       return [];
     }
@@ -134,7 +159,7 @@ export class YamlTaskStore implements TaskStore {
     };
 
     // Create task directory structure
-    const absoluteTaskRoot = getTaskRoot(this.workspaceRoot, input.id);
+    const absoluteTaskRoot = getActiveTaskRoot(this.workspaceRoot, input.id);
     await mkdir(path.join(absoluteTaskRoot, 'outputs'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'reviews'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'prompts'), { recursive: true });
@@ -194,6 +219,40 @@ export class YamlTaskStore implements TaskStore {
     return validated;
   }
 
+  async archiveCompletedTask(taskId: string): Promise<TaskRecord> {
+    const existing = await this.getTask(taskId);
+    if (existing.status !== 'completed') {
+      throw new TaskNotCompletedError(taskId, existing.status);
+    }
+
+    const activeRoot = getActiveTaskRoot(this.workspaceRoot, taskId);
+    const archivedRoot = getArchivedTaskRoot(this.workspaceRoot, taskId);
+    const archivedTasksRoot = getArchivedTasksRoot(this.workspaceRoot);
+
+    if (await pathExists(archivedRoot)) {
+      throw new ArchivedTaskAlreadyExistsError(taskId);
+    }
+
+    await mkdir(archivedTasksRoot, { recursive: true });
+    await rename(activeRoot, archivedRoot);
+
+    const archived: TaskRecord = {
+      ...existing,
+      status: 'archived',
+      updatedAt: new Date().toISOString(),
+      paths: {
+        ...existing.paths,
+        taskRoot: path.join('.playspec', 'tasks', 'archived', taskId),
+      },
+    };
+    const validated = TaskRecordSchema.parse(archived);
+    await writeTextFileAtomic(
+      path.join(archivedRoot, 'task.yaml'),
+      stringifyYaml(validated)
+    );
+    return validated;
+  }
+
   private buildPhaseHistory(
     existingHistory: PhaseHistoryEntry[],
     input: CompletePhaseInput,
@@ -221,6 +280,15 @@ export class YamlTaskStore implements TaskStore {
 
     retainedHistory.push(newEntry);
     return retainedHistory;
+  }
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
   }
 }
 

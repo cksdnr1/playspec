@@ -177,6 +177,44 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toBeTruthy();
   });
 
+  it('closes a completed task into archive storage from the CLI', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Done Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Done Task',
+      workflow: 'mono-spec',
+    });
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const result = await runCli(['close', '--task', taskId]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Closed task "${taskId}" into archive storage.`);
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId))
+    ).rejects.toThrow();
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'archived', taskId, 'task.yaml'))
+    ).resolves.toBeUndefined();
+  });
+
+  it('does not register archive list/show CLI behavior in Phase 5', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const rootHelp = await runCli(['--help']);
+
+    expect(rootHelp.exitCode).toBe(0);
+    expect(rootHelp.stdout).toContain('close');
+    expect(rootHelp.stdout).not.toMatch(/^\s+archive\b/m);
+    expect(rootHelp.stdout).not.toMatch(/^\s+archive\s+list\b/m);
+    expect(rootHelp.stdout).not.toMatch(/^\s+archive\s+show\b/m);
+  });
+
   it('renders mono-spec prompts with validation criteria and target branch guidance', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
