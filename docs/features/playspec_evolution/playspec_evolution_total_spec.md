@@ -4,7 +4,7 @@
 
 This document resets the total technical specification for the remaining PlaySpec evolution work after the implementation drift that occurred since the old root-level `docs/playspec_total_spec.md` and `docs/playspec_phase_plan.md` were written.
 
-The source problem asks to reread those older planning documents, verify the actual code, and prepare a refined spec so the remaining phase plan can continue from the real repository state. The current codebase appears implemented through Dev Phase 4.1: MCP is present, and the CLI migration runner exists. However, the repository is not fully validation-clean: `pnpm build` passes, but `pnpm test -- --run tests/integration/runtime-bin.test.ts` currently fails because `package.json#imports` includes `#pack/*.js` while `tsconfig.json#compilerOptions.paths` does not. This document treats older docs as context, not proof, and does not claim the Phase 4.1 baseline is approval-ready until that blocker is fixed or explicitly planned as the first downstream hardening item.
+The source problem asks to reread those older planning documents, verify the actual code, and prepare a refined spec so the remaining phase plan can continue from the real repository state. The current codebase appears implemented through Dev Phase 4.1: MCP is present, and the CLI migration runner exists. Earlier validation recorded a runtime alias parity warning around `#pack/*.js`; the downstream phase plan keeps Phase 4.2 as a baseline-confirmation gate so execution-time validation can state whether that warning is stale or still requires a narrow fix. This document treats older docs as context, not proof, and does not claim the Phase 4.1 baseline is approval-ready until that gate is completed.
 
 This step creates only the total spec at `docs/features/playspec_evolution/playspec_evolution_total_spec.md`. The downstream phase planning output is `docs/features/playspec_evolution/playspec_evolution_phase_plan.md`; it must be created by a later workflow step, not here.
 
@@ -39,10 +39,11 @@ The feature is therefore not "implement the evolution engine immediately." It is
 ### Alternative Scenario: External Agent Produces A Migration Or Proposal
 
 1. Claude/Codex/OpenClaw analyzes repository docs or task history.
-2. The agent writes a structured plan or proposal file.
+2. The agent writes or updates a structured proposal file that describes a change plan, not just a knowledge record.
 3. PlaySpec validates and stores that file before mutation.
-4. PlaySpec previews changes and requires approval for risky edits.
-5. Approved changes update task state, workflow/template/rule assets, or docs through explicit, auditable actions.
+4. Follow-up validation, planning, implementation, and review results add evidence to the same proposal when they address the same workflow improvement.
+5. PlaySpec previews changes and requires explicit approval before apply.
+6. Approved changes update only allow-listed PlaySpec-owned assets through explicit, auditable actions with before/after reports and backups.
 
 This is already partially implemented for migration. It is proposed as the model for future evolution proposals.
 
@@ -112,7 +113,8 @@ High-level verified state:
 - Direct edits to `.playspec/tasks/active/*/task.yaml` bypass `TaskRecordSchema` unless followed by validated loading.
 - Direct edits to workflow/template/rule files bypass migration-style review and backup gates.
 - MCP code that calls `ActiveTaskResolver` or reads `.playspec/HEAD` would violate the established Phase 4 boundary.
-- Future evolution apply code could accidentally become a broad file mutation engine unless action schemas, target allow-lists, backups, and review gates are explicit.
+- Future evolution proposal intake could create many stale one-off proposal files unless the store supports updating, revising, superseding, and appending evidence to an existing proposal.
+- Future evolution apply code could accidentally become a broad file mutation engine unless action schemas, target allow-lists, backups, before/after reports, validation reports, and review gates are explicit.
 - Migration `archive_file` exists, but it is migration-local and gated by `--with-archive`; it is not the future general archive system.
 
 ### Partial Migrations
@@ -168,19 +170,21 @@ MCP client
 - Migration persists the plan before mutation and saves a report after execution.
 - `archive_file` migration actions fail unless `--with-archive` is passed.
 - Migration file actions such as `update_file`, `append_section`, and `replace_section` resolve workspace-relative target paths and are not an allow-listed future evolution apply model.
-- Current validation state: `pnpm build` passes, while `pnpm test -- --run tests/integration/runtime-bin.test.ts` fails on alias parity for `#pack/*.js`.
+- Historical validation state in the original rebaseline recorded `pnpm build` passing and `pnpm test -- --run tests/integration/runtime-bin.test.ts` failing on alias parity for `#pack/*.js`; Phase 4.2 owns reconciling that warning against the execution-time repository.
 
 ### Inferred Behavior
 
-- The repository is directionally ready to identify remaining work after Dev Phase 4.1, because Phase 4 and 4.1 implementation docs and code paths are present; downstream planning must account for the current alias parity test failure before claiming approval-quality readiness or sequencing Phase 5 as executable implementation.
+- The repository is directionally ready to identify remaining work after Dev Phase 4.1, because Phase 4 and 4.1 implementation docs and code paths are present; downstream planning must account for the Phase 4.2 baseline-confirmation gate before claiming approval-quality readiness or sequencing Phase 5 as executable implementation.
 - The migration subsystem is the closest existing pattern for future evolution proposals: external analysis, validated plan, persisted audit trail, preview, backup, gated apply. This is an architectural reference only; current migration actions are too broad to reuse unchanged for evolution apply.
 - Future evolution should attach to completion and prompt rendering points, because the old spec says evolution context is prepared after completion and pending proposals are surfaced at next prompt time.
+- Future mono-spec runs should preferably produce or update one consolidated proposal for a workflow improvement area. Proposal update/merge behavior should prevent stale proposal buildup by carrying evidence, action refinements, source task references, and revision history forward in one living change plan.
 
 ### Constraints
 
 - Do not couple Core logic to CLI.
 - MCP context resolution must use `resolveMcpTaskId()` and must not use `.playspec/HEAD`.
 - Do not auto-apply evolution proposals.
+- Do not add automatic proposal generation until proposal schema/storage, CLI intake, update/merge, auditable apply, and harness safety foundations exist.
 - Do not add the markdown viewer before its phase.
 - Do not delete files through migration or future evolution unless a later phase explicitly defines a safe reviewed delete model.
 - Use path aliases for cross-module imports.
@@ -195,41 +199,72 @@ MCP client
 5. Token/context tiering, harness safety, viewer, and DAG are future concepts with partial or no code representation.
 6. Direct file mutation remains possible outside validated PlaySpec flows.
 7. Future features need to preserve the Phase 4 MCP boundary and the Core/CLI separation.
-8. Runtime alias parity is currently broken for `#pack/*.js`, so the Phase 4.1 baseline cannot be described as fully build/test clean until this is fixed or intentionally removed.
+8. Runtime alias parity for `#pack/*.js` has been a baseline warning, so the Phase 4.1 baseline cannot be described as fully build/test clean until Phase 4.2 confirms whether the warning is stale, fixed, or still requires a narrow correction.
 9. Migration is implemented but not sufficient as a general evolution mechanism: its workspace-relative file mutations, migration-local archive path, and limited task state allow-list need stricter future boundaries before reuse.
+10. Evolution proposal records need lifecycle, revision, and evidence fields before they can support a mono-spec loop without stale proposal buildup.
 
 ## Proposed Direction
 
 ### Planning Direction
 
-The downstream phase plan should restart from the verified code reality around Phase 4.1 and plan only the remaining work. It should not reopen completed phases except for narrow hardening discovered by tests or validation findings. The current alias parity failure must be fixed or explicitly placed first in the downstream plan before Phase 5 is treated as approval-ready executable work.
+The downstream phase plan should restart from the verified code reality around Phase 4.1 and plan only the remaining work. It should not reopen completed phases except for narrow hardening discovered by tests or validation findings. The alias parity baseline warning must be reconciled first in the downstream plan before Phase 5 is treated as approval-ready executable work.
 
 Non-executable planning concerns for the later phase-plan step:
 
-1. Baseline hardening for the runtime alias parity failure and any migration adequacy checks needed before reusing migration as a reference.
+1. Baseline confirmation for runtime alias parity and any migration adequacy checks needed before reusing migration as a reference.
 2. General archive and knowledge base.
 3. Evolution proposal system and human edit learner.
-4. Automation safety and harness state.
-5. Token/context tiering and workflow editing tools.
-6. Markdown viewer.
-7. DAG/subtask schema preparation.
+4. Proposal update/merge and auditable proposal apply.
+5. Automation safety and harness state.
+6. Token/context tiering and workflow editing tools.
+7. Markdown viewer.
+8. DAG/subtask schema preparation.
 
 ### Proposed Evolution Flow
 
 ```text
 complete phase
   -> write normal completion artifacts
-  -> collect evolution context snapshot
+  -> collect validation/planning/implementation/review evidence
   -> optionally record human edit diff inputs
-  -> external agent writes proposal YAML
-  -> playspec validates and stores proposal
+  -> external agent writes first proposal YAML, or updates the existing proposal YAML for the same improvement area
+  -> playspec validates and stores proposal revision
+  -> playspec update/merge appends evidence and preserves previous revisions
   -> prompt/next surfaces pending proposal
   -> user views diff
-  -> user applies or skips
-  -> apply writes backup + updates allowed workflow/template/rule files
+  -> user applies or skips through explicit approval
+  -> apply creates pre-apply backup, before/after hashes, changed file list, validation result, and success/failure report
+  -> apply updates only allow-listed workflow/template/rule assets enabled by the relevant phase
 ```
 
-This proposed flow is not currently implemented. It should reuse the migration principles: schema validation, explicit target files, persisted reports, backups, preview before apply, and no silent auto-apply.
+This proposed flow is not currently implemented. It should reuse the migration principles: schema validation, explicit target files, persisted reports, backups, preview before apply, and no silent auto-apply. It must not reuse migration apply as the evolution apply engine; migration apply remains separate.
+
+### Proposal Record Model
+
+An evolution proposal is a reviewed change plan for improving PlaySpec-owned workflows, templates, or rules. It is not a passive knowledge-base entry and should remain focused on changes that can be reviewed, validated, applied, or intentionally skipped.
+
+Proposal lifecycle should support at least these states:
+
+- `pending` - stored and awaiting review or additional evidence.
+- `refining` - still active and being updated with new evidence, revised rationale, or action changes.
+- `skipped` - intentionally not applied, with reason/timestamp preserved.
+- `applied` - explicitly approved and applied with reports/backups.
+- `failed` - apply was attempted and failed, with failure or partial-apply report preserved.
+- `archived` or `superseded` - optional later states for proposals replaced by a newer consolidated plan.
+
+Proposal records should include fields for `revision`, `updatedAt`, `evidenceRefs`, `sourceTaskRefs`, `sourceResultRefs`, `supersedes` or revision history, target file refs, rationale, risk, actions, status, and validation metadata. Previous revisions should remain available so reviewers can audit why a proposal changed over time.
+
+Mono-spec workflow usage should favor one evolving proposal per coherent improvement area. New evidence from spec validation, phase-plan validation, implementation results, review findings, or human edit observations should update that proposal instead of creating competing one-off files. New proposals remain valid only when the evidence represents a distinct improvement area.
+
+Automatic proposal generation is explicitly deferred until after schema/storage, manual CLI intake, proposal update/merge, auditable apply, and harness safety exist. Until that later phase, agents may draft proposal YAML externally, and PlaySpec may validate, store, update, show, skip, diff, and apply only through explicit user-driven commands.
+
+### Proposal Apply Audit Model
+
+Proposal apply should be treated as an auditable change transaction. Apply must require explicit approval and must not mutate arbitrary workspace files.
+
+Apply reports should be stored under `.playspec/evolution/reports/{proposalId}-{timestamp}.yaml` and should include proposal ID, revision, approval source, target files, action list, before/after hashes, changed file list, validation checks run, result status, and failure details when applicable.
+
+Pre-apply backups should be stored under `.playspec/evolution/backups/{proposalId}-{timestamp}/` before any mutation. Failed or partially applied runs must write a failure report identifying the failed action, whether partial mutation occurred, and recovery guidance. If a report or backup cannot be written, apply should fail before mutation.
 
 ## File Responsibility Notes
 
@@ -252,9 +287,10 @@ These notes are not an implementation plan or phase plan. They only identify lik
 
 Risks:
 
-- The current alias mismatch between `package.json#imports` and `tsconfig.json#compilerOptions.paths` blocks full runtime-bin validation and should be resolved before downstream phase planning is considered approval-ready.
+- Runtime alias parity has been a baseline warning and should be reconfirmed before downstream implementation phases are considered approval-ready.
 - Migration is validated as Phase 4.1 behavior, but its file mutation actions are broad workspace-relative writes; future evolution apply must not inherit this as an unrestricted mutation model.
-- Future evolution apply behavior could mutate important workflow assets without enough review if it is not schema- and backup-gated.
+- Future evolution proposal storage may become a stale proposal pile unless update/merge, revision history, and evidence append behavior are first-class.
+- Future evolution apply behavior could mutate important workflow assets without enough review if it is not schema-, report-, validation-, and backup-gated.
 - Evolution apply may become a generalized mutation engine if action scope, allow-lists, and validation boundaries are not strictly enforced.
 - Archive implementation could conflict with existing active/completed listing assumptions.
 - Archive semantics are currently split between migration-local `archive_file` and future general task archive. Without a unified archive model, task lookup, listing, and context resolution may diverge in Phase 5.
@@ -268,8 +304,9 @@ Risks:
 
 Open questions:
 
-- Should evolution proposals live under each task, a global `.playspec/evolution/` area, or both? This must be decided before Phase 6 implementation because it affects retrieval, archive interaction, and MCP tool design.
-- What exact files may an evolution proposal modify: built-in preset assets, installed user workflows, `.playspec/templates`, `.playspec/rules`, or all of these with allow-lists?
+- Should evolution proposals live under each task, a global `.playspec/evolution/` area, or both? This must be decided before Phase 6 implementation because it affects retrieval, archive interaction, update/merge behavior, and MCP tool design.
+- What exact files may an evolution proposal modify in each apply phase: built-in preset assets, installed user workflows, `.playspec/templates`, `.playspec/rules`, or only a smaller allow-list?
+- When a mono-spec run discovers related evidence, what matching policy should decide whether to update an existing proposal or create a new proposal?
 - How should human edit diffs be captured in normal CLI usage without a harness or external agent?
 - Should general archive move completed tasks only, or can active tasks be closed/cancelled into archive states?
 - Should archived tasks remain addressable by `taskId` through the same `TaskStore`, or through a separate archive store?
@@ -287,7 +324,7 @@ Open questions:
 ### Completed Baseline
 
 - Dev Phase 0 through 4.1 are treated as implemented enough to define remaining work, not as fully validation-clean or approval-ready.
-- Build/test claims for historical Phase 4.1 completion come from `docs/playspec_phase4.1_implementation_result.md` and handoff docs; current validation during this patch confirmed `pnpm build` passes and `pnpm test -- --run tests/integration/runtime-bin.test.ts` fails on alias parity for `#pack/*.js`.
+- Build/test claims for historical Phase 4.1 completion come from `docs/playspec_phase4.1_implementation_result.md` and handoff docs; Phase 4.2 must record the execution-time `pnpm build` and runtime-bin alias parity results before later implementation phases proceed.
 
 ### Command Surface Snapshot
 
@@ -295,4 +332,4 @@ Open questions:
 - Compatibility alias: `playspec next`.
 - Implemented task commands include create/list/current/use/get-task/add-context/specs/phase/rewind/complete/status/evidence/snapshot/desync-check/rollback/migrate.
 - Implemented workflow commands include list/show/validate/install/remove/export.
-- Not implemented as full features: `playspec close`, general `archive`, `view`, `evolution-context`, `propose-evolution`, `apply-evolution`, `list-proposals`, harness execution commands, DAG execution commands.
+- Not implemented as full features: `playspec close`, general `archive`, `view`, `evolution-context`, proposal update/merge, `propose-evolution`, `apply-evolution`, `list-proposals`, automatic proposal generation, harness execution commands, DAG execution commands.
