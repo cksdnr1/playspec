@@ -51,3 +51,23 @@ export function getMigrationBackupsDir(workspaceRoot: string, planId: string): s
 export function getMigrationArchivedDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec', 'migrations', 'archived');
 }
+
+export function getEvolutionRoot(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.playspec', 'evolution');
+}
+
+export function getEvolutionProposalsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'proposals');
+}
+
+export function getEvolutionProposalRoot(workspaceRoot: string, proposalId: string): string {
+  return path.join(getEvolutionProposalsRoot(workspaceRoot), proposalId);
+}
+
+export function getEvolutionProposalPath(workspaceRoot: string, proposalId: string): string {
+  return path.join(getEvolutionProposalRoot(workspaceRoot, proposalId), 'proposal.yaml');
+}
+
+export function getEvolutionProposalValidationPath(workspaceRoot: string, proposalId: string): string {
+  return path.join(getEvolutionProposalRoot(workspaceRoot, proposalId), 'validation.yaml');
+}

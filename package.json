@@ -16,6 +16,7 @@
     "#utils/*.js": "./dist/utils/*.js",
     "#mcp/*.js": "./dist/mcp/*.js",
     "#migration/*.js": "./dist/migration/*.js",
+    "#evolution/*.js": "./dist/evolution/*.js",
     "#pack/*.js": "./dist/pack/*.js"
   },
   "scripts": {

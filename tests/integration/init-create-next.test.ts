@@ -12,6 +12,8 @@ import { MissingRequiredVariablesError } from '#core/errors.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
+import { EvolutionProposalStore } from '#evolution/proposal-store.js';
+import type { EvolutionProposal } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
@@ -48,6 +50,33 @@ async function initGitRepo(): Promise<void> {
   await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
   await execa('git', ['add', '.'], { cwd: workspace.dir });
   await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
+}
+
+function makeStoredProposal(id: string): EvolutionProposal {
+  return {
+    id,
+    createdAt: '2026-05-03T00:00:00.000Z',
+    status: 'pending',
+    source: {
+      taskId: 'source_task',
+      artifactRefs: [],
+    },
+    targetFiles: ['docs/features/source_task/spec.md'],
+    riskLevel: 'low',
+    actions: [
+      {
+        actionId: 'action_1',
+        type: 'propose_file_change',
+        targetPath: 'docs/features/source_task/spec.md',
+        summary: 'Proposal summary should stay out of prompts.',
+        rationale: 'Stored proposals are not prompt context in Phase 6.',
+      },
+    ],
+    rationale: 'Proposal rationale should stay out of prompts.',
+    review: {
+      status: 'unreviewed',
+    },
+  };
 }
 
 describe('PresetManager.initWorkspace — structure verification', () => {
@@ -175,6 +204,52 @@ describe('init → create → next (end-to-end)', () => {
     const core = new PlaySpecCore(workspace.dir, store);
     const prompt = await core.renderNextPrompt(taskId);
     expect(prompt).toBeTruthy();
+  });
+
+  it('renderNextPrompt ignores stored evolution proposals in Phase 6', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Prompt Ignores Proposals');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Prompt Ignores Proposals',
+      workflow: 'multi-spec',
+    });
+
+    const proposalStore = new EvolutionProposalStore(workspace.dir);
+    await proposalStore.saveProposal(makeStoredProposal('proposal_prompt_hidden'));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Prompt Ignores Proposals');
+    expect(prompt).not.toContain('proposal_prompt_hidden');
+    expect(prompt).not.toContain('Proposal summary should stay out of prompts.');
+    expect(prompt).not.toContain('evolution context');
+  });
+
+  it('completePhase does not create evolution context snapshots when proposals exist', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await initGitRepo();
+
+    const taskId = slugify('Completion Ignores Proposals');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Completion Ignores Proposals',
+      workflow: 'multi-spec',
+    });
+
+    const proposalStore = new EvolutionProposalStore(workspace.dir);
+    await proposalStore.saveProposal(makeStoredProposal('proposal_completion_hidden'));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.completePhase(taskId);
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'context'))).rejects.toThrow();
   });
 
   it('closes a completed task into archive storage from the CLI', async () => {

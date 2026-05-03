@@ -16,6 +16,7 @@
       "#utils/*.js": ["./src/utils/*.js"],
       "#mcp/*.js": ["./src/mcp/*.js"],
       "#migration/*.js": ["./src/migration/*.js"],
+      "#evolution/*.js": ["./src/evolution/*.js"],
       "#pack/*.js": ["./src/pack/*.js"]
     },
     "esModuleInterop": true,
