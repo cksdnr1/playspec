@@ -25,6 +25,7 @@ import { runSnapshot } from './commands/snapshot.js';
 import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
+import { runHarnessAttempt, runHarnessReset, runHarnessStatus } from './commands/harness.js';
 import { runMigrate } from './commands/migrate.js';
 import { runClose } from './commands/close.js';
 import { runArchiveList, runArchiveShow } from './commands/archive.js';
@@ -471,6 +472,51 @@ program
   }) => {
     try {
       await runRollback(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// harness
+const harnessCommand = program
+  .command('harness')
+  .description('Inspect and update automation safety harness state');
+
+harnessCommand
+  .command('status')
+  .description('Show automation safety harness state')
+  .requiredOption('--task <id>', 'Task ID to inspect')
+  .action(async (opts: { task: string }) => {
+    try {
+      await runHarnessStatus(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+harnessCommand
+  .command('attempt')
+  .description('Record an automation harness attempt')
+  .requiredOption('--task <id>', 'Task ID to update')
+  .requiredOption('--phase <phaseId>', 'Phase ID for the attempt')
+  .requiredOption('--result <value>', 'Attempt result: success or failure')
+  .option('--reason <text>', 'Failure or reset reason')
+  .action(async (opts: { task: string; phase: string; result: string; reason?: string }) => {
+    try {
+      await runHarnessAttempt(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+harnessCommand
+  .command('reset')
+  .description('Reset blocked harness state after human review')
+  .requiredOption('--task <id>', 'Task ID to reset')
+  .option('--reason <text>', 'Reset reason')
+  .action(async (opts: { task: string; reason?: string }) => {
+    try {
+      await runHarnessReset(process.cwd(), opts.task, opts.reason);
     } catch (err) {
       handleError(err);
     }

@@ -182,7 +182,44 @@ describe('CLI placeholder', () => {
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
     expect(output).toMatch(/playspec/i);
+    expect(output).toMatch(/^\s+harness\b/m);
     expect(output).toMatch(/^\s+evolution\b/m);
+  });
+
+  it('registers the Phase 7 harness command surface', async () => {
+    const result = await runCli(['harness', '--help'], workspace.dir);
+    const output = result.stdout + result.stderr;
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('status');
+    expect(output).toContain('attempt');
+    expect(output).toContain('reset');
+  });
+
+  it('records and resets harness attempts from the CLI', async () => {
+    const taskId = await createActiveTask('Harness CLI Task');
+
+    const status = await runCli(['harness', 'status', '--task', taskId], workspace.dir);
+    const first = await runCli([
+      'harness', 'attempt',
+      '--task', taskId,
+      '--phase', '1',
+      '--result', 'failure',
+      '--reason', 'validation failed',
+    ], workspace.dir);
+    const reset = await runCli(['harness', 'reset', '--task', taskId, '--reason', 'human reviewed'], workspace.dir);
+
+    expect(status.exitCode).toBe(0);
+    expect(status.stdout).toContain(`Task: ${taskId}`);
+    expect(status.stdout).toContain('Attempts: 0/3');
+    expect(first.exitCode).toBe(0);
+    expect(first.stdout).toContain('Harness attempt recorded');
+    expect(first.stdout).toContain('Attempts: 1/3');
+    expect(first.stdout).toContain('Last failure reason: validation failed');
+    expect(reset.exitCode).toBe(0);
+    expect(reset.stdout).toContain('Harness reset recorded');
+    expect(reset.stdout).toContain('Blocked: no');
+    expect(reset.stdout).toContain('Reset events: 1');
   });
 
   it('registers the Phase 6.3 evolution diff/apply command surface', async () => {

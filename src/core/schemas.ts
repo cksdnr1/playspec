@@ -125,3 +125,27 @@ export const SessionRecordSchema = z.object({
   adapter: z.string(),
   currentTaskId: z.string().nullable(),
 });
+
+export const HarnessAttemptResultSchema = z.enum(['success', 'failure']);
+
+export const HarnessResetEventSchema = z.object({
+  timestamp: z.string(),
+  taskId: z.string(),
+  previousBlocked: z.boolean(),
+  previousCircuitBreaker: z.boolean(),
+  reason: z.string().optional(),
+  source: z.string(),
+});
+
+export const HarnessRecordSchema = z.object({
+  taskId: z.string(),
+  phaseId: z.string(),
+  attemptCount: z.number().int().nonnegative(),
+  retryBudget: z.number().int().positive(),
+  lastResult: HarnessAttemptResultSchema.nullable(),
+  lastFailureReason: z.string().nullable(),
+  blocked: z.boolean(),
+  circuitBreaker: z.boolean(),
+  updatedAt: z.string(),
+  resetEvents: z.array(HarnessResetEventSchema),
+});
