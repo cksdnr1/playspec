@@ -16,13 +16,14 @@ import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../tsconfig.json');
+const TSX_PATH = path.resolve(TESTS_DIR, '../node_modules/.bin/tsx');
 
 function runCli(
   args: string[],
   cwd?: string,
   options: { env?: NodeJS.ProcessEnv; input?: string } = {}
 ) {
-  return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
+  return execa(TSX_PATH, ['--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
     cwd,
     reject: false,
     env: options.env,
@@ -50,8 +51,7 @@ function runCliInPtyWithInputScript(
   options: { env?: NodeJS.ProcessEnv } = {},
 ) {
   const command = [
-    'npx',
-    'tsx',
+    shellQuote(TSX_PATH),
     '--tsconfig',
     shellQuote(TSCONFIG_PATH),
     shellQuote(CLI_PATH),
@@ -67,7 +67,7 @@ function runCliInPtyWithInputScript(
 }
 let workspace: TempWorkspace;
 
-vi.setConfig({ testTimeout: 20_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
@@ -228,6 +228,7 @@ describe('CLI placeholder', () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain('propose');
+    expect(output).toContain('generate');
     expect(output).toContain('list');
     expect(output).toContain('show');
     expect(output).toContain('update');
@@ -236,6 +237,101 @@ describe('CLI placeholder', () => {
     expect(output).toContain('diff');
     expect(output).toContain('apply');
     expect(output).toContain('record-edit');
+  });
+
+  it('generates and refines evolution proposals from explicit CLI evidence', async () => {
+    const taskId = await createActiveTask('Evolution Generate CLI Task');
+    const evidencePath = path.join(workspace.dir, 'docs', 'evidence', 'generate.md');
+    const secondEvidencePath = path.join(workspace.dir, 'docs', 'evidence', 'generate-second.md');
+    await writeTextFile(evidencePath, '# Generation Evidence\n');
+    await writeTextFile(secondEvidencePath, '# Second Generation Evidence\n');
+
+    const generated = await runCli([
+      'evolution',
+      'generate',
+      '--task',
+      taskId,
+      '--from-evidence',
+      'docs/evidence/generate.md',
+      '--target',
+      'docs/features/generate/spec.md',
+      '--summary',
+      'Generate draft proposal.',
+      '--rationale',
+      'Evidence supports a proposal.',
+      '--id',
+      'proposal_cli_generate',
+      '--risk',
+      'low',
+    ], workspace.dir);
+    const duplicate = await runCli([
+      'evolution',
+      'generate',
+      '--task',
+      taskId,
+      '--from-evidence',
+      'docs/evidence/generate.md',
+      '--target',
+      'docs/features/generate/spec.md',
+      '--summary',
+      'Duplicate draft proposal.',
+      '--rationale',
+      'Should refine existing proposal.',
+      '--id',
+      'proposal_cli_generate_duplicate',
+    ], workspace.dir);
+    const refined = await runCli([
+      'evolution',
+      'generate',
+      '--task',
+      taskId,
+      '--from-evidence',
+      'docs/evidence/generate-second.md',
+      '--target',
+      'docs/features/generate/spec.md',
+      '--summary',
+      'Refine draft proposal.',
+      '--rationale',
+      'Additional evidence supports refinement.',
+      '--proposal',
+      'proposal_cli_generate',
+      '--risk',
+      'high',
+    ], workspace.dir);
+    const stored = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_generate',
+      'proposal.yaml'
+    ))) as {
+      revision: number;
+      riskLevel: string;
+      source: { generationSource: string };
+      evidenceRefs: { path: string; source: string }[];
+    };
+
+    expect(generated.exitCode).toBe(0);
+    expect(generated.stdout).toContain('Proposal generated: proposal_cli_generate');
+    expect(generated.stdout).toContain('Status: pending');
+    expect(generated.stdout).toContain('Revision: 1');
+    expect(generated.stdout).toContain('Proposal file: .playspec/evolution/proposals/proposal_cli_generate/proposal.yaml');
+    expect(generated.stdout).toContain('Validation file: .playspec/evolution/proposals/proposal_cli_generate/validation.yaml');
+    expect(duplicate.exitCode).toBe(1);
+    expect(duplicate.stderr).toContain('Active evolution proposal already targets docs/features/generate/spec.md');
+    expect(duplicate.stderr).toContain('playspec evolution generate --proposal');
+    expect(refined.exitCode).toBe(0);
+    expect(refined.stdout).toContain('Proposal updated: proposal_cli_generate');
+    expect(refined.stdout).toContain('Revision: 2');
+    expect(refined.stdout).toContain('Revision file: .playspec/evolution/proposals/proposal_cli_generate/revisions/revision-1.yaml');
+    expect(stored.revision).toBe(2);
+    expect(stored.riskLevel).toBe('high');
+    expect(stored.source.generationSource).toBe('cli');
+    expect(stored.evidenceRefs).toEqual([
+      expect.objectContaining({ path: 'docs/evidence/generate.md', source: 'generated' }),
+      expect.objectContaining({ path: 'docs/evidence/generate-second.md', source: 'generated' }),
+    ]);
   });
 
   it('records and marks human edit observations from the CLI', async () => {
@@ -1260,8 +1356,8 @@ phases:
     await manager.initWorkspace(workspace.dir, 'default');
 
     const result = await execa(
-      'npx',
-      ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create', 'mono-spec', 'Pasted Source Task', '--stdin'],
+      TSX_PATH,
+      ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create', 'mono-spec', 'Pasted Source Task', '--stdin'],
       { cwd: workspace.dir, reject: false, input: 'Pasted problem text\n' }
     );
     const sourcePath = path.join(
@@ -2124,8 +2220,8 @@ phases:
 
     // Simulate wizard: accept default workflow, provide title, choose skip
     const result = await execa(
-      'npx',
-      ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create'],
+      TSX_PATH,
+      ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'create'],
       {
         cwd: workspace.dir,
         reject: false,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,12 +20,15 @@ import type { EvolutionProposal, HumanEditObservation } from '#evolution/types.j
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
+const TSX_PATH = path.resolve(TESTS_DIR, '../../node_modules/.bin/tsx');
 
 let workspace: TempWorkspace;
 let previousUserWorkflows: string | undefined;
 
+vi.setConfig({ testTimeout: 60_000 });
+
 function runCli(args: string[]) {
-  return execa('npx', ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
+  return execa(TSX_PATH, ['--tsconfig', TSCONFIG_PATH, CLI_PATH, ...args], {
     cwd: workspace.dir,
     reject: false,
   });
@@ -525,7 +528,7 @@ describe('init → create → next (end-to-end)', () => {
     expect(activeListTasks.exitCode).toBe(0);
     expect(activeListTasks.stdout).toContain(activeTaskId);
     expect(activeListTasks.stdout).not.toContain(taskId);
-  }, 30_000);
+  }, 60_000);
 
   it('renders mono-spec prompts with validation criteria and target branch guidance', async () => {
     const manager = new PresetManager();

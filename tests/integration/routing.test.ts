@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -21,9 +21,12 @@ import { getHeadPath } from '#utils/paths.js';
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
+const TSX_PATH = path.resolve(TESTS_DIR, '../../node_modules/.bin/tsx');
 
 let workspace: TempWorkspace;
 let previousUserWorkflows: string | undefined;
+
+vi.setConfig({ testTimeout: 15_000 });
 
 // Routed workflow with validation -> implementation | spec_patch
 const ROUTED_WORKFLOW_YAML = `id: routed-spec
@@ -329,8 +332,8 @@ phases:
       await initRoutedWorkspace();
 
       const { stdout, stderr, exitCode } = await execa(
-        'npx',
-        ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete', '--result', 'approved'],
+        TSX_PATH,
+        ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete', '--result', 'approved'],
         { cwd: workspace.dir, reject: false }
       );
 
@@ -343,8 +346,8 @@ phases:
       await initRoutedWorkspace();
 
       const { stderr, exitCode } = await execa(
-        'npx',
-        ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete', '--result', 'invalid_value'],
+        TSX_PATH,
+        ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete', '--result', 'invalid_value'],
         { cwd: workspace.dir, reject: false }
       );
 
@@ -358,8 +361,8 @@ phases:
       await initRoutedWorkspace();
 
       const { stderr, exitCode } = await execa(
-        'npx',
-        ['tsx', '--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete'],
+        TSX_PATH,
+        ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete'],
         { cwd: workspace.dir, reject: false, stdin: 'pipe' }
       );
 

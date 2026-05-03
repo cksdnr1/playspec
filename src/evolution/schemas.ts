@@ -46,13 +46,14 @@ export const EvolutionProposalSourceSchema = z.object({
   taskId: z.string().optional(),
   archivedTaskId: z.string().optional(),
   artifactRefs: z.array(EvolutionArtifactReferenceSchema).default([]),
+  generationSource: z.literal('cli').optional(),
 });
 
 export const EvolutionEvidenceReferenceSchema = z.object({
   path: WorkspaceRelativePathSchema,
   note: z.string().min(1),
   addedAt: z.string(),
-  source: z.literal('append-evidence'),
+  source: z.enum(['append-evidence', 'generated']),
 });
 
 const BaseEvolutionProposalActionSchema = z.object({

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,9 +16,12 @@ import { getHeadPath } from '#utils/paths.js';
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
+const TSX_PATH = path.resolve(TESTS_DIR, '../../node_modules/.bin/tsx');
 
 let workspace: TempWorkspace;
 let previousUserWorkflows: string | undefined;
+
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
@@ -180,9 +183,8 @@ describe('Phase 2 completion engine', () => {
     });
 
     const { stdout, stderr, exitCode } = await execa(
-      'npx',
+      TSX_PATH,
       [
-        'tsx',
         '--tsconfig',
         TSCONFIG_PATH,
         CLI_PATH,

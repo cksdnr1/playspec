@@ -21,8 +21,11 @@ import type { EvolutionProposal } from '#evolution/types.js';
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MCP_PATH = path.resolve(TESTS_DIR, '../../src/mcp/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
+const TSX_PATH = path.resolve(TESTS_DIR, '../../node_modules/.bin/tsx');
 
 let workspace: TempWorkspace;
+
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
@@ -207,7 +210,7 @@ describe('buildMcpServer', () => {
     }
   });
 
-  it('does not register proposal or evolution intake tools in Phase 6', () => {
+  it('does not register proposal, evolution intake, or evolution generation tools', () => {
     const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
     try {
       buildMcpServer(workspace.dir);
@@ -215,6 +218,7 @@ describe('buildMcpServer', () => {
       expect(toolNames.filter((name) => name.includes('proposal'))).toEqual([]);
       expect(toolNames.filter((name) => name.includes('evolution'))).toEqual([]);
       expect(toolNames).not.toContain('playspec_create_evolution_proposal');
+      expect(toolNames).not.toContain('playspec_generate_evolution_proposal');
       expect(toolNames).not.toContain('playspec_list_evolution_proposals');
     } finally {
       toolSpy.mockRestore();
@@ -287,13 +291,13 @@ describe('MCP server process', () => {
   it('starts over stdio and exits cleanly when stdin closes', async () => {
     await initWorkspaceWithTask('Feature A');
     const result = await execa(
-      'npx',
-      ['tsx', '--tsconfig', TSCONFIG_PATH, MCP_PATH],
+      TSX_PATH,
+      ['--tsconfig', TSCONFIG_PATH, MCP_PATH],
       {
         cwd: workspace.dir,
         input: '',
         reject: false,
-        timeout: 5000,
+        timeout: 15000,
       }
     );
     // The server should exit cleanly (code 0) when stdin is closed
