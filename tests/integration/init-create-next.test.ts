@@ -3,6 +3,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -82,6 +83,25 @@ function makeStoredProposal(id: string): EvolutionProposal {
   };
 }
 
+function makeStoredProposalForTask(id: string, taskId: string): EvolutionProposal {
+  return {
+    ...makeStoredProposal(id),
+    source: {
+      taskId,
+      artifactRefs: [],
+    },
+    actions: [
+      {
+        actionId: 'action_1',
+        type: 'propose_file_change',
+        targetPath: 'docs/features/source_task/spec.md',
+        summary: 'Proposal summary should not be embedded.',
+        rationale: 'Only compact metadata is allowed in prompts.',
+      },
+    ],
+  };
+}
+
 function makeStoredHumanEdit(id: string): HumanEditObservation {
   return {
     id,
@@ -91,6 +111,13 @@ function makeStoredHumanEdit(id: string): HumanEditObservation {
     targetPath: '.playspec/templates/prompt.md',
     summary: 'Human edit summary should stay out of prompts.',
     rationale: 'Human edit rationale should stay out of prompts.',
+  };
+}
+
+function makeStoredHumanEditForTask(id: string, taskId: string): HumanEditObservation {
+  return {
+    ...makeStoredHumanEdit(id),
+    sourceTaskId: taskId,
   };
 }
 
@@ -270,6 +297,59 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).not.toContain('evolution context');
   });
 
+  it('renderNextPrompt surfaces compact evolution context only when explicitly requested', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Prompt Shows Evolution Context');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Prompt Shows Evolution Context',
+      workflow: 'multi-spec',
+    });
+
+    const proposalStore = new EvolutionProposalStore(workspace.dir);
+    await proposalStore.saveProposal(makeStoredProposalForTask('proposal_prompt_visible', taskId));
+    const humanEditStore = new EvolutionHumanEditStore(workspace.dir);
+    await humanEditStore.saveObservation(makeStoredHumanEditForTask('human_edit_prompt_visible', taskId));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const defaultPrompt = await core.renderNextPrompt(taskId);
+    const optInPrompt = await core.renderNextPrompt(taskId, { withEvolutionContext: true });
+
+    expect(defaultPrompt).not.toContain('proposal_prompt_visible');
+    expect(optInPrompt).toContain('## Evolution Context');
+    expect(optInPrompt).toContain('proposal_prompt_visible');
+    expect(optInPrompt).toContain('status=pending');
+    expect(optInPrompt).toContain('revision=1');
+    expect(optInPrompt).toContain('risk=low');
+    expect(optInPrompt).toContain('human_edit_prompt_visible');
+    expect(optInPrompt).not.toContain('Proposal summary should not be embedded.');
+    expect(optInPrompt).not.toContain('Only compact metadata is allowed in prompts.');
+  });
+
+  it('renderNextPrompt ignores malformed evolution records unless evolution context is requested', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Prompt Ignores Malformed Evolution');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Prompt Ignores Malformed Evolution',
+      workflow: 'multi-spec',
+    });
+
+    const badProposalDir = path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'bad_proposal');
+    await mkdir(badProposalDir, { recursive: true });
+    await writeFile(path.join(badProposalDir, 'proposal.yaml'), 'id: bad_proposal\nstatus: pending\n', 'utf8');
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.renderNextPrompt(taskId)).resolves.toContain('Prompt Ignores Malformed Evolution');
+    await expect(core.renderNextPrompt(taskId, { withEvolutionContext: true })).rejects.toThrow();
+  });
+
   it('completePhase does not create evolution context snapshots when proposals exist', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
@@ -312,6 +392,50 @@ describe('init → create → next (end-to-end)', () => {
     await core.completePhase(taskId);
 
     await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'context'))).rejects.toThrow();
+  });
+
+  it('completePhase writes a validated evolution context snapshot only when requested', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await initGitRepo();
+
+    const taskId = slugify('Completion Writes Evolution Context');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Completion Writes Evolution Context',
+      workflow: 'multi-spec',
+    });
+
+    const proposalStore = new EvolutionProposalStore(workspace.dir);
+    await proposalStore.saveProposal(makeStoredProposalForTask('proposal_completion_visible', taskId));
+    const humanEditStore = new EvolutionHumanEditStore(workspace.dir);
+    await humanEditStore.saveObservation(makeStoredHumanEditForTask('human_edit_completion_visible', taskId));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const result = await core.completePhase(taskId, { withEvolutionContext: true });
+
+    expect(result.evolutionContextSnapshotFile).toMatch(
+      /^\.playspec\/evolution\/context\/completion_writes_evolution_context\/1-\d{8}t\d{6}z\.yaml$/
+    );
+    const snapshot = parseYaml(
+      await readFile(path.join(workspace.dir, result.evolutionContextSnapshotFile!), 'utf8')
+    ) as {
+      taskId: string;
+      phaseId: string;
+      proposalIds: string[];
+      humanEditObservationIds: string[];
+      omittedProposalCount: number;
+      omittedHumanEditObservationCount: number;
+      generationSource: string;
+    };
+    expect(snapshot.taskId).toBe(taskId);
+    expect(snapshot.phaseId).toBe('1');
+    expect(snapshot.proposalIds).toEqual(['proposal_completion_visible']);
+    expect(snapshot.humanEditObservationIds).toEqual(['human_edit_completion_visible']);
+    expect(snapshot.omittedProposalCount).toBe(0);
+    expect(snapshot.omittedHumanEditObservationCount).toBe(0);
+    expect(snapshot.generationSource).toBe('complete');
   });
 
   it('closes a completed task into archive storage from the CLI', async () => {

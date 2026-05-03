@@ -39,6 +39,7 @@ export async function runComplete(
   quiet?: boolean,
   resultOption?: string,
   noCopy?: boolean,
+  withEvolutionContext?: boolean,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -72,7 +73,7 @@ export async function runComplete(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
-  const completionResult = await core.completePhase(task.id, { withReview, result });
+  const completionResult = await core.completePhase(task.id, { withReview, result, withEvolutionContext });
   if (!completedPhaseLabel || (completionResult.nextPhase && !nextPhaseLabel)) {
     const workflowLoader = new WorkflowLoader(workspaceRoot);
     const workflow = await workflowLoader.load(task.workflow);
@@ -101,12 +102,18 @@ export async function runComplete(
   if (completionResult.reviewFile) {
     console.log(`Review file: ${completionResult.reviewFile}`);
   }
+  if (completionResult.evolutionContextSnapshotFile) {
+    console.log(`Evolution context snapshot: ${completionResult.evolutionContextSnapshotFile}`);
+  }
 
   if (completionResult.nextPhase) {
     console.log('');
     try {
       const updatedTask = await store.getTask(task.id);
-      const prompt = await core.renderNextPrompt(updatedTask.id);
+      const prompt = await core.renderNextPrompt(updatedTask.id, {
+        withEvolutionContext,
+        evolutionContextSource: 'complete',
+      });
       await outputPrompt(workspaceRoot, updatedTask, prompt, { noCopy });
     } catch (err) {
       const hint = `playspec prompt --task ${task.id}`;

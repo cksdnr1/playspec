@@ -27,6 +27,7 @@ import {
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
+import { EvolutionContextReader } from '#evolution/context-reader.js';
 import type {
   PhaseDefinition,
   TaskRecord,
@@ -41,6 +42,8 @@ import type {
   RollbackExecutionResult,
   RollbackSafePoint,
   SetCurrentPhaseResult,
+  PromptRenderOptions,
+  CompletePhaseOptions,
 } from '#core/types.js';
 import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
@@ -52,6 +55,7 @@ export class PlaySpecCore {
   private readonly gitState: GitState;
   private readonly stateDesyncDetector: StateDesyncDetector;
   private readonly rollbackManager: RollbackManager;
+  private readonly evolutionContextReader: EvolutionContextReader;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -64,15 +68,16 @@ export class PlaySpecCore {
     this.gitState = new GitState(workspaceRoot);
     this.stateDesyncDetector = new StateDesyncDetector(this.gitState);
     this.rollbackManager = new RollbackManager(workspaceRoot, taskStore, this.gitState);
+    this.evolutionContextReader = new EvolutionContextReader(workspaceRoot);
   }
 
-  async renderNextPrompt(taskId: string): Promise<string> {
+  async renderNextPrompt(taskId: string, options: PromptRenderOptions = {}): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.resolve(task.workflow);
     this.validateCurrentPhase(task, workflow.definition);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
-    return this.renderResolvedPhase(task, workflow, phaseId, definition);
+    return this.renderResolvedPhase(task, workflow, phaseId, definition, options);
   }
 
   async addContextRef(taskId: string, contextPath: string): Promise<boolean> {
@@ -136,7 +141,7 @@ export class PlaySpecCore {
 
   async completePhase(
     taskId: string,
-    options: { withReview?: boolean; result?: string } = {}
+    options: CompletePhaseOptions = {}
   ): Promise<CompletionResult> {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
@@ -199,6 +204,10 @@ export class PlaySpecCore {
         }
       );
 
+      const evolutionContextSnapshotFile = options.withEvolutionContext
+        ? await this.evolutionContextReader.writeSnapshot(task, phaseId, 'complete')
+        : undefined;
+
       return {
         taskId: updatedTask.id,
         completedPhase: phaseId,
@@ -207,6 +216,7 @@ export class PlaySpecCore {
         evidenceFiles,
         snapshotFiles,
         reviewFile,
+        evolutionContextSnapshotFile,
       };
     });
   }
@@ -357,7 +367,8 @@ export class PlaySpecCore {
     task: TaskRecord,
     workflow: ResolvedWorkflow,
     phaseId: string,
-    definition: PhaseDefinition
+    definition: PhaseDefinition,
+    options: PromptRenderOptions = {}
   ): Promise<string> {
     const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
     this.assertRequiredVariables(workflow.id, phaseId, {
@@ -367,7 +378,12 @@ export class PlaySpecCore {
         ...(definition.variables ?? {}),
       },
     }, variables);
-    return this.templateRenderer.render(definition.template, variables, workflow.templateDir);
+    const prompt = await this.templateRenderer.render(definition.template, variables, workflow.templateDir);
+    if (!options.withEvolutionContext) {
+      return prompt;
+    }
+    const context = await this.evolutionContextReader.collect(task);
+    return `${prompt.trimEnd()}\n\n${this.evolutionContextReader.formatPromptSection(context)}\n`;
   }
 
   private resolveNextPhaseId(

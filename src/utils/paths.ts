@@ -68,6 +68,23 @@ export function getEvolutionHumanEditPath(workspaceRoot: string, editId: string)
   return path.join(getEvolutionHumanEditsRoot(workspaceRoot), `${editId}.yaml`);
 }
 
+export function getEvolutionContextRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'context');
+}
+
+export function getEvolutionContextTaskRoot(workspaceRoot: string, taskId: string): string {
+  return path.join(getEvolutionContextRoot(workspaceRoot), taskId);
+}
+
+export function getEvolutionContextSnapshotPath(
+  workspaceRoot: string,
+  taskId: string,
+  phaseId: string,
+  timestamp: string
+): string {
+  return path.join(getEvolutionContextTaskRoot(workspaceRoot, taskId), `${phaseId}-${timestamp}.yaml`);
+}
+
 export function getEvolutionReportsRoot(workspaceRoot: string): string {
   return path.join(getEvolutionRoot(workspaceRoot), 'reports');
 }
