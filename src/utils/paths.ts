@@ -60,6 +60,14 @@ export function getEvolutionProposalsRoot(workspaceRoot: string): string {
   return path.join(getEvolutionRoot(workspaceRoot), 'proposals');
 }
 
+export function getEvolutionHumanEditsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'human-edits');
+}
+
+export function getEvolutionHumanEditPath(workspaceRoot: string, editId: string): string {
+  return path.join(getEvolutionHumanEditsRoot(workspaceRoot), `${editId}.yaml`);
+}
+
 export function getEvolutionReportsRoot(workspaceRoot: string): string {
   return path.join(getEvolutionRoot(workspaceRoot), 'reports');
 }

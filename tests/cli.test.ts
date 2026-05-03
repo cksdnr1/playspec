@@ -194,6 +194,117 @@ describe('CLI placeholder', () => {
     expect(output).toContain('skip');
     expect(output).toContain('diff');
     expect(output).toContain('apply');
+    expect(output).toContain('record-edit');
+  });
+
+  it('records and marks human edit observations from the CLI', async () => {
+    const recorded = await runCli([
+      'evolution', 'record-edit',
+      '--id', 'human_edit_cli',
+      '--target', '.playspec/templates/prompt.md',
+      '--summary', 'Adjusted prompt wording.',
+      '--rationale', 'Manual review found ambiguous wording.',
+      '--task', 'source_task',
+      '--proposal', 'proposal_cli_intake',
+      '--before', '.playspec/evolution/reports/before.md',
+      '--after', '.playspec/evolution/reports/after.md',
+    ], workspace.dir);
+    const duplicate = await runCli([
+      'evolution', 'record-edit',
+      '--id', 'human_edit_cli',
+      '--target', '.playspec/templates/prompt.md',
+      '--summary', 'Duplicate edit.',
+      '--rationale', 'Should fail.',
+    ], workspace.dir);
+    const ignored = await runCli([
+      'evolution', 'record-edit',
+      '--edit', 'human_edit_cli',
+      '--status', 'ignored',
+      '--reason', 'Covered elsewhere.',
+    ], workspace.dir);
+
+    expect(recorded.exitCode).toBe(0);
+    expect(recorded.stdout).toContain('Human edit observation recorded: human_edit_cli');
+    expect(recorded.stdout).toContain('Observation file: .playspec/evolution/human-edits/human_edit_cli.yaml');
+    expect(duplicate.exitCode).toBe(1);
+    expect(duplicate.stderr).toContain('Human edit observation already exists: human_edit_cli');
+    expect(ignored.exitCode).toBe(0);
+    expect(ignored.stdout).toContain('Status: ignored');
+
+    const stored = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'human-edits',
+      'human_edit_cli.yaml'
+    ))) as {
+      status: string;
+      summary: string;
+      sourceTaskId: string;
+      proposalId: string;
+      statusReason: string;
+    };
+    expect(stored.status).toBe('ignored');
+    expect(stored.summary).toBe('Adjusted prompt wording.');
+    expect(stored.sourceTaskId).toBe('source_task');
+    expect(stored.proposalId).toBe('proposal_cli_intake');
+    expect(stored.statusReason).toBe('Covered elsewhere.');
+  });
+
+  it('rejects invalid human edit CLI inputs without creating observations', async () => {
+    const missing = await runCli([
+      'evolution', 'record-edit',
+      '--target', '.playspec/templates/prompt.md',
+      '--summary', 'Missing rationale.',
+    ], workspace.dir);
+    const escaping = await runCli([
+      'evolution', 'record-edit',
+      '--id', 'human_edit_escape',
+      '--target', '../outside.md',
+      '--summary', 'Escaping path.',
+      '--rationale', 'Should fail.',
+    ], workspace.dir);
+    const mixed = await runCli([
+      'evolution', 'record-edit',
+      '--edit', 'human_edit_cli',
+      '--status', 'ignored',
+      '--target', '.playspec/templates/prompt.md',
+    ], workspace.dir);
+
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain('Recording a human edit requires --target, --summary, and --rationale.');
+    expect(escaping.exitCode).toBe(1);
+    expect(escaping.stderr).toContain('Path must not escape the workspace.');
+    expect(mixed.exitCode).toBe(1);
+    expect(mixed.stderr).toContain('Human edit status updates cannot include creation fields.');
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'human-edits'))).rejects.toThrow();
+  });
+
+  it('recording a human edit does not update proposal revision or evidence refs', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    await writeTextFile(proposalPath, proposalYaml('proposal_record_edit_unchanged'));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const recorded = await runCli([
+      'evolution', 'record-edit',
+      '--id', 'human_edit_no_proposal_mutation',
+      '--target', '.playspec/templates/prompt.md',
+      '--summary', 'Manual template edit.',
+      '--rationale', 'Future proposal input only.',
+      '--proposal', 'proposal_record_edit_unchanged',
+    ], workspace.dir);
+
+    const storedProposal = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_record_edit_unchanged',
+      'proposal.yaml'
+    ))) as { revision: number; evidenceRefs: unknown[] };
+    expect(recorded.exitCode).toBe(0);
+    expect(storedProposal.revision).toBe(1);
+    expect(storedProposal.evidenceRefs).toEqual([]);
   });
 
   it('proposes, lists, shows, and skips an evolution proposal from YAML', async () => {
