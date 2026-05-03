@@ -33,7 +33,9 @@ afterEach(async () => {
 function makeProposal(overrides: Partial<EvolutionProposal> = {}): EvolutionProposal {
   return {
     id: 'proposal_20260503_001',
+    revision: 1,
     createdAt: '2026-05-03T00:00:00.000Z',
+    updatedAt: '2026-05-03T00:00:00.000Z',
     status: 'pending',
     source: {
       taskId: 'source_task',
@@ -138,7 +140,7 @@ describe('EvolutionProposalStore', () => {
     await store.saveProposal(proposal);
     await store.saveValidationReport(report);
 
-    const updated = await store.updateProposalStatus(proposal.id, 'skipped', {
+    const updated = await store.skipProposal(proposal.id, {
       skippedAt: '2026-05-03T00:02:00.000Z',
       skipReason: 'Not needed.',
     });
@@ -148,8 +150,25 @@ describe('EvolutionProposalStore', () => {
     expect(updated.status).toBe('skipped');
     expect(updated.skippedAt).toBe('2026-05-03T00:02:00.000Z');
     expect(updated.skipReason).toBe('Not needed.');
+    expect(updated.updatedAt).not.toBe(proposal.updatedAt);
     expect(loadedReport).toEqual(report);
     await expect(access(getEvolutionProposalValidationPath(workspace.dir, proposal.id))).resolves.toBeUndefined();
+  });
+
+  it('lists stored proposals with pending, refining, and skipped statuses', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+
+    await store.saveProposal(makeProposal({ id: 'proposal_pending', status: 'pending' }));
+    await store.saveProposal(makeProposal({ id: 'proposal_refining', status: 'refining' }));
+    await store.saveProposal(makeProposal({ id: 'proposal_skipped', status: 'skipped' }));
+
+    const proposals = await store.listProposals();
+
+    expect(proposals.map((proposal) => `${proposal.id}:${proposal.status}`)).toEqual([
+      'proposal_pending:pending',
+      'proposal_refining:refining',
+      'proposal_skipped:skipped',
+    ]);
   });
 
   it('accepts explicit archived artifact references without copying artifacts', async () => {

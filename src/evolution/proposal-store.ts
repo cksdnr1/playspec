@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
@@ -19,6 +19,7 @@ import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import {
   getEvolutionProposalPath,
   getEvolutionProposalRoot,
+  getEvolutionProposalsRoot,
   getEvolutionProposalValidationPath,
 } from '#utils/paths.js';
 
@@ -53,6 +54,36 @@ export class EvolutionProposalStore {
     const content = await readTextFile(getEvolutionProposalPath(this.workspaceRoot, proposalId));
     const parsed = EvolutionProposalSchema.parse(parseYaml(content) as unknown) as EvolutionProposal;
     return this.validateProposalForWorkspace(parsed);
+  }
+
+  async listProposals(): Promise<EvolutionProposal[]> {
+    let entries: string[];
+    try {
+      entries = await readdir(getEvolutionProposalsRoot(this.workspaceRoot));
+    } catch (error: unknown) {
+      if (isMissingPathError(error)) {
+        return [];
+      }
+      throw error;
+    }
+
+    const proposals: EvolutionProposal[] = [];
+    for (const entry of entries.sort()) {
+      const parsedId = EvolutionProposalIdSchema.safeParse(entry);
+      if (!parsedId.success) {
+        continue;
+      }
+      try {
+        proposals.push(await this.loadProposal(parsedId.data));
+      } catch (error: unknown) {
+        if (isMissingPathError(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return proposals.sort((a, b) => a.id.localeCompare(b.id));
   }
 
   async saveValidationReport(report: EvolutionProposalValidationReport): Promise<string> {
@@ -106,18 +137,17 @@ export class EvolutionProposalStore {
     return proposal;
   }
 
-  async updateProposalStatus(
+  async skipProposal(
     proposalId: string,
-    status: EvolutionProposalStatus,
     metadata: { skippedAt?: string; skipReason?: string } = {}
   ): Promise<EvolutionProposal> {
     EvolutionProposalIdSchema.parse(proposalId);
-    EvolutionProposalStatusSchema.parse(status);
     const existing = await this.loadProposal(proposalId);
     const updated: EvolutionProposal = {
       ...existing,
-      status,
-      ...(status === 'skipped' ? metadata : {}),
+      status: 'skipped',
+      updatedAt: new Date().toISOString(),
+      ...metadata,
     };
     const validated = await this.validateProposalForWorkspace(updated);
     await writeTextFileAtomic(
@@ -180,4 +210,8 @@ async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
 }

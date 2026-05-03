@@ -3,6 +3,7 @@ import { access, readdir, writeFile } from 'node:fs/promises';
 import { execa } from 'execa';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from './helpers/createTempWorkspace.js';
 import type { TempWorkspace } from './helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -111,6 +112,25 @@ async function initGitRepo(): Promise<void> {
   await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
 }
 
+function proposalYaml(id = 'proposal_cli_intake'): string {
+  return `id: ${id}
+source:
+  artifactRefs: []
+targetFiles:
+  - docs/features/source_task/spec.md
+riskLevel: low
+actions:
+  - actionId: action_1
+    type: propose_file_change
+    targetPath: docs/features/source_task/spec.md
+    summary: Update spec wording.
+    rationale: The current spec is stale.
+rationale: Keep the spec aligned with implementation.
+review:
+  status: unreviewed
+`;
+}
+
 describe('CLI placeholder', () => {
   it('formats prompt copy success with PRIMARY status when known', () => {
     expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: true })).toEqual([
@@ -131,14 +151,112 @@ describe('CLI placeholder', () => {
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
     expect(output).toMatch(/playspec/i);
-    expect(output).not.toMatch(/^\s+evolution\b/m);
+    expect(output).toMatch(/^\s+evolution\b/m);
   });
 
-  it('does not register a public evolution command group in Phase 6', async () => {
-    const result = await runCli(['evolution'], workspace.dir);
+  it('registers only the Phase 6.1 evolution command group', async () => {
+    const result = await runCli(['evolution', '--help'], workspace.dir);
+    const output = result.stdout + result.stderr;
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("unknown command 'evolution'");
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('propose');
+    expect(output).toContain('list');
+    expect(output).toContain('show');
+    expect(output).toContain('skip');
+    expect(output).not.toContain('apply');
+    expect(output).not.toContain('update');
+  });
+
+  it('proposes, lists, shows, and skips an evolution proposal from YAML', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    await writeTextFile(proposalPath, proposalYaml());
+
+    const proposed = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+    const listed = await runCli(['evolution', 'list'], workspace.dir);
+    const shown = await runCli(['evolution', 'show', 'proposal_cli_intake'], workspace.dir);
+    const skipped = await runCli(['evolution', 'skip', 'proposal_cli_intake', '--reason', 'Not needed now'], workspace.dir);
+    const shownAfterSkip = await runCli(['evolution', 'show', 'proposal_cli_intake'], workspace.dir);
+
+    expect(proposed.exitCode).toBe(0);
+    expect(proposed.stdout).toContain('Proposal stored: proposal_cli_intake');
+    expect(proposed.stdout).toContain('Revision: 1');
+    const storedProposal = parseYaml(await readTextFile(path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'proposal_cli_intake', 'proposal.yaml'))) as {
+      revision: number;
+      createdAt: string;
+      updatedAt: string;
+    };
+    expect(storedProposal.revision).toBe(1);
+    expect(storedProposal.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(storedProposal.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'proposal_cli_intake', 'validation.yaml'))).resolves.toBeUndefined();
+
+    expect(listed.exitCode).toBe(0);
+    expect(listed.stdout).toContain('proposal_cli_intake | pending | revision 1');
+
+    expect(shown.exitCode).toBe(0);
+    expect(shown.stdout).toContain('Proposal ID:  proposal_cli_intake');
+    expect(shown.stdout).toContain('Status:       pending');
+    expect(shown.stdout).toContain('Validation:');
+
+    expect(skipped.exitCode).toBe(0);
+    expect(skipped.stdout).toContain('Proposal skipped: proposal_cli_intake');
+    expect(skipped.stdout).toContain('Reason: Not needed now');
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'proposal_cli_intake', 'validation.yaml'))).resolves.toBeUndefined();
+
+    expect(shownAfterSkip.exitCode).toBe(0);
+    expect(shownAfterSkip.stdout).toContain('Status:       skipped');
+    expect(shownAfterSkip.stdout).toContain('Skip reason:  Not needed now');
+  });
+
+  it('assigns a filesystem-safe proposal ID when the file omits one', async () => {
+    const proposalPath = path.join(workspace.dir, 'Phase 6.1 Proposal.yaml');
+    await writeTextFile(proposalPath, proposalYaml().replace(/^id: .+\n/, ''));
+
+    const result = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/Proposal stored: phase-6-1-proposal_\d{8}t\d{6}z_[a-z0-9]{6}/);
+  });
+
+  it('rejects invalid and duplicate evolution proposal intake with guidance', async () => {
+    const invalidPath = path.join(workspace.dir, 'invalid-proposal.yaml');
+    const duplicatePath = path.join(workspace.dir, 'duplicate-proposal.yaml');
+    await writeTextFile(invalidPath, 'id: bad\nstatus: pending\n');
+    await writeTextFile(duplicatePath, proposalYaml('proposal_duplicate'));
+
+    const invalid = await runCli(['evolution', 'propose', '--file', invalidPath], workspace.dir);
+    const first = await runCli(['evolution', 'propose', '--file', duplicatePath], workspace.dir);
+    const duplicate = await runCli(['evolution', 'propose', '--file', duplicatePath], workspace.dir);
+
+    expect(invalid.exitCode).toBe(1);
+    expect(invalid.stderr).toContain('Evolution proposal is invalid');
+    expect(await runCli(['evolution', 'list'], workspace.dir)).toMatchObject({ exitCode: 0 });
+
+    expect(first.exitCode).toBe(0);
+    expect(duplicate.exitCode).toBe(1);
+    expect(duplicate.stderr).toContain('Evolution proposal already exists: proposal_duplicate');
+    expect(duplicate.stderr).toContain('later proposal update command');
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'bad'))).rejects.toThrow();
+  });
+
+  it('lists and shows stored refining proposals without adding update commands', async () => {
+    const proposalPath = path.join(workspace.dir, 'refining-proposal.yaml');
+    await writeTextFile(proposalPath, proposalYaml('proposal_refining_cli'));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const storedPath = path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'proposal_refining_cli', 'proposal.yaml');
+    const stored = await readTextFile(storedPath);
+    await writeTextFile(storedPath, stored.replace('status: pending', 'status: refining'));
+
+    const listed = await runCli(['evolution', 'list'], workspace.dir);
+    const shown = await runCli(['evolution', 'show', 'proposal_refining_cli'], workspace.dir);
+    const help = await runCli(['evolution', '--help'], workspace.dir);
+
+    expect(listed.exitCode).toBe(0);
+    expect(listed.stdout).toContain('proposal_refining_cli | refining | revision 1');
+    expect(shown.exitCode).toBe(0);
+    expect(shown.stdout).toContain('Status:       refining');
+    expect(help.stdout + help.stderr).not.toContain('update');
   });
 
   it('lists and shows built-in workflow assets', async () => {

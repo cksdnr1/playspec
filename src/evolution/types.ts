@@ -1,4 +1,4 @@
-export type EvolutionProposalStatus = 'pending' | 'skipped';
+export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped';
 export type EvolutionRiskLevel = 'low' | 'medium' | 'high';
 export type EvolutionReviewStatus = 'unreviewed' | 'needs_review' | 'reviewed';
 
@@ -53,7 +53,9 @@ export interface EvolutionReview {
 
 export interface EvolutionProposal {
   id: string;
+  revision: number;
   createdAt: string;
+  updatedAt: string;
   status: EvolutionProposalStatus;
   source: EvolutionProposalSource;
   targetFiles: string[];

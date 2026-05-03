@@ -29,6 +29,12 @@ import { runMigrate } from './commands/migrate.js';
 import { runClose } from './commands/close.js';
 import { runArchiveList, runArchiveShow } from './commands/archive.js';
 import {
+  runEvolutionList,
+  runEvolutionPropose,
+  runEvolutionShow,
+  runEvolutionSkip,
+} from './commands/evolution.js';
+import {
   runWorkflowExport,
   runWorkflowInstall,
   runWorkflowList,
@@ -497,6 +503,57 @@ archiveCommand
   .action(async (opts: { task: string }) => {
     try {
       await runArchiveShow(process.cwd(), opts.task);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// evolution
+const evolutionCommand = program
+  .command('evolution')
+  .description('Inspect and manage evolution proposals');
+
+evolutionCommand
+  .command('propose')
+  .description('Validate and store an evolution proposal file')
+  .requiredOption('--file <proposal.yaml>', 'Proposal YAML file to validate and store')
+  .action(async (opts: { file: string }) => {
+    try {
+      await runEvolutionPropose(process.cwd(), opts.file);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('list')
+  .description('List stored evolution proposals')
+  .action(async () => {
+    try {
+      await runEvolutionList(process.cwd());
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('show <proposalId>')
+  .description('Show a stored evolution proposal')
+  .action(async (proposalId: string) => {
+    try {
+      await runEvolutionShow(process.cwd(), proposalId);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('skip <proposalId>')
+  .description('Mark an evolution proposal skipped')
+  .option('--reason <text>', 'Reason the proposal is being skipped')
+  .action(async (proposalId: string, opts: { reason?: string }) => {
+    try {
+      await runEvolutionSkip(process.cwd(), proposalId, opts.reason);
     } catch (err) {
       handleError(err);
     }

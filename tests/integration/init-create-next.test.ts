@@ -55,7 +55,9 @@ async function initGitRepo(): Promise<void> {
 function makeStoredProposal(id: string): EvolutionProposal {
   return {
     id,
+    revision: 1,
     createdAt: '2026-05-03T00:00:00.000Z',
+    updatedAt: '2026-05-03T00:00:00.000Z',
     status: 'pending',
     source: {
       taskId: 'source_task',

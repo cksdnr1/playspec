@@ -7,7 +7,7 @@ export const EvolutionProposalIdSchema = z
   .max(128)
   .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Proposal ID must be filesystem-safe.');
 
-export const EvolutionProposalStatusSchema = z.enum(['pending', 'skipped']);
+export const EvolutionProposalStatusSchema = z.enum(['pending', 'refining', 'skipped']);
 export const EvolutionRiskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const EvolutionReviewStatusSchema = z.enum(['unreviewed', 'needs_review', 'reviewed']);
 
@@ -80,7 +80,9 @@ export const EvolutionReviewSchema = z.object({
 
 export const EvolutionProposalSchema = z.object({
   id: EvolutionProposalIdSchema,
+  revision: z.number().int().positive(),
   createdAt: z.string(),
+  updatedAt: z.string(),
   status: EvolutionProposalStatusSchema,
   source: EvolutionProposalSourceSchema,
   targetFiles: z.array(WorkspaceRelativePathSchema),
