@@ -4,6 +4,8 @@
 
 Implemented Phase 6: Evolution Proposal Schema And Store.
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/55
+
 - Added `src/evolution/` with proposal types, zod schemas, validation reports, and a YAML-backed proposal store.
 - Added `.playspec/evolution/proposals/{proposalId}/proposal.yaml` and `validation.yaml` path helpers.
 - Added `#evolution/*.js` runtime, TypeScript, and Vitest alias coverage.
