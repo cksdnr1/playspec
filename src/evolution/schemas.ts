@@ -7,7 +7,14 @@ export const EvolutionProposalIdSchema = z
   .max(128)
   .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Proposal ID must be filesystem-safe.');
 
+export const HumanEditObservationIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Human edit observation ID must be filesystem-safe.');
+
 export const EvolutionProposalStatusSchema = z.enum(['pending', 'refining', 'skipped', 'applied', 'failed']);
+export const HumanEditObservationStatusSchema = z.enum(['recorded', 'ignored', 'superseded']);
 export const EvolutionRiskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const EvolutionReviewStatusSchema = z.enum(['unreviewed', 'needs_review', 'reviewed']);
 
@@ -130,6 +137,21 @@ export const EvolutionProposalSchema = z.object({
   skippedAt: z.string().optional(),
   skipReason: z.string().optional(),
   latestApplyReportPath: WorkspaceRelativePathSchema.optional(),
+});
+
+export const HumanEditObservationSchema = z.object({
+  id: HumanEditObservationIdSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  status: HumanEditObservationStatusSchema,
+  targetPath: WorkspaceRelativePathSchema,
+  summary: z.string().min(1),
+  rationale: z.string().min(1),
+  sourceTaskId: z.string().optional(),
+  proposalId: EvolutionProposalIdSchema.optional(),
+  beforeRef: WorkspaceRelativePathSchema.optional(),
+  afterRef: WorkspaceRelativePathSchema.optional(),
+  statusReason: z.string().optional(),
 });
 
 export const EvolutionValidationStatusSchema = z.enum(['valid', 'invalid']);

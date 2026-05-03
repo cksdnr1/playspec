@@ -1,6 +1,7 @@
 export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped' | 'applied' | 'failed';
 export type EvolutionRiskLevel = 'low' | 'medium' | 'high';
 export type EvolutionReviewStatus = 'unreviewed' | 'needs_review' | 'reviewed';
+export type HumanEditObservationStatus = 'recorded' | 'ignored' | 'superseded';
 
 export interface EvolutionArtifactReference {
   path: string;
@@ -174,4 +175,19 @@ export interface EvolutionApplyResult {
   report: EvolutionApplyReport;
   reportPath: string;
   backupPath: string;
+}
+
+export interface HumanEditObservation {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: HumanEditObservationStatus;
+  targetPath: string;
+  summary: string;
+  rationale: string;
+  sourceTaskId?: string;
+  proposalId?: string;
+  beforeRef?: string;
+  afterRef?: string;
+  statusReason?: string;
 }

@@ -13,7 +13,8 @@ import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
-import type { EvolutionProposal } from '#evolution/types.js';
+import { EvolutionHumanEditStore } from '#evolution/human-edit-store.js';
+import type { EvolutionProposal, HumanEditObservation } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
@@ -78,6 +79,18 @@ function makeStoredProposal(id: string): EvolutionProposal {
     review: {
       status: 'unreviewed',
     },
+  };
+}
+
+function makeStoredHumanEdit(id: string): HumanEditObservation {
+  return {
+    id,
+    createdAt: '2026-05-03T00:00:00.000Z',
+    updatedAt: '2026-05-03T00:00:00.000Z',
+    status: 'recorded',
+    targetPath: '.playspec/templates/prompt.md',
+    summary: 'Human edit summary should stay out of prompts.',
+    rationale: 'Human edit rationale should stay out of prompts.',
   };
 }
 
@@ -232,6 +245,31 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).not.toContain('evolution context');
   });
 
+  it('renderNextPrompt ignores stored human edit observations in Phase 6.4', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Prompt Ignores Human Edits');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Prompt Ignores Human Edits',
+      workflow: 'multi-spec',
+    });
+
+    const humanEditStore = new EvolutionHumanEditStore(workspace.dir);
+    await humanEditStore.saveObservation(makeStoredHumanEdit('human_edit_prompt_hidden'));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Prompt Ignores Human Edits');
+    expect(prompt).not.toContain('human_edit_prompt_hidden');
+    expect(prompt).not.toContain('Human edit summary should stay out of prompts.');
+    expect(prompt).not.toContain('Human edit rationale should stay out of prompts.');
+    expect(prompt).not.toContain('evolution context');
+  });
+
   it('completePhase does not create evolution context snapshots when proposals exist', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
@@ -247,6 +285,28 @@ describe('init → create → next (end-to-end)', () => {
 
     const proposalStore = new EvolutionProposalStore(workspace.dir);
     await proposalStore.saveProposal(makeStoredProposal('proposal_completion_hidden'));
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.completePhase(taskId);
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'context'))).rejects.toThrow();
+  });
+
+  it('completePhase does not create evolution context snapshots when human edits exist', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await initGitRepo();
+
+    const taskId = slugify('Completion Ignores Human Edits');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Completion Ignores Human Edits',
+      workflow: 'multi-spec',
+    });
+
+    const humanEditStore = new EvolutionHumanEditStore(workspace.dir);
+    await humanEditStore.saveObservation(makeStoredHumanEdit('human_edit_completion_hidden'));
 
     const core = new PlaySpecCore(workspace.dir, store);
     await core.completePhase(taskId);

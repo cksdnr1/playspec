@@ -6,11 +6,17 @@ import {
   EvolutionProposalStore,
   generateEvolutionProposalId,
 } from '#evolution/proposal-store.js';
+import {
+  EvolutionHumanEditStore,
+  generateHumanEditObservationId,
+} from '#evolution/human-edit-store.js';
 import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
 import type {
   EvolutionProposalValidationReport,
+  HumanEditObservation,
 } from '#evolution/types.js';
 import { readTextFile } from '#utils/fs.js';
+import { getEvolutionHumanEditPath } from '#utils/paths.js';
 
 export async function runEvolutionPropose(
   workspaceRoot: string,
@@ -227,6 +233,108 @@ export async function runEvolutionApply(
   for (const changedFile of result.report.changedFiles) {
     console.log(`  - ${changedFile}`);
   }
+}
+
+export interface EvolutionRecordEditOptions {
+  id?: string;
+  target?: string;
+  summary?: string;
+  rationale?: string;
+  task?: string;
+  proposal?: string;
+  before?: string;
+  after?: string;
+  edit?: string;
+  status?: string;
+  reason?: string;
+}
+
+export async function runEvolutionRecordEdit(
+  workspaceRoot: string,
+  opts: EvolutionRecordEditOptions
+): Promise<void> {
+  const store = new EvolutionHumanEditStore(workspaceRoot);
+
+  if (opts.edit) {
+    const status = opts.status;
+    if (status !== 'ignored' && status !== 'superseded') {
+      throw new PlaySpecError(
+        'Human edit status update requires --status ignored or --status superseded.',
+        'Use `playspec evolution record-edit --edit <id> --status ignored|superseded [--reason <text>]`.'
+      );
+    }
+    if (hasRecordEditCreationFields(opts)) {
+      throw new PlaySpecError(
+        'Human edit status updates cannot include creation fields.',
+        'Use either create options or `--edit <id> --status ignored|superseded`, not both.'
+      );
+    }
+    const updated = await store.markObservationStatus(opts.edit, status, { reason: opts.reason });
+    console.log(`Human edit observation updated: ${updated.id}`);
+    console.log(`Status: ${updated.status}`);
+    if (updated.statusReason) {
+      console.log(`Reason: ${updated.statusReason}`);
+    }
+    console.log(`Observation file: ${path.relative(workspaceRoot, getEvolutionHumanEditPath(workspaceRoot, updated.id))}`);
+    return;
+  }
+
+  if (opts.status || opts.reason) {
+    throw new PlaySpecError(
+      'Human edit status updates require --edit <id>.',
+      'Use `playspec evolution record-edit --edit <id> --status ignored|superseded [--reason <text>]`.'
+    );
+  }
+  if (!opts.target || !opts.summary || !opts.rationale) {
+    throw new PlaySpecError(
+      'Recording a human edit requires --target, --summary, and --rationale.',
+      'Use `playspec evolution record-edit --target <path> --summary <text> --rationale <text>`.'
+    );
+  }
+
+  const timestamp = new Date().toISOString();
+  const observation: HumanEditObservation = {
+    id: opts.id ?? generateHumanEditObservationId(path.basename(opts.target, path.extname(opts.target))),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    status: 'recorded',
+    targetPath: opts.target,
+    summary: opts.summary,
+    rationale: opts.rationale,
+    ...(opts.task ? { sourceTaskId: opts.task } : {}),
+    ...(opts.proposal ? { proposalId: opts.proposal } : {}),
+    ...(opts.before ? { beforeRef: opts.before } : {}),
+    ...(opts.after ? { afterRef: opts.after } : {}),
+  };
+
+  try {
+    const observationPath = await store.saveObservation(observation);
+    console.log(`Human edit observation recorded: ${observation.id}`);
+    console.log(`Status: ${observation.status}`);
+    console.log(`Target: ${observation.targetPath}`);
+    console.log(`Observation file: ${path.relative(workspaceRoot, observationPath)}`);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.startsWith('Human edit observation already exists:')) {
+      throw new PlaySpecError(
+        error.message,
+        'Use a distinct --id for a new observation, or update the existing observation with `--edit <id> --status ignored|superseded`.'
+      );
+    }
+    throw error;
+  }
+}
+
+function hasRecordEditCreationFields(opts: EvolutionRecordEditOptions): boolean {
+  return Boolean(
+    opts.target ||
+    opts.summary ||
+    opts.rationale ||
+    opts.task ||
+    opts.proposal ||
+    opts.before ||
+    opts.after ||
+    opts.id
+  );
 }
 
 function normalizeProposalInput(raw: unknown, sourcePath: string): unknown {

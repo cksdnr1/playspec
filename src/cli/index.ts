@@ -34,10 +34,12 @@ import {
   runEvolutionDiff,
   runEvolutionList,
   runEvolutionPropose,
+  runEvolutionRecordEdit,
   runEvolutionShow,
   runEvolutionSkip,
   runEvolutionUpdate,
 } from './commands/evolution.js';
+import type { EvolutionRecordEditOptions } from './commands/evolution.js';
 import {
   runWorkflowExport,
   runWorkflowInstall,
@@ -515,7 +517,7 @@ archiveCommand
 // evolution
 const evolutionCommand = program
   .command('evolution')
-  .description('Inspect and manage evolution proposals');
+  .description('Inspect and manage evolution proposals and human edit observations');
 
 evolutionCommand
   .command('propose')
@@ -594,6 +596,28 @@ evolutionCommand
   .action(async (proposalId: string, opts: { file: string; note: string }) => {
     try {
       await runEvolutionAppendEvidence(process.cwd(), proposalId, opts.file, opts.note);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('record-edit')
+  .description('Record a human edit observation for future evolution review')
+  .option('--id <id>', 'Human edit observation ID for new records')
+  .option('--target <path>', 'Workspace-relative path that was manually edited')
+  .option('--summary <text>', 'Short summary of the manual edit')
+  .option('--rationale <text>', 'Rationale for the manual edit')
+  .option('--task <id>', 'Source task ID related to the edit')
+  .option('--proposal <id>', 'Source proposal ID related to the edit')
+  .option('--before <path>', 'Workspace-relative before artifact reference')
+  .option('--after <path>', 'Workspace-relative after artifact reference')
+  .option('--edit <id>', 'Existing human edit observation ID to mark')
+  .option('--status <value>', 'Status for an existing observation: ignored or superseded')
+  .option('--reason <text>', 'Reason for ignored/superseded status')
+  .action(async (opts: EvolutionRecordEditOptions) => {
+    try {
+      await runEvolutionRecordEdit(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }
