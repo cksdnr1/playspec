@@ -18,10 +18,23 @@ import { slugify } from '#utils/slug.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import {
   getEvolutionProposalPath,
+  getEvolutionProposalRevisionPath,
   getEvolutionProposalRoot,
   getEvolutionProposalsRoot,
   getEvolutionProposalValidationPath,
 } from '#utils/paths.js';
+
+export interface EvolutionProposalWriteResult {
+  proposal: EvolutionProposal;
+  proposalPath: string;
+  validationPath: string;
+  revisionPath: string;
+}
+
+export interface AppendEvolutionEvidenceInput {
+  path: string;
+  note: string;
+}
 
 export function generateEvolutionProposalId(prefix = 'proposal'): string {
   const safePrefix = slugify(prefix).replace(/_/g, '-').replace(/[^a-z0-9-]/g, '') || 'proposal';
@@ -38,6 +51,9 @@ export class EvolutionProposalStore {
 
   async saveProposal(proposal: EvolutionProposal): Promise<string> {
     const validated = await this.validateProposalForWorkspace(proposal);
+    if (validated.status === 'applied' || validated.status === 'failed') {
+      throw new Error(`Evolution proposal status cannot be stored by propose: ${validated.status}`);
+    }
     const proposalRoot = getEvolutionProposalRoot(this.workspaceRoot, validated.id);
     const proposalPath = getEvolutionProposalPath(this.workspaceRoot, validated.id);
 
@@ -47,6 +63,87 @@ export class EvolutionProposalStore {
 
     await writeTextFileAtomic(proposalPath, stringifyYaml(validated));
     return proposalPath;
+  }
+
+  async updateProposal(proposalId: string, incomingProposal: unknown): Promise<EvolutionProposalWriteResult> {
+    EvolutionProposalIdSchema.parse(proposalId);
+    const existing = await this.loadProposal(proposalId);
+    assertProposalCanChange(existing);
+
+    const incomingStatus = extractProposalStatus(incomingProposal);
+    if (incomingStatus && !isActiveStatus(incomingStatus)) {
+      throw new Error(`Only pending/refining proposals can be changed; incoming status was ${incomingStatus}.`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const merged = normalizeIncomingProposalForUpdate(incomingProposal, existing, proposalId, timestamp);
+    const validation = this.validateProposal(merged);
+    if (!validation.valid || !validation.proposal) {
+      throw new Error(`Evolution proposal is invalid: ${validation.report.errors.join('; ')}`);
+    }
+    const validated = await this.validateProposalForWorkspace(validation.proposal);
+    const report = this.buildReport(
+      validated.id,
+      'valid',
+      [],
+      collectCheckedPaths(validated),
+      'Proposal is valid.'
+    );
+
+    const revisionPath = getEvolutionProposalRevisionPath(this.workspaceRoot, proposalId, existing.revision);
+    const validationPath = getEvolutionProposalValidationPath(this.workspaceRoot, proposalId);
+    const proposalPath = getEvolutionProposalPath(this.workspaceRoot, proposalId);
+    await writeTextFileAtomic(revisionPath, stringifyYaml(existing));
+    await writeTextFileAtomic(validationPath, stringifyYaml(report));
+    await writeTextFileAtomic(proposalPath, stringifyYaml(validated));
+
+    return { proposal: validated, proposalPath, validationPath, revisionPath };
+  }
+
+  async appendEvidence(
+    proposalId: string,
+    evidence: AppendEvolutionEvidenceInput
+  ): Promise<EvolutionProposalWriteResult> {
+    EvolutionProposalIdSchema.parse(proposalId);
+    const existing = await this.loadProposal(proposalId);
+    assertProposalCanChange(existing);
+
+    const timestamp = new Date().toISOString();
+    const updated: EvolutionProposal = {
+      ...existing,
+      revision: existing.revision + 1,
+      updatedAt: timestamp,
+      evidenceRefs: [
+        ...existing.evidenceRefs,
+        {
+          path: evidence.path,
+          note: evidence.note,
+          addedAt: timestamp,
+          source: 'append-evidence',
+        },
+      ],
+    };
+    const validation = this.validateProposal(updated);
+    if (!validation.valid || !validation.proposal) {
+      throw new Error(`Evolution proposal is invalid: ${validation.report.errors.join('; ')}`);
+    }
+    const validated = await this.validateProposalForWorkspace(validation.proposal);
+    const report = this.buildReport(
+      validated.id,
+      'valid',
+      [],
+      collectCheckedPaths(validated),
+      'Proposal is valid.'
+    );
+
+    const revisionPath = getEvolutionProposalRevisionPath(this.workspaceRoot, proposalId, existing.revision);
+    const validationPath = getEvolutionProposalValidationPath(this.workspaceRoot, proposalId);
+    const proposalPath = getEvolutionProposalPath(this.workspaceRoot, proposalId);
+    await writeTextFileAtomic(revisionPath, stringifyYaml(existing));
+    await writeTextFileAtomic(validationPath, stringifyYaml(report));
+    await writeTextFileAtomic(proposalPath, stringifyYaml(validated));
+
+    return { proposal: validated, proposalPath, validationPath, revisionPath };
   }
 
   async loadProposal(proposalId: string): Promise<EvolutionProposal> {
@@ -134,6 +231,18 @@ export class EvolutionProposalStore {
       }
     }
 
+    for (const ref of proposal.evidenceRefs) {
+      const resolved = path.resolve(this.workspaceRoot, ref.path);
+      if (!isInsideWorkspace(workspaceRoot, resolved)) {
+        throw new Error(`Evolution proposal evidence reference escapes workspace: ${ref.path}`);
+      }
+      try {
+        await access(resolved);
+      } catch {
+        throw new Error(`Evolution proposal evidence reference not found: ${ref.path}`);
+      }
+    }
+
     return proposal;
   }
 
@@ -180,7 +289,58 @@ function collectCheckedPaths(proposal: EvolutionProposal): string[] {
   return [
     ...proposal.targetFiles,
     ...proposal.source.artifactRefs.map((ref) => ref.path),
+    ...proposal.evidenceRefs.map((ref) => ref.path),
   ];
+}
+
+function normalizeIncomingProposalForUpdate(
+  raw: unknown,
+  existing: EvolutionProposal,
+  proposalId: string,
+  timestamp: string
+): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const input = raw as Record<string, unknown>;
+  return {
+    ...input,
+    id: proposalId,
+    revision: existing.revision + 1,
+    createdAt: existing.createdAt,
+    updatedAt: timestamp,
+    status: hasOwn(input, 'status') ? input['status'] : existing.status,
+    evidenceRefs: hasOwn(input, 'evidenceRefs') ? input['evidenceRefs'] : existing.evidenceRefs,
+  };
+}
+
+function hasOwn(input: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function extractProposalStatus(raw: unknown): EvolutionProposalStatus | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const status = (raw as Record<string, unknown>)['status'];
+  if (typeof status !== 'string') {
+    return undefined;
+  }
+
+  const parsed = EvolutionProposalStatusSchema.safeParse(status);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function assertProposalCanChange(proposal: EvolutionProposal): void {
+  if (!isActiveStatus(proposal.status)) {
+    throw new Error(`Only pending/refining proposals can be changed; current status is ${proposal.status}.`);
+  }
+}
+
+function isActiveStatus(status: EvolutionProposalStatus): boolean {
+  return status === 'pending' || status === 'refining';
 }
 
 function extractProposalId(raw: unknown): string {

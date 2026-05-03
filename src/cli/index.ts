@@ -29,10 +29,12 @@ import { runMigrate } from './commands/migrate.js';
 import { runClose } from './commands/close.js';
 import { runArchiveList, runArchiveShow } from './commands/archive.js';
 import {
+  runEvolutionAppendEvidence,
   runEvolutionList,
   runEvolutionPropose,
   runEvolutionShow,
   runEvolutionSkip,
+  runEvolutionUpdate,
 } from './commands/evolution.js';
 import {
   runWorkflowExport,
@@ -542,6 +544,31 @@ evolutionCommand
   .action(async (proposalId: string) => {
     try {
       await runEvolutionShow(process.cwd(), proposalId);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('update <proposalId>')
+  .description('Update an existing pending/refining evolution proposal')
+  .requiredOption('--file <proposal.yaml>', 'Proposal YAML file to merge into the existing proposal')
+  .action(async (proposalId: string, opts: { file: string }) => {
+    try {
+      await runEvolutionUpdate(process.cwd(), proposalId, opts.file);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('append-evidence <proposalId>')
+  .description('Append evidence to an existing pending/refining evolution proposal')
+  .requiredOption('--file <path>', 'Workspace-relative evidence file path')
+  .requiredOption('--note <text>', 'Evidence note')
+  .action(async (proposalId: string, opts: { file: string; note: string }) => {
+    try {
+      await runEvolutionAppendEvidence(process.cwd(), proposalId, opts.file, opts.note);
     } catch (err) {
       handleError(err);
     }

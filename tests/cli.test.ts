@@ -154,7 +154,7 @@ describe('CLI placeholder', () => {
     expect(output).toMatch(/^\s+evolution\b/m);
   });
 
-  it('registers only the Phase 6.1 evolution command group', async () => {
+  it('registers the Phase 6.2 evolution command group without apply behavior', async () => {
     const result = await runCli(['evolution', '--help'], workspace.dir);
     const output = result.stdout + result.stderr;
 
@@ -162,9 +162,10 @@ describe('CLI placeholder', () => {
     expect(output).toContain('propose');
     expect(output).toContain('list');
     expect(output).toContain('show');
+    expect(output).toContain('update');
+    expect(output).toContain('append-evidence');
     expect(output).toContain('skip');
     expect(output).not.toContain('apply');
-    expect(output).not.toContain('update');
   });
 
   it('proposes, lists, shows, and skips an evolution proposal from YAML', async () => {
@@ -235,11 +236,11 @@ describe('CLI placeholder', () => {
     expect(first.exitCode).toBe(0);
     expect(duplicate.exitCode).toBe(1);
     expect(duplicate.stderr).toContain('Evolution proposal already exists: proposal_duplicate');
-    expect(duplicate.stderr).toContain('later proposal update command');
+    expect(duplicate.stderr).toContain('playspec evolution update');
     await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'proposals', 'bad'))).rejects.toThrow();
   });
 
-  it('lists and shows stored refining proposals without adding update commands', async () => {
+  it('lists and shows stored refining proposals with update commands registered', async () => {
     const proposalPath = path.join(workspace.dir, 'refining-proposal.yaml');
     await writeTextFile(proposalPath, proposalYaml('proposal_refining_cli'));
     await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
@@ -256,7 +257,103 @@ describe('CLI placeholder', () => {
     expect(listed.stdout).toContain('proposal_refining_cli | refining | revision 1');
     expect(shown.exitCode).toBe(0);
     expect(shown.stdout).toContain('Status:       refining');
-    expect(help.stdout + help.stderr).not.toContain('update');
+    expect(help.stdout + help.stderr).toContain('update');
+  });
+
+  it('updates and appends evidence to an evolution proposal from the CLI', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const updatePath = path.join(workspace.dir, 'proposal-update.yaml');
+    const evidencePath = path.join(workspace.dir, 'docs', 'evidence', 'review.md');
+    await writeTextFile(proposalPath, proposalYaml('proposal_cli_update'));
+    await writeTextFile(evidencePath, '# Review Evidence\n');
+    await writeTextFile(updatePath, proposalYaml('proposal_cli_update')
+      .replace('riskLevel: low', 'status: refining\nriskLevel: medium')
+      .replace('Keep the spec aligned with implementation.', 'Refined after review evidence.'));
+
+    const proposed = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+    const updated = await runCli(['evolution', 'update', 'proposal_cli_update', '--file', updatePath], workspace.dir);
+    const appended = await runCli([
+      'evolution',
+      'append-evidence',
+      'proposal_cli_update',
+      '--file',
+      'docs/evidence/review.md',
+      '--note',
+      'Review evidence added.',
+    ], workspace.dir);
+    const shown = await runCli(['evolution', 'show', 'proposal_cli_update'], workspace.dir);
+
+    expect(proposed.exitCode).toBe(0);
+    expect(updated.exitCode).toBe(0);
+    expect(updated.stdout).toContain('Proposal updated: proposal_cli_update');
+    expect(updated.stdout).toContain('Status: refining');
+    expect(updated.stdout).toContain('Revision: 2');
+    expect(updated.stdout).toContain('Revision file: .playspec/evolution/proposals/proposal_cli_update/revisions/revision-1.yaml');
+
+    expect(appended.exitCode).toBe(0);
+    expect(appended.stdout).toContain('Evidence appended: proposal_cli_update');
+    expect(appended.stdout).toContain('Revision: 3');
+    expect(appended.stdout).toContain('Evidence file: docs/evidence/review.md');
+    expect(appended.stdout).toContain('Evidence note: Review evidence added.');
+
+    const storedProposal = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_update',
+      'proposal.yaml'
+    ))) as {
+      status: string;
+      revision: number;
+      evidenceRefs: { path: string; note: string; source: string }[];
+    };
+    expect(storedProposal.status).toBe('refining');
+    expect(storedProposal.revision).toBe(3);
+    expect(storedProposal.evidenceRefs).toEqual([
+      expect.objectContaining({
+        path: 'docs/evidence/review.md',
+        note: 'Review evidence added.',
+        source: 'append-evidence',
+      }),
+    ]);
+    await expect(access(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_update',
+      'revisions',
+      'revision-2.yaml'
+    ))).resolves.toBeUndefined();
+    expect(shown.stdout).toContain('Evidence:     1');
+    expect(shown.stdout).toContain('docs/evidence/review.md | append-evidence | Review evidence added.');
+  });
+
+  it('rejects CLI update and evidence append for skipped proposals', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const evidencePath = path.join(workspace.dir, 'docs', 'evidence', 'review.md');
+    await writeTextFile(proposalPath, proposalYaml('proposal_cli_terminal'));
+    await writeTextFile(evidencePath, '# Review Evidence\n');
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+    await runCli(['evolution', 'skip', 'proposal_cli_terminal', '--reason', 'Not needed'], workspace.dir);
+
+    const updated = await runCli(['evolution', 'update', 'proposal_cli_terminal', '--file', proposalPath], workspace.dir);
+    const appended = await runCli([
+      'evolution',
+      'append-evidence',
+      'proposal_cli_terminal',
+      '--file',
+      'docs/evidence/review.md',
+      '--note',
+      'Review evidence added.',
+    ], workspace.dir);
+
+    expect(updated.exitCode).toBe(1);
+    expect(updated.stderr).toContain('Only pending/refining proposals can be changed');
+    expect(updated.stderr).toContain('Use update or append-evidence only on pending/refining proposals.');
+    expect(appended.exitCode).toBe(1);
+    expect(appended.stderr).toContain('Only pending/refining proposals can be changed');
   });
 
   it('lists and shows built-in workflow assets', async () => {

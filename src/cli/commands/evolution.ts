@@ -40,10 +40,62 @@ export async function runEvolutionPropose(
     if (error instanceof Error && error.message.startsWith('Evolution proposal already exists:')) {
       throw new PlaySpecError(
         error.message,
-        'Use the later proposal update command when it is available, or choose a distinct proposal ID for a different improvement area.'
+        'Use `playspec evolution update <proposalId> --file <proposal.yaml>`, or choose a distinct proposal ID for a different improvement area.'
       );
     }
     throw error;
+  }
+}
+
+export async function runEvolutionUpdate(
+  workspaceRoot: string,
+  proposalId: string,
+  filePath: string
+): Promise<void> {
+  const store = new EvolutionProposalStore(workspaceRoot);
+  const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
+  const raw = parseYaml(await readTextFile(resolvedPath));
+  ensureProposalMapping(raw);
+
+  try {
+    const result = await store.updateProposal(proposalId, raw);
+    console.log(`Proposal updated: ${result.proposal.id}`);
+    console.log(`Status: ${result.proposal.status}`);
+    console.log(`Revision: ${result.proposal.revision}`);
+    console.log(`Revision file: ${path.relative(workspaceRoot, result.revisionPath)}`);
+    console.log(`Proposal file: ${path.relative(workspaceRoot, result.proposalPath)}`);
+    console.log(`Validation file: ${path.relative(workspaceRoot, result.validationPath)}`);
+  } catch (error: unknown) {
+    throw withChangeHint(error);
+  }
+}
+
+export async function runEvolutionAppendEvidence(
+  workspaceRoot: string,
+  proposalId: string,
+  filePath: string,
+  note: string
+): Promise<void> {
+  const store = new EvolutionProposalStore(workspaceRoot);
+
+  try {
+    const result = await store.appendEvidence(proposalId, {
+      path: filePath,
+      note,
+    });
+    const evidence = result.proposal.evidenceRefs.at(-1);
+    console.log(`Evidence appended: ${result.proposal.id}`);
+    console.log(`Status: ${result.proposal.status}`);
+    console.log(`Revision: ${result.proposal.revision}`);
+    if (evidence) {
+      console.log(`Evidence file: ${evidence.path}`);
+      console.log(`Evidence note: ${evidence.note}`);
+    }
+    console.log(`Revision file: ${path.relative(workspaceRoot, result.revisionPath)}`);
+    console.log(`Proposal file: ${path.relative(workspaceRoot, result.proposalPath)}`);
+    console.log(`Validation file: ${path.relative(workspaceRoot, result.validationPath)}`);
+  } catch (error: unknown) {
+    throw withChangeHint(error);
   }
 }
 
@@ -80,6 +132,10 @@ export async function runEvolutionShow(
   console.log(`Target files: ${proposal.targetFiles.length}`);
   for (const targetFile of proposal.targetFiles) {
     console.log(`  - ${targetFile}`);
+  }
+  console.log(`Evidence:     ${proposal.evidenceRefs.length}`);
+  for (const evidence of proposal.evidenceRefs) {
+    console.log(`  - ${evidence.path} | ${evidence.source} | ${evidence.note}`);
   }
   console.log(`Actions:      ${proposal.actions.length}`);
   for (const action of proposal.actions) {
@@ -122,12 +178,7 @@ export async function runEvolutionSkip(
 }
 
 function normalizeProposalInput(raw: unknown, sourcePath: string): unknown {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new PlaySpecError(
-      'Evolution proposal YAML must be a mapping.',
-      'Provide a YAML object with proposal fields.'
-    );
-  }
+  ensureProposalMapping(raw);
 
   const timestamp = new Date().toISOString();
   const input = raw as Record<string, unknown>;
@@ -139,6 +190,15 @@ function normalizeProposalInput(raw: unknown, sourcePath: string): unknown {
     updatedAt: input['updatedAt'] ?? timestamp,
     status: 'pending',
   };
+}
+
+function ensureProposalMapping(raw: unknown): void {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new PlaySpecError(
+      'Evolution proposal YAML must be a mapping.',
+      'Provide a YAML object with proposal fields.'
+    );
+  }
 }
 
 async function loadReportIfPresent(
@@ -156,4 +216,14 @@ async function loadReportIfPresent(
     }
     throw error;
   }
+}
+
+function withChangeHint(error: unknown): unknown {
+  if (error instanceof Error && error.message.includes('Only pending/refining proposals can be changed')) {
+    return new PlaySpecError(
+      error.message,
+      'Use update or append-evidence only on pending/refining proposals.'
+    );
+  }
+  return error;
 }

@@ -71,3 +71,15 @@ export function getEvolutionProposalPath(workspaceRoot: string, proposalId: stri
 export function getEvolutionProposalValidationPath(workspaceRoot: string, proposalId: string): string {
   return path.join(getEvolutionProposalRoot(workspaceRoot, proposalId), 'validation.yaml');
 }
+
+export function getEvolutionProposalRevisionsRoot(workspaceRoot: string, proposalId: string): string {
+  return path.join(getEvolutionProposalRoot(workspaceRoot, proposalId), 'revisions');
+}
+
+export function getEvolutionProposalRevisionPath(
+  workspaceRoot: string,
+  proposalId: string,
+  revision: number
+): string {
+  return path.join(getEvolutionProposalRevisionsRoot(workspaceRoot, proposalId), `revision-${revision}.yaml`);
+}
