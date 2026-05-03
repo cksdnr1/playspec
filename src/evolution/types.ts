@@ -46,10 +46,38 @@ export interface ProposeContextReferenceAction extends BaseEvolutionProposalActi
   path: string;
 }
 
+export interface ReplaceFileAction extends BaseEvolutionProposalAction {
+  type: 'replace_file';
+  targetPath: string;
+  content: string;
+}
+
+export interface AppendSectionAction extends BaseEvolutionProposalAction {
+  type: 'append_section';
+  targetPath: string;
+  sectionName: string;
+  content: string;
+}
+
+export interface ReplaceSectionAction extends BaseEvolutionProposalAction {
+  type: 'replace_section';
+  targetPath: string;
+  sectionName: string;
+  content: string;
+}
+
 export type EvolutionProposalAction =
   | ProposeFileChangeAction
   | ProposeSectionChangeAction
-  | ProposeContextReferenceAction;
+  | ProposeContextReferenceAction
+  | ReplaceFileAction
+  | AppendSectionAction
+  | ReplaceSectionAction;
+
+export type EvolutionExecutableAction =
+  | ReplaceFileAction
+  | AppendSectionAction
+  | ReplaceSectionAction;
 
 export interface EvolutionReview {
   status: EvolutionReviewStatus;
@@ -73,6 +101,7 @@ export interface EvolutionProposal {
   review: EvolutionReview;
   skippedAt?: string;
   skipReason?: string;
+  latestApplyReportPath?: string;
 }
 
 export type EvolutionValidationStatus = 'valid' | 'invalid';
@@ -91,4 +120,58 @@ export interface EvolutionProposalValidationResult {
   valid: boolean;
   proposal?: EvolutionProposal;
   report: EvolutionProposalValidationReport;
+}
+
+export type EvolutionApplyStatus = 'success' | 'failed';
+export type EvolutionApplyValidationStatus = 'passed' | 'failed';
+
+export interface EvolutionApplyActionReport {
+  actionId: string;
+  type: EvolutionExecutableAction['type'];
+  targetPath: string;
+  status: 'applied' | 'failed';
+  summary: string;
+  error?: string;
+}
+
+export interface EvolutionApplyValidationReport {
+  path: string;
+  status: EvolutionApplyValidationStatus;
+  checks: string[];
+  errors: string[];
+}
+
+export interface EvolutionApplyReport {
+  proposalId: string;
+  proposalRevision: number;
+  createdAt: string;
+  approvalSource: string;
+  targetFiles: string[];
+  actions: EvolutionApplyActionReport[];
+  beforeHashes: Record<string, string>;
+  afterHashes: Record<string, string>;
+  changedFiles: string[];
+  validation: EvolutionApplyValidationReport[];
+  status: EvolutionApplyStatus;
+  failedAction?: string;
+  partialApply: boolean;
+  recoveryGuidance: string;
+  backupPath: string;
+}
+
+export interface EvolutionDiffResult {
+  proposalId: string;
+  proposalRevision: number;
+  targetFiles: string[];
+  beforeHashes: Record<string, string>;
+  afterHashes: Record<string, string>;
+  changedFiles: string[];
+  fileDiffs: Record<string, string>;
+  summary: string[];
+}
+
+export interface EvolutionApplyResult {
+  report: EvolutionApplyReport;
+  reportPath: string;
+  backupPath: string;
 }

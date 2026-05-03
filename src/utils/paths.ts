@@ -60,6 +60,30 @@ export function getEvolutionProposalsRoot(workspaceRoot: string): string {
   return path.join(getEvolutionRoot(workspaceRoot), 'proposals');
 }
 
+export function getEvolutionReportsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'reports');
+}
+
+export function getEvolutionBackupsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'backups');
+}
+
+export function getEvolutionApplyReportPath(
+  workspaceRoot: string,
+  proposalId: string,
+  timestamp: string
+): string {
+  return path.join(getEvolutionReportsRoot(workspaceRoot), `${proposalId}-${timestamp}.yaml`);
+}
+
+export function getEvolutionApplyBackupRoot(
+  workspaceRoot: string,
+  proposalId: string,
+  timestamp: string
+): string {
+  return path.join(getEvolutionBackupsRoot(workspaceRoot), `${proposalId}-${timestamp}`);
+}
+
 export function getEvolutionProposalRoot(workspaceRoot: string, proposalId: string): string {
   return path.join(getEvolutionProposalsRoot(workspaceRoot), proposalId);
 }

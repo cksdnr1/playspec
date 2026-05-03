@@ -72,10 +72,39 @@ export const ProposeContextReferenceActionSchema = BaseEvolutionProposalActionSc
   path: WorkspaceRelativePathSchema,
 });
 
+export const ReplaceFileActionSchema = BaseEvolutionProposalActionSchema.extend({
+  type: z.literal('replace_file'),
+  targetPath: WorkspaceRelativePathSchema,
+  content: z.string(),
+});
+
+export const AppendSectionActionSchema = BaseEvolutionProposalActionSchema.extend({
+  type: z.literal('append_section'),
+  targetPath: WorkspaceRelativePathSchema,
+  sectionName: z.string().min(1),
+  content: z.string(),
+});
+
+export const ReplaceSectionActionSchema = BaseEvolutionProposalActionSchema.extend({
+  type: z.literal('replace_section'),
+  targetPath: WorkspaceRelativePathSchema,
+  sectionName: z.string().min(1),
+  content: z.string(),
+});
+
 export const EvolutionProposalActionSchema = z.discriminatedUnion('type', [
   ProposeFileChangeActionSchema,
   ProposeSectionChangeActionSchema,
   ProposeContextReferenceActionSchema,
+  ReplaceFileActionSchema,
+  AppendSectionActionSchema,
+  ReplaceSectionActionSchema,
+]);
+
+export const EvolutionExecutableActionSchema = z.discriminatedUnion('type', [
+  ReplaceFileActionSchema,
+  AppendSectionActionSchema,
+  ReplaceSectionActionSchema,
 ]);
 
 export const EvolutionReviewSchema = z.object({
@@ -100,6 +129,7 @@ export const EvolutionProposalSchema = z.object({
   review: EvolutionReviewSchema,
   skippedAt: z.string().optional(),
   skipReason: z.string().optional(),
+  latestApplyReportPath: WorkspaceRelativePathSchema.optional(),
 });
 
 export const EvolutionValidationStatusSchema = z.enum(['valid', 'invalid']);
@@ -112,4 +142,41 @@ export const EvolutionProposalValidationReportSchema = z.object({
   warnings: z.array(z.string()),
   checkedPaths: z.array(WorkspaceRelativePathSchema),
   summary: z.string(),
+});
+
+export const EvolutionApplyStatusSchema = z.enum(['success', 'failed']);
+export const EvolutionApplyValidationStatusSchema = z.enum(['passed', 'failed']);
+
+export const EvolutionApplyActionReportSchema = z.object({
+  actionId: z.string().min(1),
+  type: z.enum(['replace_file', 'append_section', 'replace_section']),
+  targetPath: WorkspaceRelativePathSchema,
+  status: z.enum(['applied', 'failed']),
+  summary: z.string(),
+  error: z.string().optional(),
+});
+
+export const EvolutionApplyValidationReportSchema = z.object({
+  path: WorkspaceRelativePathSchema,
+  status: EvolutionApplyValidationStatusSchema,
+  checks: z.array(z.string()),
+  errors: z.array(z.string()),
+});
+
+export const EvolutionApplyReportSchema = z.object({
+  proposalId: EvolutionProposalIdSchema,
+  proposalRevision: z.number().int().positive(),
+  createdAt: z.string(),
+  approvalSource: z.string().min(1),
+  targetFiles: z.array(WorkspaceRelativePathSchema),
+  actions: z.array(EvolutionApplyActionReportSchema),
+  beforeHashes: z.record(WorkspaceRelativePathSchema, z.string()),
+  afterHashes: z.record(WorkspaceRelativePathSchema, z.string()),
+  changedFiles: z.array(WorkspaceRelativePathSchema),
+  validation: z.array(EvolutionApplyValidationReportSchema),
+  status: EvolutionApplyStatusSchema,
+  failedAction: z.string().optional(),
+  partialApply: z.boolean(),
+  recoveryGuidance: z.string(),
+  backupPath: WorkspaceRelativePathSchema,
 });

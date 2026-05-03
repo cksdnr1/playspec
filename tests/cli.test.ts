@@ -131,6 +131,33 @@ review:
 `;
 }
 
+function executableProposalYaml(
+  id: string,
+  targetPath = '.playspec/templates/prompt.md',
+  actionType: 'replace_file' | 'append_section' | 'replace_section' = 'replace_file',
+  content = '# Updated Prompt\n'
+): string {
+  const sectionFields = actionType === 'replace_file' ? '' : '    sectionName: Approved Section\n';
+  return `id: ${id}
+source:
+  artifactRefs: []
+targetFiles:
+  - ${targetPath}
+riskLevel: low
+actions:
+  - actionId: action_1
+    type: ${actionType}
+    targetPath: ${targetPath}
+${sectionFields}    summary: Apply approved change.
+    rationale: The proposal was reviewed.
+    content: |-
+${content.split('\n').map((line) => `      ${line}`).join('\n')}
+rationale: Apply a reviewed evolution proposal.
+review:
+  status: reviewed
+`;
+}
+
 describe('CLI placeholder', () => {
   it('formats prompt copy success with PRIMARY status when known', () => {
     expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: true })).toEqual([
@@ -154,7 +181,7 @@ describe('CLI placeholder', () => {
     expect(output).toMatch(/^\s+evolution\b/m);
   });
 
-  it('registers the Phase 6.2 evolution command group without apply behavior', async () => {
+  it('registers the Phase 6.3 evolution diff/apply command surface', async () => {
     const result = await runCli(['evolution', '--help'], workspace.dir);
     const output = result.stdout + result.stderr;
 
@@ -165,7 +192,8 @@ describe('CLI placeholder', () => {
     expect(output).toContain('update');
     expect(output).toContain('append-evidence');
     expect(output).toContain('skip');
-    expect(output).not.toContain('apply');
+    expect(output).toContain('diff');
+    expect(output).toContain('apply');
   });
 
   it('proposes, lists, shows, and skips an evolution proposal from YAML', async () => {
@@ -354,6 +382,211 @@ describe('CLI placeholder', () => {
     expect(updated.stderr).toContain('Use update or append-evidence only on pending/refining proposals.');
     expect(appended.exitCode).toBe(1);
     expect(appended.stderr).toContain('Only pending/refining proposals can be changed');
+  });
+
+  it('diffs executable evolution proposals without mutating targets', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const templatePath = path.join(workspace.dir, '.playspec', 'templates', 'prompt.md');
+    await writeTextFile(templatePath, '# Original Prompt\n');
+    await writeTextFile(proposalPath, executableProposalYaml('proposal_cli_diff'));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const diffed = await runCli(['evolution', 'diff', 'proposal_cli_diff'], workspace.dir);
+
+    expect(diffed.exitCode).toBe(0);
+    expect(diffed.stdout).toContain('Proposal diff: proposal_cli_diff');
+    expect(diffed.stdout).toContain('.playspec/templates/prompt.md');
+    expect(diffed.stdout).toContain('action_1 replace_file .playspec/templates/prompt.md');
+    expect(await readTextFile(templatePath)).toBe('# Original Prompt\n');
+  });
+
+  it('requires explicit approval before applying evolution proposals', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const templatePath = path.join(workspace.dir, '.playspec', 'templates', 'prompt.md');
+    await writeTextFile(templatePath, '# Original Prompt\n');
+    await writeTextFile(proposalPath, executableProposalYaml('proposal_cli_approval'));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const applied = await runCli(['evolution', 'apply', 'proposal_cli_approval'], workspace.dir);
+
+    expect(applied.exitCode).toBe(1);
+    expect(applied.stderr).toContain('Evolution apply requires explicit approval');
+    expect(await readTextFile(templatePath)).toBe('# Original Prompt\n');
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'reports'))).rejects.toThrow();
+  });
+
+  it('applies executable proposals with backups, reports, hashes, validation, and applied status', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const templatePath = path.join(workspace.dir, '.playspec', 'templates', 'prompt.md');
+    await writeTextFile(templatePath, '# Original Prompt\n');
+    await writeTextFile(proposalPath, executableProposalYaml('proposal_cli_apply'));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const applied = await runCli(['evolution', 'apply', 'proposal_cli_apply', '--yes'], workspace.dir);
+    const reportNames = await readdir(path.join(workspace.dir, '.playspec', 'evolution', 'reports'));
+    const reportPath = path.join(workspace.dir, '.playspec', 'evolution', 'reports', reportNames[0] ?? '');
+    const report = parseYaml(await readTextFile(reportPath)) as {
+      status: string;
+      backupPath: string;
+      beforeHashes: Record<string, string>;
+      afterHashes: Record<string, string>;
+      changedFiles: string[];
+      validation: { status: string; checks: string[]; errors: string[] }[];
+      partialApply: boolean;
+    };
+    const stored = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_apply',
+      'proposal.yaml'
+    ))) as { status: string; latestApplyReportPath: string };
+
+    expect(applied.exitCode).toBe(0);
+    expect(applied.stdout).toContain('Proposal applied: proposal_cli_apply');
+    expect(await readTextFile(templatePath)).toBe('# Updated Prompt');
+    expect(report.status).toBe('success');
+    expect(report.changedFiles).toEqual(['.playspec/templates/prompt.md']);
+    expect(report.beforeHashes['.playspec/templates/prompt.md']).not.toBe(report.afterHashes['.playspec/templates/prompt.md']);
+    expect(report.validation[0]).toMatchObject({ status: 'passed', checks: ['template-render'], errors: [] });
+    expect(report.partialApply).toBe(false);
+    expect(await readTextFile(path.join(workspace.dir, report.backupPath, '.playspec', 'templates', 'prompt.md'))).toBe('# Original Prompt\n');
+    expect(stored.status).toBe('applied');
+    expect(stored.latestApplyReportPath).toMatch(/^\.playspec\/evolution\/reports\/proposal_cli_apply-/);
+    await expect(access(path.join(workspace.dir, '.playspec', 'migrations', 'reports'))).rejects.toThrow();
+    await expect(access(path.join(workspace.dir, '.playspec', 'migrations', 'backups'))).rejects.toThrow();
+  });
+
+  it('rejects old planning actions, disallowed targets, and terminal statuses before mutation', async () => {
+    const oldProposalPath = path.join(workspace.dir, 'old-proposal.yaml');
+    const workflowProposalPath = path.join(workspace.dir, 'workflow-proposal.yaml');
+    const traversalProposalPath = path.join(workspace.dir, 'traversal-proposal.yaml');
+    const appliedProposalPath = path.join(workspace.dir, 'applied-proposal.yaml');
+    const skippedProposalPath = path.join(workspace.dir, 'skipped-proposal.yaml');
+    const templatePath = path.join(workspace.dir, '.playspec', 'templates', 'prompt.md');
+    const appliedRulePath = path.join(workspace.dir, '.playspec', 'rules', 'applied.md');
+    const workflowPath = path.join(workspace.dir, '.playspec', 'workflows', 'workflow.yaml');
+    await writeTextFile(templatePath, '# Original Prompt\n');
+    await writeTextFile(appliedRulePath, '# Original Rule\n');
+    await writeTextFile(workflowPath, 'id: workflow\n');
+    await writeTextFile(oldProposalPath, proposalYaml('proposal_cli_old_action')
+      .replace('docs/features/source_task/spec.md', '.playspec/templates/prompt.md')
+      .replace('docs/features/source_task/spec.md', '.playspec/templates/prompt.md'));
+    await writeTextFile(
+      workflowProposalPath,
+      executableProposalYaml('proposal_cli_workflow_target', '.playspec/workflows/workflow.yaml')
+    );
+    await writeTextFile(
+      traversalProposalPath,
+      executableProposalYaml('proposal_cli_traversal_target', '.playspec/templates/../workflows/workflow.yaml')
+    );
+    await writeTextFile(
+      appliedProposalPath,
+      executableProposalYaml('proposal_cli_applied_terminal', '.playspec/rules/applied.md')
+    );
+    await writeTextFile(skippedProposalPath, executableProposalYaml('proposal_cli_skipped_apply'));
+    await runCli(['evolution', 'propose', '--file', oldProposalPath], workspace.dir);
+    await runCli(['evolution', 'propose', '--file', workflowProposalPath], workspace.dir);
+    await runCli(['evolution', 'propose', '--file', traversalProposalPath], workspace.dir);
+    await runCli(['evolution', 'propose', '--file', appliedProposalPath], workspace.dir);
+    await runCli(['evolution', 'propose', '--file', skippedProposalPath], workspace.dir);
+    await runCli(['evolution', 'apply', 'proposal_cli_applied_terminal', '--yes'], workspace.dir);
+    await runCli(['evolution', 'skip', 'proposal_cli_skipped_apply'], workspace.dir);
+
+    const oldAction = await runCli(['evolution', 'apply', 'proposal_cli_old_action', '--yes'], workspace.dir);
+    const failedAgain = await runCli(['evolution', 'apply', 'proposal_cli_old_action', '--yes'], workspace.dir);
+    const workflowTarget = await runCli(['evolution', 'apply', 'proposal_cli_workflow_target', '--yes'], workspace.dir);
+    const traversalTarget = await runCli(['evolution', 'apply', 'proposal_cli_traversal_target', '--yes'], workspace.dir);
+    const appliedAgain = await runCli(['evolution', 'apply', 'proposal_cli_applied_terminal', '--yes'], workspace.dir);
+    const skipped = await runCli(['evolution', 'apply', 'proposal_cli_skipped_apply', '--yes'], workspace.dir);
+
+    expect(oldAction.exitCode).toBe(1);
+    expect(oldAction.stderr).toContain('not executable in Phase 6.3');
+    expect(failedAgain.exitCode).toBe(1);
+    expect(failedAgain.stderr).toContain('current status is failed');
+    expect(workflowTarget.exitCode).toBe(1);
+    expect(workflowTarget.stderr).toContain('not allow-listed');
+    expect(traversalTarget.exitCode).toBe(1);
+    expect(traversalTarget.stderr).toContain('not allow-listed');
+    expect(appliedAgain.exitCode).toBe(1);
+    expect(appliedAgain.stderr).toContain('current status is applied');
+    expect(skipped.exitCode).toBe(1);
+    expect(skipped.stderr).toContain('Only pending/refining proposals can be applied');
+    expect(await readTextFile(templatePath)).toBe('# Original Prompt\n');
+    expect(await readTextFile(workflowPath)).toBe('id: workflow\n');
+  });
+
+  it('writes failed partial-apply reports and failed proposal status', async () => {
+    const proposalPath = path.join(workspace.dir, 'partial-proposal.yaml');
+    const templatePath = path.join(workspace.dir, '.playspec', 'templates', 'prompt.md');
+    const rulePath = path.join(workspace.dir, '.playspec', 'rules', 'review.md');
+    await writeTextFile(templatePath, '# Original Prompt\n');
+    await writeTextFile(rulePath, '# Rules\n\n## Approved Section\n\nExisting.\n');
+    await writeTextFile(proposalPath, `id: proposal_cli_partial
+source:
+  artifactRefs: []
+targetFiles:
+  - .playspec/templates/prompt.md
+  - .playspec/rules/review.md
+riskLevel: low
+actions:
+  - actionId: replace_template
+    type: replace_file
+    targetPath: .playspec/templates/prompt.md
+    summary: Replace template.
+    rationale: Approved.
+    content: "# Partial Prompt\\n"
+  - actionId: append_existing
+    type: append_section
+    targetPath: .playspec/rules/review.md
+    sectionName: Approved Section
+    summary: Append section.
+    rationale: Approved.
+    content: "New content."
+rationale: Apply a reviewed evolution proposal.
+review:
+  status: reviewed
+`);
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const applied = await runCli(['evolution', 'apply', 'proposal_cli_partial', '--yes'], workspace.dir);
+    const reportNames = await readdir(path.join(workspace.dir, '.playspec', 'evolution', 'reports'));
+    const report = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'reports',
+      reportNames[0] ?? ''
+    ))) as {
+      status: string;
+      failedAction: string;
+      partialApply: boolean;
+      changedFiles: string[];
+      actions: { actionId: string; status: string; error?: string }[];
+    };
+    const stored = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_partial',
+      'proposal.yaml'
+    ))) as { status: string };
+
+    expect(applied.exitCode).toBe(1);
+    expect(applied.stderr).toContain('Evolution apply failed');
+    expect(await readTextFile(templatePath)).toBe('# Partial Prompt\n');
+    expect(await readTextFile(rulePath)).toBe('# Rules\n\n## Approved Section\n\nExisting.\n');
+    expect(report.status).toBe('failed');
+    expect(report.failedAction).toBe('append_existing');
+    expect(report.partialApply).toBe(true);
+    expect(report.changedFiles).toEqual(['.playspec/templates/prompt.md']);
+    expect(report.actions).toEqual([
+      expect.objectContaining({ actionId: 'replace_template', status: 'applied' }),
+      expect.objectContaining({ actionId: 'append_existing', status: 'failed', error: 'Section already exists: Approved Section' }),
+    ]);
+    expect(stored.status).toBe('failed');
   });
 
   it('lists and shows built-in workflow assets', async () => {

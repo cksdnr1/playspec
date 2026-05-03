@@ -11,6 +11,7 @@ import {
 } from '#evolution/proposal-store.js';
 import type {
   EvolutionProposal,
+  EvolutionApplyReport,
   EvolutionProposalValidationReport,
 } from '#evolution/types.js';
 import { writeTextFile } from '#utils/fs.js';
@@ -19,6 +20,7 @@ import {
   getEvolutionProposalRevisionPath,
   getEvolutionProposalRoot,
   getEvolutionProposalValidationPath,
+  getEvolutionApplyReportPath,
 } from '#utils/paths.js';
 
 let workspace: TempWorkspace;
@@ -76,6 +78,46 @@ function makeReport(proposalId: string): EvolutionProposalValidationReport {
 }
 
 describe('EvolutionProposalSchema', () => {
+  it('accepts Phase 6.3 executable action types', () => {
+    const proposal = makeProposal({
+      targetFiles: ['.playspec/templates/prompt.md', '.playspec/rules/review.md'],
+      actions: [
+        {
+          actionId: 'replace_template',
+          type: 'replace_file',
+          targetPath: '.playspec/templates/prompt.md',
+          summary: 'Replace template.',
+          rationale: 'Approved review.',
+          content: '# Prompt\n',
+        },
+        {
+          actionId: 'append_rule',
+          type: 'append_section',
+          targetPath: '.playspec/rules/review.md',
+          sectionName: 'Review',
+          summary: 'Append rule.',
+          rationale: 'Approved review.',
+          content: 'Check the result.',
+        },
+        {
+          actionId: 'replace_rule',
+          type: 'replace_section',
+          targetPath: '.playspec/rules/review.md',
+          sectionName: 'Review',
+          summary: 'Replace rule.',
+          rationale: 'Approved review.',
+          content: 'Check the final result.',
+        },
+      ],
+    });
+
+    expect(EvolutionProposalSchema.parse(proposal).actions.map((action) => action.type)).toEqual([
+      'replace_file',
+      'append_section',
+      'replace_section',
+    ]);
+  });
+
   it('rejects unknown action types', () => {
     const proposal = makeProposal({
       actions: [
@@ -155,6 +197,71 @@ describe('EvolutionProposalStore', () => {
     expect(updated.updatedAt).not.toBe(proposal.updatedAt);
     expect(loadedReport).toEqual(report);
     await expect(access(getEvolutionProposalValidationPath(workspace.dir, proposal.id))).resolves.toBeUndefined();
+  });
+
+  it('persists apply reports and marks apply terminal status without changing revision', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+    const proposal = makeProposal({
+      id: 'proposal_apply_report',
+      targetFiles: ['.playspec/templates/prompt.md'],
+      actions: [
+        {
+          actionId: 'replace_template',
+          type: 'replace_file',
+          targetPath: '.playspec/templates/prompt.md',
+          summary: 'Replace template.',
+          rationale: 'Approved review.',
+          content: '# Prompt\n',
+        },
+      ],
+    });
+    await store.saveProposal(proposal);
+
+    const report: EvolutionApplyReport = {
+      proposalId: proposal.id,
+      proposalRevision: proposal.revision,
+      createdAt: '2026-05-03T00:03:00.000Z',
+      approvalSource: 'cli --yes',
+      targetFiles: ['.playspec/templates/prompt.md'],
+      actions: [
+        {
+          actionId: 'replace_template',
+          type: 'replace_file',
+          targetPath: '.playspec/templates/prompt.md',
+          status: 'applied',
+          summary: 'Replace template.',
+        },
+      ],
+      beforeHashes: { '.playspec/templates/prompt.md': 'before' },
+      afterHashes: { '.playspec/templates/prompt.md': 'after' },
+      changedFiles: ['.playspec/templates/prompt.md'],
+      validation: [
+        {
+          path: '.playspec/templates/prompt.md',
+          status: 'passed',
+          checks: ['template-render'],
+          errors: [],
+        },
+      ],
+      status: 'success',
+      partialApply: false,
+      recoveryGuidance: 'Backups are available.',
+      backupPath: '.playspec/evolution/backups/proposal_apply_report-20260503t000300z',
+    };
+    const reportPath = getEvolutionApplyReportPath(workspace.dir, proposal.id, '20260503t000300z');
+
+    await store.saveApplyReport(report, reportPath);
+    const updated = await store.markProposalApplyStatus(
+      proposal.id,
+      'applied',
+      '.playspec/evolution/reports/proposal_apply_report-20260503t000300z.yaml'
+    );
+    const parsedReport = parseYaml(await readFile(reportPath, 'utf8')) as EvolutionApplyReport;
+
+    expect(parsedReport).toEqual(report);
+    expect(updated.status).toBe('applied');
+    expect(updated.revision).toBe(1);
+    expect(updated.latestApplyReportPath).toBe('.playspec/evolution/reports/proposal_apply_report-20260503t000300z.yaml');
   });
 
   it('lists stored proposals with pending, refining, and skipped statuses', async () => {
