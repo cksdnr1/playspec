@@ -1,4 +1,4 @@
-export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped';
+export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped' | 'applied' | 'failed';
 export type EvolutionRiskLevel = 'low' | 'medium' | 'high';
 export type EvolutionReviewStatus = 'unreviewed' | 'needs_review' | 'reviewed';
 
@@ -13,6 +13,13 @@ export interface EvolutionProposalSource {
   taskId?: string;
   archivedTaskId?: string;
   artifactRefs: EvolutionArtifactReference[];
+}
+
+export interface EvolutionEvidenceReference {
+  path: string;
+  note: string;
+  addedAt: string;
+  source: 'append-evidence';
 }
 
 interface BaseEvolutionProposalAction {
@@ -59,6 +66,7 @@ export interface EvolutionProposal {
   status: EvolutionProposalStatus;
   source: EvolutionProposalSource;
   targetFiles: string[];
+  evidenceRefs: EvolutionEvidenceReference[];
   riskLevel: EvolutionRiskLevel;
   actions: EvolutionProposalAction[];
   rationale: string;

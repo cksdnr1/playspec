@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { access, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { EvolutionProposalSchema } from '#evolution/schemas.js';
@@ -16,6 +16,7 @@ import type {
 import { writeTextFile } from '#utils/fs.js';
 import {
   getEvolutionProposalPath,
+  getEvolutionProposalRevisionPath,
   getEvolutionProposalRoot,
   getEvolutionProposalValidationPath,
 } from '#utils/paths.js';
@@ -42,6 +43,7 @@ function makeProposal(overrides: Partial<EvolutionProposal> = {}): EvolutionProp
       artifactRefs: [],
     },
     targetFiles: ['docs/features/source_task/spec.md'],
+    evidenceRefs: [],
     riskLevel: 'medium',
     actions: [
       {
@@ -266,5 +268,154 @@ describe('EvolutionProposalStore', () => {
     expect(invalid.valid).toBe(false);
     expect(invalid.report.status).toBe('invalid');
     expect(invalid.report.errors.length).toBeGreaterThan(0);
+  });
+
+  it('updates active proposals, preserves previous revision, and rewrites validation report', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+    const proposal = makeProposal();
+    await store.saveProposal(proposal);
+    await store.saveValidationReport(makeReport(proposal.id));
+
+    const updated = await store.updateProposal(proposal.id, {
+      ...proposal,
+      id: 'different_id_is_ignored',
+      revision: 99,
+      createdAt: '2030-01-01T00:00:00.000Z',
+      updatedAt: '2030-01-01T00:00:00.000Z',
+      status: 'refining',
+      rationale: 'Refined after review evidence.',
+      targetFiles: ['docs/features/source_task/refined.md'],
+      actions: [
+        {
+          actionId: 'action_2',
+          type: 'propose_file_change',
+          targetPath: 'docs/features/source_task/refined.md',
+          summary: 'Refine spec wording.',
+          rationale: 'Review found stale wording.',
+        },
+      ],
+    });
+
+    const loaded = await store.loadProposal(proposal.id);
+    const revision = parseYaml(await readFile(
+      getEvolutionProposalRevisionPath(workspace.dir, proposal.id, 1),
+      'utf8'
+    )) as EvolutionProposal;
+    const report = await store.loadValidationReport(proposal.id);
+
+    expect(updated.proposal.id).toBe(proposal.id);
+    expect(loaded.revision).toBe(2);
+    expect(loaded.createdAt).toBe(proposal.createdAt);
+    expect(loaded.updatedAt).not.toBe(proposal.updatedAt);
+    expect(loaded.status).toBe('refining');
+    expect(loaded.rationale).toBe('Refined after review evidence.');
+    expect(revision).toEqual(proposal);
+    expect(report.createdAt).not.toBe('2026-05-03T00:01:00.000Z');
+    expect(report.checkedPaths).toEqual(['docs/features/source_task/refined.md']);
+  });
+
+  it('appends evidence to active proposals with revision preservation', async () => {
+    const evidencePath = 'docs/evidence/review.md';
+    await writeTextFile(path.join(workspace.dir, evidencePath), '# Review Evidence\n');
+    const store = new EvolutionProposalStore(workspace.dir);
+    const proposal = makeProposal();
+    await store.saveProposal(proposal);
+    await store.saveValidationReport(makeReport(proposal.id));
+
+    const result = await store.appendEvidence(proposal.id, {
+      path: evidencePath,
+      note: 'Review found the proposal still relevant.',
+    });
+    const loaded = await store.loadProposal(proposal.id);
+    const report = await store.loadValidationReport(proposal.id);
+    const revision = parseYaml(await readFile(
+      getEvolutionProposalRevisionPath(workspace.dir, proposal.id, 1),
+      'utf8'
+    )) as EvolutionProposal;
+
+    expect(result.proposal.revision).toBe(2);
+    expect(loaded.evidenceRefs).toHaveLength(1);
+    expect(loaded.evidenceRefs[0]).toMatchObject({
+      path: evidencePath,
+      note: 'Review found the proposal still relevant.',
+      source: 'append-evidence',
+    });
+    expect(loaded.evidenceRefs[0]?.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(report.checkedPaths).toEqual([
+      'docs/features/source_task/spec.md',
+      evidencePath,
+    ]);
+    expect(revision).toEqual(proposal);
+  });
+
+  it('rejects terminal proposals for update and evidence append', async () => {
+    const evidencePath = 'docs/evidence/review.md';
+    await writeTextFile(path.join(workspace.dir, evidencePath), '# Review Evidence\n');
+    const store = new EvolutionProposalStore(workspace.dir);
+    const skipped = makeProposal({ id: 'proposal_skipped_terminal', status: 'skipped' });
+    await store.saveProposal(skipped);
+
+    await expect(store.updateProposal(skipped.id, { ...skipped, rationale: 'No change.' })).rejects.toThrow(
+      'Only pending/refining proposals can be changed'
+    );
+    await expect(store.appendEvidence(skipped.id, { path: evidencePath, note: 'Evidence.' })).rejects.toThrow(
+      'Only pending/refining proposals can be changed'
+    );
+
+    for (const status of ['applied', 'failed'] as const) {
+      const terminal = makeProposal({ id: `proposal_${status}_terminal`, status });
+      await writeTextFile(
+        getEvolutionProposalPath(workspace.dir, terminal.id),
+        stringifyYaml(terminal)
+      );
+      await expect(store.updateProposal(terminal.id, terminal)).rejects.toThrow(
+        'Only pending/refining proposals can be changed'
+      );
+      await expect(store.appendEvidence(terminal.id, { path: evidencePath, note: 'Evidence.' })).rejects.toThrow(
+        'Only pending/refining proposals can be changed'
+      );
+    }
+  });
+
+  it('rejects applied and failed intake through saveProposal', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+
+    await expect(store.saveProposal(makeProposal({ id: 'proposal_applied_intake', status: 'applied' }))).rejects.toThrow(
+      'Evolution proposal status cannot be stored by propose: applied'
+    );
+    await expect(store.saveProposal(makeProposal({ id: 'proposal_failed_intake', status: 'failed' }))).rejects.toThrow(
+      'Evolution proposal status cannot be stored by propose: failed'
+    );
+  });
+
+  it('rejects invalid updates without rewriting proposal, validation, or revisions', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+    const proposal = makeProposal();
+    const report = makeReport(proposal.id);
+    await store.saveProposal(proposal);
+    await store.saveValidationReport(report);
+
+    await expect(store.updateProposal(proposal.id, {
+      status: 'refining',
+      targetFiles: ['docs/features/source_task/refined.md'],
+    })).rejects.toThrow('Evolution proposal is invalid');
+
+    expect(await store.loadProposal(proposal.id)).toEqual(proposal);
+    expect(await store.loadValidationReport(proposal.id)).toEqual(report);
+    await expect(access(getEvolutionProposalRevisionPath(workspace.dir, proposal.id, 1))).rejects.toThrow();
+  });
+
+  it('rejects missing evidence paths without writing revisions', async () => {
+    const store = new EvolutionProposalStore(workspace.dir);
+    const proposal = makeProposal();
+    await store.saveProposal(proposal);
+
+    await expect(store.appendEvidence(proposal.id, {
+      path: 'docs/evidence/missing.md',
+      note: 'Missing evidence.',
+    })).rejects.toThrow('Evolution proposal evidence reference not found');
+
+    expect(await store.loadProposal(proposal.id)).toEqual(proposal);
+    await expect(access(getEvolutionProposalRevisionPath(workspace.dir, proposal.id, 1))).rejects.toThrow();
   });
 });
