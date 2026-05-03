@@ -3,13 +3,18 @@ import { access, readdir, writeFile } from 'node:fs/promises';
 import { execa } from 'execa';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from './helpers/createTempWorkspace.js';
 import type { TempWorkspace } from './helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import { getHeadPath } from '#utils/paths.js';
+import {
+  getEvolutionProposalPath,
+  getEvolutionProposalValidationPath,
+  getHeadPath,
+} from '#utils/paths.js';
 import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -131,14 +136,176 @@ describe('CLI placeholder', () => {
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
     expect(output).toMatch(/playspec/i);
-    expect(output).not.toMatch(/^\s+evolution\b/m);
+    expect(output).toMatch(/^\s+evolution\b/m);
   });
 
-  it('does not register a public evolution command group in Phase 6', async () => {
-    const result = await runCli(['evolution'], workspace.dir);
+  it('stores evolution proposals from files and writes validation reports', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'docs', 'source.md'), 'Source context\n');
+    const proposalPath = path.join(workspace.dir, 'incoming-proposal.yaml');
+    await writeTextFile(proposalPath, `id: proposal_cli_intake
+createdAt: '2026-05-03T00:00:00.000Z'
+status: pending
+source:
+  taskId: task_123
+  artifactRefs:
+    - path: docs/source.md
+      role: supporting-context
+targetFiles:
+  - docs/target.md
+riskLevel: low
+actions:
+  - actionId: action_1
+    type: propose_file_change
+    targetPath: docs/target.md
+    summary: Add target documentation
+    rationale: Capture the proposed documentation update.
+    proposedContent: Proposed content
+rationale: Store a proposal without applying it.
+review:
+  status: unreviewed
+`);
+
+    const result = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Stored evolution proposal: proposal_cli_intake');
+    expect(result.stdout).toContain('Status: pending');
+
+    const stored = parseYaml(await readTextFile(getEvolutionProposalPath(workspace.dir, 'proposal_cli_intake'))) as {
+      id: string;
+      status: string;
+    };
+    const validation = parseYaml(await readTextFile(
+      getEvolutionProposalValidationPath(workspace.dir, 'proposal_cli_intake')
+    )) as {
+      proposalId: string;
+      status: string;
+    };
+
+    expect(stored.id).toBe('proposal_cli_intake');
+    expect(stored.status).toBe('pending');
+    expect(validation.proposalId).toBe('proposal_cli_intake');
+    expect(validation.status).toBe('valid');
+  });
+
+  it('generates proposal IDs during CLI intake when the file omits one', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'docs', 'source.md'), 'Source context\n');
+    const proposalPath = path.join(workspace.dir, 'incoming-proposal.yaml');
+    await writeTextFile(proposalPath, `createdAt: '2026-05-03T00:00:00.000Z'
+status: pending
+source:
+  artifactRefs:
+    - path: docs/source.md
+      role: supporting-context
+targetFiles:
+  - docs/target.md
+riskLevel: low
+actions:
+  - actionId: action_1
+    type: propose_file_change
+    targetPath: docs/target.md
+    summary: Add target documentation
+    rationale: Capture the proposed documentation update.
+rationale: Store a proposal without a caller-provided ID.
+review:
+  status: unreviewed
+`);
+
+    const result = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+    const proposals = await readdir(path.join(workspace.dir, '.playspec', 'evolution', 'proposals'));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/Stored evolution proposal: proposal_\d{8}t\d{6}z_[a-z0-9]{6}/);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatch(/^proposal_\d{8}t\d{6}z_[a-z0-9]{6}$/);
+    await expect(access(getEvolutionProposalValidationPath(workspace.dir, proposals[0] as string))).resolves.toBeUndefined();
+  });
+
+  it('rejects invalid proposal files without writing partial proposal storage', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const proposalPath = path.join(workspace.dir, 'invalid-proposal.yaml');
+    await writeTextFile(proposalPath, `id: proposal_invalid_partial
+createdAt: '2026-05-03T00:00:00.000Z'
+status: pending
+source:
+  artifactRefs: []
+targetFiles:
+  - docs/target.md
+riskLevel: low
+actions: []
+rationale: Invalid because actions must not be empty.
+review:
+  status: unreviewed
+`);
+
+    const result = await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("unknown command 'evolution'");
+    expect(result.stderr).toContain('Invalid evolution proposal');
+    await expect(access(getEvolutionProposalPath(workspace.dir, 'proposal_invalid_partial'))).rejects.toThrow();
+    await expect(access(getEvolutionProposalValidationPath(workspace.dir, 'proposal_invalid_partial'))).rejects.toThrow();
+  });
+
+  it('lists, shows, and skips stored evolution proposals without deleting reports', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(path.join(workspace.dir, 'docs', 'source.md'), 'Source context\n');
+    const proposalPath = path.join(workspace.dir, 'incoming-proposal.yaml');
+    await writeTextFile(proposalPath, `id: proposal_cli_skip
+createdAt: '2026-05-03T00:00:00.000Z'
+status: pending
+source:
+  artifactRefs:
+    - path: docs/source.md
+      role: supporting-context
+targetFiles:
+  - docs/target.md
+riskLevel: medium
+actions:
+  - actionId: action_1
+    type: propose_context_reference
+    path: docs/source.md
+    summary: Reference source context
+    rationale: Make source context available in a later phase.
+rationale: Store a proposal for CLI inspection.
+review:
+  status: unreviewed
+`);
+
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const listBefore = await runCli(['evolution', 'list'], workspace.dir);
+    const showBefore = await runCli(['evolution', 'show', 'proposal_cli_skip'], workspace.dir);
+    const skip = await runCli([
+      'evolution',
+      'skip',
+      'proposal_cli_skip',
+      '--reason',
+      'Not needed for this workflow.',
+    ], workspace.dir);
+    const listAfter = await runCli(['evolution', 'list'], workspace.dir);
+    const showAfter = await runCli(['evolution', 'show', 'proposal_cli_skip'], workspace.dir);
+
+    expect(listBefore.exitCode).toBe(0);
+    expect(listBefore.stdout).toContain('proposal_cli_skip | status: pending | risk: medium');
+    expect(showBefore.exitCode).toBe(0);
+    expect(showBefore.stdout).toContain('Proposal ID:  proposal_cli_skip');
+    expect(showBefore.stdout).toContain('Status:       pending');
+    expect(showBefore.stdout).toContain('action_1 [propose_context_reference]');
+    expect(showBefore.stdout).toContain('Validation:');
+    expect(skip.exitCode).toBe(0);
+    expect(skip.stdout).toContain('Skipped evolution proposal: proposal_cli_skip');
+    expect(skip.stdout).toContain('Reason: Not needed for this workflow.');
+    expect(listAfter.stdout).toContain('proposal_cli_skip | status: skipped | risk: medium');
+    expect(showAfter.stdout).toContain('Status:       skipped');
+    expect(showAfter.stdout).toContain('Skip reason:  Not needed for this workflow.');
+    await expect(access(getEvolutionProposalPath(workspace.dir, 'proposal_cli_skip'))).resolves.toBeUndefined();
+    await expect(access(getEvolutionProposalValidationPath(workspace.dir, 'proposal_cli_skip'))).resolves.toBeUndefined();
   });
 
   it('lists and shows built-in workflow assets', async () => {

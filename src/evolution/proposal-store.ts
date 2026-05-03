@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
@@ -19,6 +19,7 @@ import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import {
   getEvolutionProposalPath,
   getEvolutionProposalRoot,
+  getEvolutionProposalsRoot,
   getEvolutionProposalValidationPath,
 } from '#utils/paths.js';
 
@@ -53,6 +54,38 @@ export class EvolutionProposalStore {
     const content = await readTextFile(getEvolutionProposalPath(this.workspaceRoot, proposalId));
     const parsed = EvolutionProposalSchema.parse(parseYaml(content) as unknown) as EvolutionProposal;
     return this.validateProposalForWorkspace(parsed);
+  }
+
+  async listProposals(): Promise<EvolutionProposal[]> {
+    const proposalsRoot = getEvolutionProposalsRoot(this.workspaceRoot);
+    let entries;
+    try {
+      entries = await readdir(proposalsRoot, { withFileTypes: true });
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+
+    const proposals: EvolutionProposal[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const proposalId = entry.name;
+      const parsedId = EvolutionProposalIdSchema.safeParse(proposalId);
+      if (!parsedId.success) continue;
+      try {
+        proposals.push(await this.loadProposal(parsedId.data));
+      } catch (error) {
+        if (isNodeError(error) && error.code === 'ENOENT') continue;
+        throw error;
+      }
+    }
+
+    return proposals.sort((left, right) => {
+      const created = left.createdAt.localeCompare(right.createdAt);
+      return created === 0 ? left.id.localeCompare(right.id) : created;
+    });
   }
 
   async saveValidationReport(report: EvolutionProposalValidationReport): Promise<string> {
@@ -180,4 +213,8 @@ async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
 }
