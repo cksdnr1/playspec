@@ -3,12 +3,14 @@ import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
+  EvolutionApplyReportSchema,
   EvolutionProposalSchema,
   EvolutionProposalValidationReportSchema,
   EvolutionProposalStatusSchema,
   EvolutionProposalIdSchema,
 } from './schemas.js';
 import type {
+  EvolutionApplyReport,
   EvolutionProposal,
   EvolutionProposalStatus,
   EvolutionProposalValidationReport,
@@ -22,6 +24,7 @@ import {
   getEvolutionProposalRoot,
   getEvolutionProposalsRoot,
   getEvolutionProposalValidationPath,
+  getEvolutionApplyReportPath,
 } from '#utils/paths.js';
 
 export interface EvolutionProposalWriteResult {
@@ -194,6 +197,37 @@ export class EvolutionProposalStore {
     EvolutionProposalIdSchema.parse(proposalId);
     const content = await readTextFile(getEvolutionProposalValidationPath(this.workspaceRoot, proposalId));
     return EvolutionProposalValidationReportSchema.parse(parseYaml(content) as unknown) as EvolutionProposalValidationReport;
+  }
+
+  async saveApplyReport(report: EvolutionApplyReport, reportPath: string): Promise<string> {
+    const validated = EvolutionApplyReportSchema.parse(report) as EvolutionApplyReport;
+    const expectedPrefix = getEvolutionApplyReportPath(this.workspaceRoot, validated.proposalId, '').replace(/\.yaml$/, '');
+    if (!reportPath.startsWith(expectedPrefix)) {
+      throw new Error(`Evolution apply report path is not valid for proposal: ${validated.proposalId}`);
+    }
+    await writeTextFileAtomic(reportPath, stringifyYaml(validated));
+    return reportPath;
+  }
+
+  async markProposalApplyStatus(
+    proposalId: string,
+    status: 'applied' | 'failed',
+    latestApplyReportPath: string
+  ): Promise<EvolutionProposal> {
+    EvolutionProposalIdSchema.parse(proposalId);
+    const existing = await this.loadProposal(proposalId);
+    const updated: EvolutionProposal = {
+      ...existing,
+      status,
+      updatedAt: new Date().toISOString(),
+      latestApplyReportPath,
+    };
+    const validated = await this.validateProposalForWorkspace(updated);
+    await writeTextFileAtomic(
+      getEvolutionProposalPath(this.workspaceRoot, proposalId),
+      stringifyYaml(validated)
+    );
+    return validated;
   }
 
   validateProposal(raw: unknown): EvolutionProposalValidationResult {

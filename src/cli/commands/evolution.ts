@@ -6,6 +6,7 @@ import {
   EvolutionProposalStore,
   generateEvolutionProposalId,
 } from '#evolution/proposal-store.js';
+import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
 import type {
   EvolutionProposalValidationReport,
 } from '#evolution/types.js';
@@ -149,6 +150,9 @@ export async function runEvolutionShow(
   if (proposal.skipReason) {
     console.log(`Skip reason:  ${proposal.skipReason}`);
   }
+  if (proposal.latestApplyReportPath) {
+    console.log(`Apply report: ${proposal.latestApplyReportPath}`);
+  }
 
   if (report) {
     console.log('Validation:');
@@ -174,6 +178,54 @@ export async function runEvolutionSkip(
   console.log(`Skipped at: ${updated.skippedAt}`);
   if (updated.skipReason) {
     console.log(`Reason: ${updated.skipReason}`);
+  }
+}
+
+export async function runEvolutionDiff(
+  workspaceRoot: string,
+  proposalId: string
+): Promise<void> {
+  const result = await new EvolutionApplyRunner(workspaceRoot).diff(proposalId);
+
+  console.log(`Proposal diff: ${result.proposalId}`);
+  console.log(`Revision: ${result.proposalRevision}`);
+  console.log(`Target files: ${result.targetFiles.length}`);
+  for (const targetFile of result.targetFiles) {
+    console.log(`  - ${targetFile}`);
+    console.log(`    before: ${result.beforeHashes[targetFile]}`);
+    console.log(`    after:  ${result.afterHashes[targetFile]}`);
+  }
+  console.log(`Changed files: ${result.changedFiles.length}`);
+  for (const changedFile of result.changedFiles) {
+    console.log(`  - ${changedFile}`);
+    const fileDiff = result.fileDiffs[changedFile];
+    if (fileDiff) {
+      console.log(fileDiff);
+    }
+  }
+  console.log('Actions:');
+  for (const summary of result.summary) {
+    console.log(`  - ${summary}`);
+  }
+}
+
+export async function runEvolutionApply(
+  workspaceRoot: string,
+  proposalId: string,
+  opts: { yes?: boolean }
+): Promise<void> {
+  const result = await new EvolutionApplyRunner(workspaceRoot).apply(proposalId, {
+    approved: opts.yes === true,
+    approvalSource: 'cli --yes',
+  });
+
+  console.log(`Proposal applied: ${result.report.proposalId}`);
+  console.log(`Status: applied`);
+  console.log(`Report file: ${path.relative(workspaceRoot, result.reportPath)}`);
+  console.log(`Backup path: ${path.relative(workspaceRoot, result.backupPath)}`);
+  console.log(`Changed files: ${result.report.changedFiles.length}`);
+  for (const changedFile of result.report.changedFiles) {
+    console.log(`  - ${changedFile}`);
   }
 }
 

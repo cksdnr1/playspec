@@ -30,6 +30,8 @@ import { runClose } from './commands/close.js';
 import { runArchiveList, runArchiveShow } from './commands/archive.js';
 import {
   runEvolutionAppendEvidence,
+  runEvolutionApply,
+  runEvolutionDiff,
   runEvolutionList,
   runEvolutionPropose,
   runEvolutionShow,
@@ -544,6 +546,29 @@ evolutionCommand
   .action(async (proposalId: string) => {
     try {
       await runEvolutionShow(process.cwd(), proposalId);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('diff <proposalId>')
+  .description('Preview executable evolution proposal changes')
+  .action(async (proposalId: string) => {
+    try {
+      await runEvolutionDiff(process.cwd(), proposalId);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('apply <proposalId>')
+  .description('Apply an approved executable evolution proposal')
+  .option('--yes', 'Explicitly approve mutation after reviewing diff', false)
+  .action(async (proposalId: string, opts: { yes: boolean }) => {
+    try {
+      await runEvolutionApply(process.cwd(), proposalId, opts);
     } catch (err) {
       handleError(err);
     }
