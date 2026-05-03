@@ -51,6 +51,10 @@ Skipped validation:
 
 - No package install was run because dependencies were already available and `pnpm-lock.yaml` is present.
 
+## Pull Request
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/63
+
 ## Remaining Risks
 
 - Phase 6.1 intentionally does not implement proposal update/merge, evidence append, apply, generation, prompt surfacing, completion snapshots, or MCP intake.
