@@ -51,4 +51,4 @@
 
 - PR body drafted in `docs/features/issue_64_playspec_update_6_5/pr.md`.
 - Reusable agent guidance: no AGENTS.md update needed; existing guidance already covers phase boundaries and MCP explicit context.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/69
