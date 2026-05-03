@@ -33,6 +33,7 @@ import {
   runEvolutionAppendEvidence,
   runEvolutionApply,
   runEvolutionDiff,
+  runEvolutionGenerate,
   runEvolutionList,
   runEvolutionPropose,
   runEvolutionRecordEdit,
@@ -41,6 +42,7 @@ import {
   runEvolutionUpdate,
 } from './commands/evolution.js';
 import type { EvolutionRecordEditOptions } from './commands/evolution.js';
+import type { EvolutionGenerateOptions } from './commands/evolution.js';
 import {
   runWorkflowExport,
   runWorkflowInstall,
@@ -575,6 +577,25 @@ evolutionCommand
   .action(async (opts: { file: string }) => {
     try {
       await runEvolutionPropose(process.cwd(), opts.file);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('generate')
+  .description('Generate a draft evolution proposal from explicit evidence')
+  .requiredOption('--task <id>', 'Task ID used for generation context')
+  .requiredOption('--from-evidence <path>', 'Workspace-relative evidence file path')
+  .requiredOption('--target <path>', 'Workspace-relative target file path')
+  .requiredOption('--summary <text>', 'Short proposal summary')
+  .requiredOption('--rationale <text>', 'Proposal rationale')
+  .option('--proposal <id>', 'Existing pending/refining proposal ID to refine')
+  .option('--id <id>', 'Proposal ID for new generated proposals')
+  .option('--risk <level>', 'Risk level: low, medium, or high')
+  .action(async (opts: EvolutionGenerateOptions) => {
+    try {
+      await runEvolutionGenerate(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }

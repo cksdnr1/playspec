@@ -11,7 +11,9 @@ import {
   generateHumanEditObservationId,
 } from '#evolution/human-edit-store.js';
 import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
+import { generateEvolutionProposal } from '#evolution/proposal-generator.js';
 import type {
+  EvolutionRiskLevel,
   EvolutionProposalValidationReport,
   HumanEditObservation,
 } from '#evolution/types.js';
@@ -104,6 +106,42 @@ export async function runEvolutionAppendEvidence(
   } catch (error: unknown) {
     throw withChangeHint(error);
   }
+}
+
+export interface EvolutionGenerateOptions {
+  task: string;
+  fromEvidence: string;
+  target: string;
+  summary: string;
+  rationale: string;
+  risk?: string;
+  proposal?: string;
+  id?: string;
+}
+
+export async function runEvolutionGenerate(
+  workspaceRoot: string,
+  opts: EvolutionGenerateOptions
+): Promise<void> {
+  const result = await generateEvolutionProposal(workspaceRoot, {
+    taskId: opts.task,
+    evidencePath: opts.fromEvidence,
+    targetPath: opts.target,
+    summary: opts.summary,
+    rationale: opts.rationale,
+    riskLevel: parseRiskLevel(opts.risk),
+    proposalId: opts.proposal,
+    generatedId: opts.id,
+  });
+
+  console.log(`${opts.proposal ? 'Proposal updated' : 'Proposal generated'}: ${result.proposal.id}`);
+  console.log(`Status: ${result.proposal.status}`);
+  console.log(`Revision: ${result.proposal.revision}`);
+  if (result.revisionPath) {
+    console.log(`Revision file: ${path.relative(workspaceRoot, result.revisionPath)}`);
+  }
+  console.log(`Proposal file: ${path.relative(workspaceRoot, result.proposalPath)}`);
+  console.log(`Validation file: ${path.relative(workspaceRoot, result.validationPath)}`);
 }
 
 export async function runEvolutionList(workspaceRoot: string): Promise<void> {
@@ -334,6 +372,19 @@ function hasRecordEditCreationFields(opts: EvolutionRecordEditOptions): boolean 
     opts.before ||
     opts.after ||
     opts.id
+  );
+}
+
+function parseRiskLevel(value?: string): EvolutionRiskLevel | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  throw new PlaySpecError(
+    `Invalid evolution risk level: ${value}`,
+    'Use --risk low, --risk medium, or --risk high.'
   );
 }
 

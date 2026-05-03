@@ -14,13 +14,14 @@ export interface EvolutionProposalSource {
   taskId?: string;
   archivedTaskId?: string;
   artifactRefs: EvolutionArtifactReference[];
+  generationSource?: 'cli';
 }
 
 export interface EvolutionEvidenceReference {
   path: string;
   note: string;
   addedAt: string;
-  source: 'append-evidence';
+  source: 'append-evidence' | 'generated';
 }
 
 interface BaseEvolutionProposalAction {
