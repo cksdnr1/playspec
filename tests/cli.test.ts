@@ -131,6 +131,10 @@ review:
 `;
 }
 
+function taskScopedProposalYaml(id: string, taskId: string): string {
+  return proposalYaml(id).replace('source:\n  artifactRefs: []', `source:\n  taskId: ${taskId}\n  artifactRefs: []`);
+}
+
 function executableProposalYaml(
   id: string,
   targetPath = '.playspec/templates/prompt.md',
@@ -759,6 +763,25 @@ phases:
     expect(next.stderr).toContain('Warning: `playspec next` is deprecated.');
     expect(next.stdout).toContain('TOTAL_SPEC_FILE=`docs/features/cli_planning_task/cli_planning_task_total_spec.md`');
     expect(next.stdout).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+
+  it('renders evolution context from prompt and next only with explicit CLI flag', async () => {
+    const taskId = await createActiveTask('CLI Evolution Context Task');
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    await writeTextFile(proposalPath, taskScopedProposalYaml('proposal_cli_prompt_visible', taskId));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const defaultPrompt = await runCli(['prompt', '--print-only', '--quiet'], workspace.dir);
+    const optInPrompt = await runCli(['prompt', '--print-only', '--quiet', '--with-evolution-context'], workspace.dir);
+    const optInNext = await runCli(['next', '--quiet', '--with-evolution-context'], workspace.dir);
+
+    expect(defaultPrompt.exitCode).toBe(0);
+    expect(defaultPrompt.stdout).not.toContain('proposal_cli_prompt_visible');
+    expect(optInPrompt.exitCode).toBe(0);
+    expect(optInPrompt.stdout).toContain('## Evolution Context');
+    expect(optInPrompt.stdout).toContain('proposal_cli_prompt_visible');
+    expect(optInNext.exitCode).toBe(0);
+    expect(optInNext.stdout).toContain('proposal_cli_prompt_visible');
   });
 
   it('marks the HEAD task in list and list-tasks output', async () => {
@@ -2227,6 +2250,23 @@ phases:
     expect(result.stdout).toContain('Resolved phase:');
     expect(result.stdout).toContain('Global Rules');
     expect(result.stdout).not.toContain('Clipboard');
+  });
+
+  it('complete --with-evolution-context writes a context snapshot and renders context in next prompt', async () => {
+    const taskId = await createActiveTask('CLI Complete Evolution Context Task');
+    await initGitRepo();
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    await writeTextFile(proposalPath, taskScopedProposalYaml('proposal_cli_complete_visible', taskId));
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const result = await runCli(['complete', '--no-copy', '--with-evolution-context'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Evolution context snapshot: .playspec/evolution/context/cli_complete_evolution_context_task/1-');
+    expect(result.stdout).toContain('## Evolution Context');
+    expect(result.stdout).toContain('proposal_cli_complete_visible');
   });
 
   it('prompt does not mutate task.yaml (read-only check)', async () => {

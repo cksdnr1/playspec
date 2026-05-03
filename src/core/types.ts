@@ -212,6 +212,17 @@ export interface SnapshotResult {
   snapshotFiles: string[];
 }
 
+export interface PromptRenderOptions {
+  withEvolutionContext?: boolean;
+  evolutionContextSource?: 'prompt' | 'next' | 'complete' | 'mcp';
+}
+
+export interface CompletePhaseOptions {
+  withReview?: boolean;
+  result?: string;
+  withEvolutionContext?: boolean;
+}
+
 export interface CompletionResult {
   taskId: TaskId;
   completedPhase: PhaseId;
@@ -220,6 +231,7 @@ export interface CompletionResult {
   evidenceFiles: string[];
   snapshotFiles: string[];
   reviewFile?: string;
+  evolutionContextSnapshotFile?: string;
 }
 
 export interface SetCurrentPhaseResult {

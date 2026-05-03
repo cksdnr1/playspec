@@ -19,6 +19,7 @@ export async function runNext(
   quiet?: boolean,
   copy?: boolean,
   outFile?: string,
+  withEvolutionContext?: boolean,
 ): Promise<void> {
   process.stderr.write('Warning: `playspec next` is deprecated. Use `playspec prompt` instead.\n');
 
@@ -42,8 +43,12 @@ export async function runNext(
     console.log('');
   }
 
-  const { prompt, phaseLine, display, shouldPrintStepMetadata, gateRouteLines, nextRouteLines } =
-    await renderPromptWithContext(workspaceRoot, task, core);
+  const prompt = await core.renderNextPrompt(task.id, {
+    withEvolutionContext,
+    evolutionContextSource: 'next',
+  });
+  const { phaseLine, display, shouldPrintStepMetadata, gateRouteLines, nextRouteLines } =
+    await renderPromptWithContext(workspaceRoot, task, { renderNextPrompt: async () => prompt });
 
   // Preserve old statusOnly semantics: body suppressed when --copy or --out
   const statusOnly = copy === true || outFile !== undefined;

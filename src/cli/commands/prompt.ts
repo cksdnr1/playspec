@@ -160,6 +160,7 @@ export async function runPrompt(
   quiet?: boolean,
   write?: boolean,
   outFile?: string,
+  withEvolutionContext?: boolean,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -181,6 +182,9 @@ export async function runPrompt(
     console.log('');
   }
 
-  const prompt = await core.renderNextPrompt(task.id);
+  const prompt = await core.renderNextPrompt(task.id, {
+    withEvolutionContext,
+    evolutionContextSource: 'prompt',
+  });
   await outputPrompt(workspaceRoot, task, prompt, { noCopy, printOnly, quiet, write, outFile });
 }

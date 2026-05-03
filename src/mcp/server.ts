@@ -26,6 +26,11 @@ const taskContext = {
   sessionId: z.string().optional(),
 };
 
+const taskContextWithEvolution = {
+  ...taskContext,
+  withEvolutionContext: z.boolean().optional(),
+};
+
 export function buildMcpServer(workspaceRoot: string): McpServer {
   const server = new McpServer({ name: 'playspec', version: '0.1.0' });
   const taskStore = new YamlTaskStore(workspaceRoot);
@@ -109,11 +114,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_render_next_prompt',
     'Render the next prompt for a task. Requires taskId or sessionId.',
-    taskContext,
+    taskContextWithEvolution,
     async (args) => {
       try {
         const taskId = await resolveMcpTaskId(args, sessionStore);
-        const prompt = await core.renderNextPrompt(taskId);
+        const prompt = await core.renderNextPrompt(taskId, {
+          withEvolutionContext: args.withEvolutionContext,
+          evolutionContextSource: 'mcp',
+        });
         return ok({ taskId, prompt });
       } catch (e) {
         return err(e);
@@ -139,13 +147,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_complete_phase',
     'Complete the current workflow phase. Requires taskId or sessionId.',
-    { ...taskContext, withReview: z.boolean().optional(), result: z.string().optional() },
+    { ...taskContextWithEvolution, withReview: z.boolean().optional(), result: z.string().optional() },
     async (args) => {
       try {
         const taskId = await resolveMcpTaskId(args, sessionStore);
         const completionResult = await core.completePhase(taskId, {
           withReview: args.withReview,
           result: args.result,
+          withEvolutionContext: args.withEvolutionContext,
         });
         return ok(completionResult);
       } catch (e) {

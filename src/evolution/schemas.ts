@@ -202,3 +202,16 @@ export const EvolutionApplyReportSchema = z.object({
   recoveryGuidance: z.string(),
   backupPath: WorkspaceRelativePathSchema,
 });
+
+export const EvolutionContextGenerationSourceSchema = z.enum(['prompt', 'next', 'complete', 'mcp']);
+
+export const EvolutionContextSnapshotSchema = z.object({
+  taskId: z.string().min(1),
+  phaseId: z.string().min(1),
+  proposalIds: z.array(EvolutionProposalIdSchema),
+  humanEditObservationIds: z.array(HumanEditObservationIdSchema),
+  omittedProposalCount: z.number().int().nonnegative(),
+  omittedHumanEditObservationCount: z.number().int().nonnegative(),
+  generatedAt: z.string(),
+  generationSource: EvolutionContextGenerationSourceSchema,
+});

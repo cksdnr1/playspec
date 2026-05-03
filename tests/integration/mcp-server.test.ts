@@ -15,6 +15,8 @@ import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
 import { McpTaskContextRequiredError, McpSessionContextEmptyError } from '#mcp/errors.js';
 import { buildMcpServer } from '#mcp/server.js';
+import { EvolutionProposalStore } from '#evolution/proposal-store.js';
+import type { EvolutionProposal } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MCP_PATH = path.resolve(TESTS_DIR, '../../src/mcp/index.ts');
@@ -38,6 +40,31 @@ async function initWorkspaceWithTask(title: string, workflow = 'multi-spec') {
   await store.createTask({ id: taskId, title, workflow });
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
   return { taskId, store };
+}
+
+function makeProposal(id: string, taskId: string): EvolutionProposal {
+  return {
+    id,
+    revision: 1,
+    createdAt: '2026-05-03T00:00:00.000Z',
+    updatedAt: '2026-05-03T00:00:00.000Z',
+    status: 'pending',
+    source: { taskId, artifactRefs: [] },
+    targetFiles: ['docs/features/source_task/spec.md'],
+    evidenceRefs: [],
+    riskLevel: 'low',
+    actions: [
+      {
+        actionId: 'action_1',
+        type: 'propose_file_change',
+        targetPath: 'docs/features/source_task/spec.md',
+        summary: 'MCP should not embed this summary.',
+        rationale: 'Only compact metadata is allowed.',
+      },
+    ],
+    rationale: 'MCP context proposal.',
+    review: { status: 'unreviewed' },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +220,22 @@ describe('buildMcpServer', () => {
       toolSpy.mockRestore();
     }
   });
+
+  it('registers evolution context opt-in only on prompt and complete tools', () => {
+    const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
+    try {
+      buildMcpServer(workspace.dir);
+      const renderCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_render_next_prompt');
+      const completeCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_complete_phase');
+      const phaseCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_render_phase_prompt');
+
+      expect(Object.keys(renderCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
+      expect(Object.keys(completeCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
+      expect(Object.keys(phaseCall?.[2] as Record<string, unknown>)).not.toContain('withEvolutionContext');
+    } finally {
+      toolSpy.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -214,6 +257,25 @@ describe('MCP render matches Core render', () => {
     const core = new PlaySpecCore(workspace.dir, store);
     const prompt = await core.renderNextPrompt(taskId);
     expect(prompt.length).toBeGreaterThan(0);
+  });
+
+  it('MCP explicit task/session context can render evolution context without HEAD fallback', async () => {
+    const { taskId, store } = await initWorkspaceWithTask('MCP Evolution Context');
+    const proposalStore = new EvolutionProposalStore(workspace.dir);
+    await proposalStore.saveProposal(makeProposal('proposal_mcp_visible', taskId));
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
+
+    const resolved = await resolveMcpTaskId({ sessionId: 'mcp.codex' }, sessionStore);
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(resolved, {
+      withEvolutionContext: true,
+      evolutionContextSource: 'mcp',
+    });
+
+    expect(prompt).toContain('## Evolution Context');
+    expect(prompt).toContain('proposal_mcp_visible');
+    expect(prompt).not.toContain('MCP should not embed this summary.');
   });
 });
 

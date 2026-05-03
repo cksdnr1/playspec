@@ -191,3 +191,37 @@ export interface HumanEditObservation {
   afterRef?: string;
   statusReason?: string;
 }
+
+export type EvolutionContextGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';
+
+export interface EvolutionProposalPromptSummary {
+  id: string;
+  status: Extract<EvolutionProposalStatus, 'pending' | 'refining'>;
+  revision: number;
+  updatedAt: string;
+  sourceTaskId?: string;
+  archivedTaskId?: string;
+  artifactRefCount: number;
+  evidenceRefCount: number;
+  targetFiles: string[];
+  riskLevel: EvolutionRiskLevel;
+}
+
+export interface EvolutionContextSnapshot {
+  taskId: string;
+  phaseId: string;
+  proposalIds: string[];
+  humanEditObservationIds: string[];
+  omittedProposalCount: number;
+  omittedHumanEditObservationCount: number;
+  generatedAt: string;
+  generationSource: EvolutionContextGenerationSource;
+}
+
+export interface EvolutionContextResult {
+  proposals: EvolutionProposal[];
+  humanEditObservations: HumanEditObservation[];
+  proposalSummaries: EvolutionProposalPromptSummary[];
+  omittedProposalCount: number;
+  omittedHumanEditObservationCount: number;
+}
