@@ -13,13 +13,15 @@ This document is planning-only. It does not implement code, create child tasks, 
 | 4.2 | Baseline Confirmation | Runtime alias parity and Phase 4.1 validation are confirmed before future work starts | Phase 4.1 |
 | 5 | Archive Storage And Close | Completed tasks can be closed into canonical archive storage through explicit archive APIs | 4.2 |
 | 5.1 | Archive Inspection And Context References | Archived tasks can be listed/inspected, and active prompts can reference archived artifacts through explicit paths | 5 |
-| 6 | Evolution Proposal Schema And Store | Evolution proposals can be validated and stored with reports without CLI listing, prompt surfacing, or mutations | 5.1 |
+| 6 | Evolution Proposal Schema And Store | Evolution proposals can be validated and stored with lifecycle, revision, source, and evidence fields without CLI listing, prompt surfacing, or mutations | 5.1 |
 | 6.1 | Evolution Proposal CLI Intake | Stored proposals can be created from files, listed, viewed, and skipped without applying mutations or changing prompts | 6 |
-| 6.2 | Evolution Apply | Approved proposal actions can safely mutate allow-listed assets with backups and reports | 6.1 |
-| 6.3 | Human Edit Observation Intake | Human edits can be recorded as structured observations without generating or applying proposals | 6.2 |
-| 6.4 | Evolution Prompt Surfacing | Pending proposals and evolution context snapshots are surfaced read-only in prompt and completion paths | 6.3 |
-| 7 | Automation Safety Harness | Harness attempts have retry budgets, blocked states, and circuit breakers | 6.4 |
-| 8 | Token And Context Modes | Prompt rendering supports explicit compact/strict/full context tiers | 7 |
+| 6.2 | Proposal Update / Merge | Pending/refining proposals can be revised and enriched with evidence without creating stale competing proposals | 6.1 |
+| 6.3 | Evolution Apply | Approved proposal actions can safely mutate allow-listed assets with backups, reports, hashes, validation results, and failure records | 6.2 |
+| 6.4 | Human Edit Observation Intake | Human edits can be recorded as structured observations without generating or applying proposals | 6.3 |
+| 6.5 | Evolution Prompt Surfacing | Pending/refining proposals and evolution context snapshots are surfaced read-only in prompt and completion paths | 6.4 |
+| 7 | Automation Safety Harness | Harness attempts have retry budgets, blocked states, and circuit breakers | 6.5 |
+| 7.1 | Automatic Proposal Generation | Deferred generation can draft or update proposals only after update/apply/harness safety exists | 7 |
+| 8 | Token And Context Modes | Prompt rendering supports explicit compact/strict/full context tiers | 7.1 |
 | 8.1 | Workflow Editing Tools | Workflow assets can be edited through validated commands instead of direct file mutation | 8 |
 | 9 | Markdown Viewer | A local markdown viewer can inspect PlaySpec docs/artifacts without changing state | 8.1 |
 | 10 | DAG And Subtask Schema Preparation | DAG/subtask metadata can be validated and rejected safely without DAG execution | 9 |
@@ -32,6 +34,7 @@ This document is planning-only. It does not implement code, create child tasks, 
 - Use path aliases for cross-module imports.
 - Validate persisted state with zod schemas before apply.
 - Do not auto-apply evolution proposals.
+- Do not automatically generate evolution proposals before proposal schema/storage, manual intake, update/merge, apply auditability, and harness safety exist.
 - Do not reuse migration file actions as a general unrestricted evolution mutation engine.
 - Keep migration-local `archive_file` separate from the general archive model.
 - Do not add viewer behavior before Phase 9.
@@ -223,7 +226,7 @@ Add archive-specific list/inspection behavior, then allow active tasks to refere
 
 ### Scope
 
-Add the validated proposal schema and storage layer that later CLI and apply phases will use. This first proposal phase is limited to schema definitions, filesystem-safe proposal IDs, persistence, validation reports, and store read/write APIs. CLI propose/list/show/skip behavior, prompt surfacing, completion-time evolution snapshots, MCP proposal intake, acceptance/apply, and generated proposal behavior are deferred out of this phase.
+Add the validated proposal schema and storage layer that later CLI, update/merge, and apply phases will use. A proposal is a change plan for reviewed PlaySpec-owned asset updates, not just a knowledge record. This first proposal phase is limited to schema definitions, filesystem-safe proposal IDs, lifecycle and revision fields, persistence, validation reports, and store read/write APIs. CLI propose/list/show/skip behavior, update/merge commands, prompt surfacing, completion-time evolution snapshots, MCP proposal intake, acceptance/apply, and generated proposal behavior are deferred out of this phase.
 
 ### Entry Points
 
@@ -235,15 +238,16 @@ Add the validated proposal schema and storage layer that later CLI and apply pha
 
 ### Data And State Updates
 
-- Define `EvolutionProposalSchema` with proposal metadata, source task, target files, risk level, actions, rationale, and review status.
+- Define `EvolutionProposalSchema` with proposal metadata, revision number, `createdAt`, `updatedAt`, source task/result references, evidence refs, target files, risk level, actions, rationale, lifecycle status, validation metadata, and optional `supersedes` or revision-history metadata.
 - Store proposals under `.playspec/evolution/proposals/{proposalId}/proposal.yaml`.
 - Store proposal validation reports under `.playspec/evolution/proposals/{proposalId}/validation.yaml`.
-- Track proposal status as `pending` or `skipped` in Phase 6. Later phases may extend the status enum to `accepted`, `applied`, or `failed` when apply behavior exists.
+- Track proposal status values needed by the full lifecycle: `pending`, `refining`, `skipped`, `applied`, and `failed`. `archived` or `superseded` may be added later if a dedicated archival phase needs them.
 - Proposal IDs must be filesystem-safe, unique, and stable after creation.
 - Proposal records may reference task IDs, archived task IDs, and workspace-relative target files, but must not copy task artifacts into proposal storage.
 - Proposal records may reference archived task artifacts only by explicit workspace-relative paths accepted by the Phase 5.1 archived context validation rules.
-- Persist validation reports and skipped status without mutating workflow/template/rule assets.
-- Store APIs may write `pending` proposal records and validation reports; `skipped` status is supported by schema for forward compatibility, but user-facing skip behavior is added in Phase 6.1.
+- Persist validation reports and proposal status without mutating workflow/template/rule assets.
+- Store APIs may write and reload `pending` and `refining` proposal records and validation reports; user-facing skip and update behavior are added in later phases.
+- Schema must allow previous revision metadata to be stored later under `.playspec/evolution/proposals/{proposalId}/revisions/` without changing the canonical `proposal.yaml` path.
 - Add the `#evolution/*.js` path alias to both runtime `package.json#imports` and compile-time `tsconfig.json#compilerOptions.paths` when `src/evolution/` is introduced.
 - Keep runtime-bin alias parity passing after adding the module boundary.
 
@@ -255,20 +259,22 @@ Add the validated proposal schema and storage layer that later CLI and apply pha
 
 ### Reset And Clear Behavior
 
-- No user-facing skip command in this phase.
+- No user-facing skip or update command in this phase.
 - No proposal clear command in this phase.
 
 ### User-Visible Outcome
 
 - PlaySpec has a validated, reloadable proposal store that later command phases can expose safely.
 - External agents can produce proposal YAML that PlaySpec validation tests can load and store without mutation.
+- Proposal records are ready to support one evolving mono-spec proposal with revisions and evidence refs in later phases.
 
 ### Tests
 
 - Schema rejects unknown action types and workspace-escaping paths.
 - Schema accepts explicit archived artifact references without copying archived artifacts into proposal storage.
 - Proposal storage persists and reloads validated records.
-- Store-level status updates preserve proposal/report files.
+- Store-level status and revision metadata updates preserve proposal/report files.
+- Schema accepts `revision`, `updatedAt`, `evidenceRefs`, source task/result refs, and optional supersession metadata.
 - Prompt rendering behavior remains unchanged and does not load proposal summaries.
 - Completion behavior is unchanged and writes no evolution context snapshots.
 - No MCP proposal intake tools are registered in this phase.
@@ -283,17 +289,19 @@ Add the validated proposal schema and storage layer that later CLI and apply pha
 
 - Do not apply proposal actions.
 - Do not expose public proposal CLI commands.
+- Do not implement proposal update/merge commands.
 - Do not mutate workflows, templates, rules, or task state from proposals.
 - Do not surface proposals in prompt rendering.
 - Do not add completion-time evolution snapshot hooks.
 - Do not add MCP proposal intake.
+- Do not generate proposals automatically.
 - Do not implement harness retries.
 
 ## Phase 6.1 - Evolution Proposal CLI Intake
 
 ### Scope
 
-Expose the Phase 6 proposal store through narrow CLI commands for file intake, listing, inspection, and skip status updates. This phase still does not apply proposal actions, surface proposals in prompts, add MCP proposal intake, or generate proposals.
+Expose the Phase 6 proposal store through narrow CLI commands for file intake, listing, inspection, and skip status updates. This phase still does not update/merge proposal revisions, apply proposal actions, surface proposals in prompts, add MCP proposal intake, or generate proposals.
 
 ### Entry Points
 
@@ -304,9 +312,10 @@ Expose the Phase 6 proposal store through narrow CLI commands for file intake, l
 
 ### Data And State Updates
 
-- CLI `propose` validates an external proposal file through `EvolutionProposalSchema`, assigns or confirms a filesystem-safe proposal ID, persists `proposal.yaml`, and writes `validation.yaml`.
-- `list` and `show` are read-only and must expose `pending` and `skipped` status.
+- CLI `propose` validates an external proposal file through `EvolutionProposalSchema`, assigns or confirms a filesystem-safe proposal ID, persists revision `1` as `proposal.yaml`, initializes `createdAt`/`updatedAt`, and writes `validation.yaml`.
+- `list` and `show` are read-only and must expose `pending`, `refining`, and `skipped` status.
 - `skip` marks a proposal skipped and records timestamp/reason metadata without deleting proposal or validation files.
+- `propose` must reject duplicate active proposal IDs unless the later update/merge command is used.
 - No proposal apply report or backup directories are created in this phase.
 
 ### Propagation, Callback, And Event Behavior
@@ -318,17 +327,20 @@ Expose the Phase 6 proposal store through narrow CLI commands for file intake, l
 ### Reset And Clear Behavior
 
 - `skip` should mark proposals skipped rather than deleting them.
+- There is no reset from `skipped` back to `pending` in this phase unless a later phase explicitly defines reopen semantics.
 - No proposal clear command in this phase.
 
 ### User-Visible Outcome
 
 - Users can see pending evolution proposals and inspect the exact proposed actions before any apply path exists.
 - External agents can produce proposal YAML that PlaySpec validates and stores through a public command.
+- Users are directed to update an existing active proposal in the next phase instead of creating duplicate proposal files for the same improvement area.
 
 ### Tests
 
 - `propose --file` validates and stores a proposal plus validation report.
-- `list` and `show` expose pending/skipped status.
+- `propose --file` rejects duplicate active IDs with recovery guidance to use the later update command.
+- `list` and `show` expose pending/refining/skipped status.
 - `skip` only marks a proposal skipped and keeps the proposal/report files.
 - Prompt rendering behavior remains unchanged and does not load proposal summaries.
 - Completion behavior is unchanged and writes no evolution context snapshots.
@@ -341,64 +353,67 @@ Expose the Phase 6 proposal store through narrow CLI commands for file intake, l
 ### Non-Goals
 
 - Do not apply proposal actions.
+- Do not update or merge proposal revisions.
 - Do not mutate workflows, templates, rules, or task state from proposals.
 - Do not surface proposals in prompt rendering.
 - Do not add completion-time evolution snapshot hooks.
 - Do not add MCP proposal intake.
+- Do not generate proposals automatically.
 - Do not implement harness retries.
 
-## Phase 6.2 - Evolution Apply
+## Phase 6.2 - Proposal Update / Merge
 
 ### Scope
 
-Implement reviewed proposal application for already-stored evolution proposals.
+Add explicit update and evidence-append behavior so a mono-spec workflow can maintain one evolving proposal instead of creating many stale one-off files. This phase is limited to revising pending/refining proposal records, preserving old revisions, validating every update, and appending evidence references. It does not apply proposal actions, surface proposals in prompts, add MCP proposal intake, or generate proposals.
 
 ### Entry Points
 
-- Commands such as `playspec evolution diff` and `playspec evolution apply`.
-- Core apply methods that validate the proposal, create backups, apply allow-listed actions, and persist reports.
-- Proposal apply runner separate from `src/migration/`.
+- `playspec evolution update <proposalId> --file <proposal.yaml>`.
+- Optional `playspec evolution append-evidence <proposalId> --file <path> --note <text>`.
+- Core proposal update/merge methods in `src/evolution/`.
+- No prompt-rendering integration in this phase.
+- No MCP proposal intake tool in this phase.
 
 ### Data And State Updates
 
-- Add proposal apply reports and backup directories.
-- Store proposal apply reports under `.playspec/evolution/reports/{proposalId}-{timestamp}.yaml`.
-- Store proposal apply backups under `.playspec/evolution/backups/{proposalId}-{timestamp}/`.
-- Allow only these mutable target roots in this phase: `.playspec/templates/` and `.playspec/rules/`.
-- Reject `.playspec/workflows/` as an evolution apply target in this phase. Workflow mutations require the validated workflow editing primitives introduced in Phase 8.1 or a later phase-plan patch.
-- Reject task state, evidence, snapshots, migration plans/reports/backups, source files under `src/`, tests, package configuration, and arbitrary workspace files as evolution apply targets.
-- Allowed action types are `replace_file`, `append_section`, and `replace_section`; no delete, move, chmod, shell, package-install, git, or human-edit actions.
-- Validate every post-apply artifact before final write using an explicit template/rule validation contract:
-  - For `.playspec/templates/` targets, render-validate affected templates through the existing template renderer with representative task/workflow variables, validate include paths, and reject unresolved placeholders unless the template syntax intentionally preserves them.
-  - For `.playspec/rules/` targets, validate the persisted file shape expected by rule loading; if no standalone schema exists at implementation time, add a narrow schema before apply support writes rule files.
-  - Apply reports must record which validation checks were run for each changed artifact.
+- `update` loads the current proposal, verifies status is `pending` or `refining`, validates the incoming file, stores the previous canonical `proposal.yaml` under `.playspec/evolution/proposals/{proposalId}/revisions/`, increments `revision`, updates `updatedAt`, and writes the merged canonical `proposal.yaml`.
+- `append-evidence` validates the evidence file as a workspace-relative non-escaping path, verifies status is `pending` or `refining`, appends an `evidenceRefs` entry with path, note, timestamp, and source command, stores the previous revision, increments `revision`, and rewrites `validation.yaml`.
+- `skipped`, `applied`, and `failed` proposals cannot be updated or appended to in this phase.
+- Every update must revalidate the full proposal record and rewrite validation metadata before the command succeeds.
+- Revision files should use deterministic names such as `revision-{n}.yaml` under `.playspec/evolution/proposals/{proposalId}/revisions/`.
+- Update/merge must preserve source task/result refs unless the incoming file explicitly changes them and the merged record remains valid.
+- Update/merge should avoid stale proposal buildup by giving users a supported path to refine an active proposal instead of creating duplicate active proposals for the same improvement area.
+- No proposal apply report or backup directories are created in this phase.
 
 ### Propagation, Callback, And Event Behavior
 
-- Applied proposals may affect future prompt rendering, templates, or rules only after explicit approval.
-- After apply, proposal listings and any later read-only summaries should update to applied/skipped status.
-- This phase may extend proposal statuses to `accepted`, `applied`, or `failed`, but must keep Phase 6 `pending` and `skipped` records readable.
-- Do not add prompt surfacing here; Phase 6.4 owns read-only prompt surfacing and completion-time evolution snapshots.
+- Update/merge affects only proposal storage and validation metadata.
+- Prompt rendering, completion, workflow loading, migration, and MCP behavior remain unchanged.
+- Proposal listings and show output should reflect new revision number, `updatedAt`, evidence refs, and current status.
+- Updating a proposal must not trigger apply, prompt surfacing, workflow edits, template edits, rule edits, or task completion behavior.
 
 ### Reset And Clear Behavior
 
-- Provide backup metadata sufficient for manual or tool-assisted rollback.
-- Failed apply should leave an unapplied or partially applied report that identifies the first failed action.
+- There is no destructive reset or clear command.
+- Previous revisions remain available under the proposal `revisions/` directory.
+- Invalid incoming updates must leave the canonical proposal and existing revisions unchanged.
 
 ### User-Visible Outcome
 
-- Users can review a diff, approve an evolution proposal, and see a report of exactly what changed.
-- Proposal apply is auditable and narrower than migration.
+- Users can keep one active mono-spec proposal current as evidence accumulates across validation, planning, implementation, and review.
+- Reviewers can inspect current proposal state and previous revisions without stale competing proposal files.
 
 ### Tests
 
-- Apply requires explicit approval or explicit non-interactive flag.
-- Unknown or disallowed target files are rejected before mutation.
-- Disallowed action types are rejected during diff and apply.
-- Backups are created before mutation.
-- Applied template/rule files pass the explicit validation contract before final write.
-- Workflow targets are rejected before mutation.
-- Reports distinguish applied, skipped, and failed actions.
+- `update <proposalId> --file` accepts valid updates for `pending` and `refining` proposals.
+- `append-evidence` appends validated evidence refs and notes.
+- Updates reject `skipped`, `applied`, and `failed` proposals without mutation.
+- Every update increments revision, updates `updatedAt`, stores the previous proposal under `revisions/`, and rewrites validation metadata.
+- Invalid update files leave canonical proposal and revision storage unchanged.
+- Prompt rendering behavior remains unchanged and does not load proposal summaries.
+- Completion behavior is unchanged and writes no evolution context snapshots.
+- No MCP proposal intake tools are registered in this phase.
 
 ### Dependencies
 
@@ -406,16 +421,92 @@ Implement reviewed proposal application for already-stored evolution proposals.
 
 ### Non-Goals
 
+- Do not apply proposal actions.
+- Do not mutate workflows, templates, rules, task state, source code, tests, package configuration, migration state, or arbitrary workspace files.
+- Do not surface proposals in prompt rendering.
+- Do not add completion-time evolution snapshot hooks.
+- Do not add MCP proposal intake.
+- Do not generate proposals automatically.
+- Do not implement harness retries.
+
+## Phase 6.3 - Evolution Apply
+
+### Scope
+
+Implement reviewed proposal application for already-stored, updatable evolution proposals. Apply is an auditable change transaction: it requires explicit approval, creates backups before mutation, records before/after hashes and changed files, validates affected artifacts, and writes success/failure reports. This phase is separate from migration apply and remains narrower than migration.
+
+### Entry Points
+
+- Commands such as `playspec evolution diff <proposalId>` and `playspec evolution apply <proposalId>`.
+- Core apply methods that validate the current proposal revision, create backups, apply allow-listed actions, validate results, and persist reports.
+- Proposal apply runner separate from `src/migration/`.
+
+### Data And State Updates
+
+- Store proposal apply reports under `.playspec/evolution/reports/{proposalId}-{timestamp}.yaml`.
+- Store proposal apply backups under `.playspec/evolution/backups/{proposalId}-{timestamp}/`.
+- Reports must include proposal ID, proposal revision, approval source, target files, action list, before hashes, after hashes when available, changed file list, validation result, result status, failed action when applicable, partial-apply flag, and recovery guidance.
+- Backups must be created before mutation for every target file; if backup or report initialization fails, apply fails before mutation.
+- Allow only these mutable target roots in this phase: `.playspec/templates/` and `.playspec/rules/`.
+- Reject `.playspec/workflows/` as an evolution apply target in this phase. Workflow mutations require the validated workflow editing primitives introduced in Phase 8.1 or a later phase-plan patch.
+- Reject task state, evidence, snapshots, migration plans/reports/backups, source files under `src/`, tests, package configuration, and arbitrary workspace files as evolution apply targets.
+- Allowed action types are `replace_file`, `append_section`, and `replace_section`; no delete, move, chmod, shell, package-install, git, or human-edit actions.
+- Apply may run only for current `pending` or `refining` proposal revisions. `skipped` and already `applied` proposals must be rejected; failed proposals require an explicit later retry/reopen design.
+- On success, mark proposal status `applied`, update `updatedAt`, and preserve the applied revision number.
+- On failure, mark proposal status `failed` only after writing the failure report; the report must identify whether partial mutation happened.
+- Validate every post-apply artifact before final success using an explicit template/rule validation contract:
+  - For `.playspec/templates/` targets, render-validate affected templates through the existing template renderer with representative task/workflow variables, validate include paths, and reject unresolved placeholders unless the template syntax intentionally preserves them.
+  - For `.playspec/rules/` targets, validate the persisted file shape expected by rule loading; if no standalone schema exists at implementation time, add a narrow schema before apply support writes rule files.
+  - Apply reports must record which validation checks were run for each changed artifact.
+
+### Propagation, Callback, And Event Behavior
+
+- Applied proposals may affect future prompt rendering, templates, or rules only after explicit approval and successful validation.
+- After apply, proposal listings and any later read-only summaries should show applied or failed status and the last apply report path.
+- Do not add prompt surfacing here; Phase 6.5 owns read-only prompt surfacing and completion-time evolution snapshots.
+- Apply must not call migration apply, mutate migration state, or reuse migration file actions as unrestricted evolution actions.
+
+### Reset And Clear Behavior
+
+- Provide backup metadata sufficient for manual or tool-assisted rollback.
+- Failed apply should leave a failure or partial-apply report that identifies the first failed action.
+- No automatic rollback command is required in this phase, but failure reports must preserve enough detail for recovery.
+
+### User-Visible Outcome
+
+- Users can review a diff, explicitly approve an evolution proposal, and see a report of exactly what changed.
+- Proposal apply is auditable, backed up, validated, and narrower than migration.
+
+### Tests
+
+- Apply requires explicit approval or explicit non-interactive approval flag.
+- Unknown or disallowed target files are rejected before mutation.
+- Disallowed action types are rejected during diff and apply.
+- Backups are created before mutation under `.playspec/evolution/backups/{proposalId}-{timestamp}/`.
+- Reports are written under `.playspec/evolution/reports/{proposalId}-{timestamp}.yaml` and include before/after hashes, changed files, validation result, and failure/partial-apply fields.
+- Applied template/rule files pass the explicit validation contract before final success.
+- Workflow targets are rejected before mutation.
+- Reports distinguish applied, skipped, failed, and partial-apply outcomes.
+- Migration apply state and reports are not touched by evolution apply.
+
+### Dependencies
+
+- Phase 6.2 proposal update/merge and revision storage.
+
+### Non-Goals
+
 - Do not implement broad workspace rewrites.
 - Do not add `delete_file`.
 - Do not mutate workflow assets in this phase.
 - Do not record or learn from human edits in this phase.
+- Do not generate proposals automatically.
+- Do not auto-apply proposals.
 
-## Phase 6.3 - Human Edit Observation Intake
+## Phase 6.4 - Human Edit Observation Intake
 
 ### Scope
 
-Add a narrow human edit observation intake path that records structured user edits for future proposal generation without changing rules, workflows, templates, task state, or proposal status.
+Add a narrow human edit observation intake path that records structured user edits for future proposal generation without changing rules, workflows, templates, task state, proposal status, or existing proposal content.
 
 ### Entry Points
 
@@ -428,11 +519,12 @@ Add a narrow human edit observation intake path that records structured user edi
 - Define a human edit observation schema with edit ID, source task or proposal ID when available, target path, summary, rationale, timestamp, and optional before/after references.
 - Target paths must be workspace-relative, validated, and non-escaping.
 - Observation records are append-only except for explicit status changes such as `ignored` or `superseded`.
+- Human edit observations may later be referenced by `evidenceRefs`, but this phase does not update proposals automatically.
 
 ### Propagation, Callback, And Event Behavior
 
-- Human edit records may be read by future proposal-generation work, but Phase 6.3 does not generate proposals from them.
-- Recording an edit must not trigger prompt rendering changes, proposal apply, workflow edits, or task completion behavior.
+- Human edit records may be read by future proposal-generation work, but Phase 6.4 does not generate proposals from them.
+- Recording an edit must not trigger prompt rendering changes, proposal update, proposal apply, workflow edits, or task completion behavior.
 
 ### Reset And Clear Behavior
 
@@ -448,10 +540,11 @@ Add a narrow human edit observation intake path that records structured user edi
 - Human edit records validate and persist without mutating workflows, templates, rules, proposals, or task state.
 - Workspace-escaping target paths are rejected.
 - Ignored/superseded status changes keep the original observation file.
+- Recording a human edit does not update proposal revision or evidence refs.
 
 ### Dependencies
 
-- Phase 6.2 apply reports and proposal status model.
+- Phase 6.3 apply reports and proposal status model.
 
 ### Non-Goals
 
@@ -459,11 +552,11 @@ Add a narrow human edit observation intake path that records structured user edi
 - Do not auto-apply based on human edit records.
 - Do not mutate workflow, template, rule, proposal, or task files from `record-edit`.
 
-## Phase 6.4 - Evolution Prompt Surfacing
+## Phase 6.5 - Evolution Prompt Surfacing
 
 ### Scope
 
-Attach stored evolution context to prompt and completion paths through explicit opt-in controls without adding proposal generation or mutation. This phase covers read-only pending proposal summaries in prompt rendering and opt-in completion-time evolution context snapshots.
+Attach stored evolution context to prompt and completion paths through explicit opt-in controls without adding proposal generation or mutation. This phase covers read-only pending/refining proposal summaries in prompt rendering and opt-in completion-time evolution context snapshots.
 
 ### Entry Points
 
@@ -478,12 +571,12 @@ Attach stored evolution context to prompt and completion paths through explicit 
 - Store completion-time evolution context snapshots under `.playspec/evolution/context/{taskId}/{phaseId}-{timestamp}.yaml` only when evolution context is explicitly requested.
 - Snapshot records should include task ID, phase ID, proposal IDs considered, human edit observation IDs considered, omitted counts, generated timestamp, and generation source.
 - Do not mutate proposal status, human edit status, workflow assets, templates, rules, or task records from this phase.
-- Keep prompt summaries compact: proposal ID, status, source task, target files, and risk level only.
+- Keep prompt summaries compact: proposal ID, status, revision, updatedAt, source task/result refs, evidence ref count, target files, and risk level only.
 
 ### Propagation, Callback, And Event Behavior
 
 - Evolution surfacing is default-off for normal prompt rendering, `next`, completion, and MCP calls.
-- Prompt rendering should surface pending proposal summaries only when the caller explicitly requests evolution context, and then only for the explicit task plus explicit archived references.
+- Prompt rendering should surface pending/refining proposal summaries only when the caller explicitly requests evolution context, and then only for the explicit task plus explicit archived references.
 - Completion should collect a read-only evolution context snapshot after phase result persistence and before generating a next prompt only when the caller explicitly requests evolution context.
 - Malformed stored proposal or human edit records should fail only requests that enabled evolution context; normal prompt rendering, `next`, completion, and MCP calls without evolution context must remain available.
 - MCP prompt surfacing must not fall back to `.playspec/HEAD`.
@@ -495,12 +588,12 @@ Attach stored evolution context to prompt and completion paths through explicit 
 
 ### User-Visible Outcome
 
-- Users can see relevant pending proposal summaries while preparing prompts.
+- Users can see relevant pending/refining proposal summaries while preparing prompts.
 - Completion records which proposal and human edit context was considered for the next phase without applying changes.
 
 ### Tests
 
-- Prompt rendering surfaces pending proposals without mutation only when evolution context is explicitly requested.
+- Prompt rendering surfaces pending/refining proposals without mutation only when evolution context is explicitly requested.
 - Prompt rendering without the explicit evolution option does not load proposal or human edit records.
 - Completion writes evolution context snapshots without changing proposal or human edit records only when evolution context is explicitly requested.
 - Completion without the explicit evolution option writes no evolution context snapshot.
@@ -510,13 +603,13 @@ Attach stored evolution context to prompt and completion paths through explicit 
 
 ### Dependencies
 
-- Phase 6.3 human edit observation storage and Phase 6 proposal storage.
+- Phase 6.4 human edit observation storage and Phase 6 proposal storage.
 
 ### Non-Goals
 
 - Do not generate proposals from prompt or completion behavior.
 - Do not apply proposals.
-- Do not mutate proposal, human edit, workflow, template, rule, or task state.
+- Do not update proposal revisions, evidence refs, human edit records, workflow, template, rule, or task state.
 - Do not add autonomous retry or harness behavior.
 
 ## Phase 7 - Automation Safety Harness
@@ -567,12 +660,75 @@ Add harness state for repeated agent attempts without creating unbounded loops o
 
 ### Dependencies
 
-- Phase 6.4, with Phase 6.2 apply reports available for harness safety checks.
+- Phase 6.5, with Phase 6.3 apply reports available for harness safety checks.
 
 ### Non-Goals
 
 - Do not build a general autonomous runner.
 - Do not change routing semantics beyond safety gates.
+
+## Phase 7.1 - Automatic Proposal Generation
+
+### Scope
+
+Add the first guarded automatic proposal-generation path only after proposal schema/storage, CLI intake, update/merge, auditable apply, prompt surfacing, and harness safety exist. This phase may draft a new proposal or update one existing `pending`/`refining` proposal from explicit evidence inputs, but it must never apply a proposal automatically.
+
+### Entry Points
+
+- Command such as `playspec evolution generate --task <taskId> --from-evidence <path> [--proposal <proposalId>]`.
+- Core generation orchestration in `src/evolution/` that produces proposal YAML and then reuses the Phase 6.1 propose path or Phase 6.2 update path.
+- Harness safety checks from Phase 7 before any automated generation attempt.
+- No MCP generation tool in this phase unless a later plan patch defines explicit task/session context and `resolveMcpTaskId()` behavior.
+
+### Data And State Updates
+
+- Generated output must validate through `EvolutionProposalSchema` before storage.
+- When `--proposal <proposalId>` is supplied, generation may update only `pending` or `refining` proposals and must preserve prior revisions under `.playspec/evolution/proposals/{proposalId}/revisions/`.
+- Without `--proposal`, generation may create one new proposal only when no active matching proposal exists; duplicate active proposals for the same improvement area should be rejected with guidance to update the existing proposal.
+- Generated records must include source task/result refs, evidence refs, generation source, revision number, `updatedAt`, and validation metadata.
+- Generation must not create apply reports or backups.
+
+### Propagation, Callback, And Event Behavior
+
+- Proposal generation is explicit-command-only and default-off.
+- Generation must not run from normal prompt rendering, completion, MCP calls, migration, or workflow commands.
+- Generated proposals follow the same lifecycle as manually proposed records and require explicit human review before apply.
+- Generation must not mutate workflows, templates, rules, task records, migration state, source code, tests, package configuration, or arbitrary workspace files.
+
+### Reset And Clear Behavior
+
+- No destructive reset or clear command.
+- Bad generated output fails validation without changing the stored proposal.
+- Previous revisions remain available when generation updates an existing proposal.
+
+### User-Visible Outcome
+
+- Users can request a draft or refinement from explicit evidence after safety foundations are in place.
+- The result is still a proposal requiring review, update/merge, and explicit apply approval.
+
+### Tests
+
+- Generation validates output before storage.
+- Generation updates only `pending` or `refining` proposals.
+- Duplicate active proposal detection prefers updating an existing proposal over stale proposal buildup.
+- Generation writes revision history when updating an existing proposal.
+- Generation does not apply proposals or mutate workflow/template/rule assets.
+- Harness blocked state prevents generation.
+- No MCP generation tool is registered unless explicitly added by a later plan patch.
+
+### Dependencies
+
+- Phase 6.2 proposal update/merge.
+- Phase 6.3 auditable apply.
+- Phase 6.5 prompt surfacing.
+- Phase 7 harness safety.
+
+### Non-Goals
+
+- Do not auto-apply generated proposals.
+- Do not generate proposals during prompt rendering or completion by default.
+- Do not mutate arbitrary workspace files.
+- Do not add MCP generation without explicit no-HEAD-fallback design.
 
 ## Phase 8 - Token And Context Modes
 
@@ -645,7 +801,7 @@ Each slice must keep existing prompt markdown output compatible before the next 
 
 ### Dependencies
 
-- Phase 7 safety gates, so automation can select context modes safely.
+- Phase 7.1 generation gate, so automation can select context modes safely.
 
 ### Non-Goals
 
@@ -665,7 +821,7 @@ Provide validated workflow editing commands for installed workflow assets so use
 - `playspec workflow reorder-phase --workflow <id> --id <phaseId> --after <phaseId>`.
 - `playspec workflow set-template --workflow <id> --phase <phaseId> --template <templatePath>`.
 - Workflow validation in `src/workflow/`.
-- Workflow editing primitives that a later phase-plan patch may allow evolution apply to call; Phase 6.2 itself does not mutate workflows.
+- Workflow editing primitives that a later phase-plan patch may allow evolution apply to call; Phase 6.3 itself does not mutate workflows.
 
 ### Data And State Updates
 
@@ -714,7 +870,7 @@ Provide validated workflow editing commands for installed workflow assets so use
 ### Dependencies
 
 - Phase 8 context mode behavior.
-- Phase 6.2 apply backup/report patterns may be reused, but Phase 8.1 must not depend on Phase 6.2 allowing workflow mutations.
+- Phase 6.3 apply backup/report patterns may be reused, but Phase 8.1 must not depend on Phase 6.3 allowing workflow mutations.
 
 ### Non-Goals
 
@@ -826,13 +982,15 @@ Phase order is intentionally strict:
 2. Phase 5 must establish archive storage and close semantics before archived artifacts can become reusable context.
 3. Phase 5.1 must add archive listing/inspection and explicit archived artifact references before evolution proposals can reference archived/completed work safely.
 4. Phase 6 must store proposals before Phase 6.1 can expose CLI intake/list/show/skip behavior.
-5. Phase 6.2 must apply proposals only after Phase 6.1 has stable user-visible proposal records.
-6. Phase 6.3 must record human edit observations after the proposal/apply status model exists, without feeding automatic apply behavior.
-7. Phase 6.4 must add prompt surfacing and completion snapshots only after proposal and human edit records exist.
-8. Phase 7 must define automation safety before token/context compression is used in automated paths.
-9. Phase 8.1 should reuse Phase 6.2 backup/report patterns where useful, but proposal-driven workflow edits remain disabled until a later phase-plan patch explicitly enables them.
-10. Phase 9 remains deferred until after workflow and token tools.
-11. Phase 10 must remain schema-only until a later approved total spec adds DAG execution.
+5. Phase 6.2 must add proposal update/merge before apply so mono-spec runs can refine one proposal instead of creating stale competing records.
+6. Phase 6.3 must apply proposals only after Phase 6.2 has revision history and stable update behavior.
+7. Phase 6.4 must record human edit observations after the proposal/apply status model exists, without feeding automatic apply behavior.
+8. Phase 6.5 must add prompt surfacing and completion snapshots only after proposal and human edit records exist.
+9. Phase 7 must define automation safety before automatic generation or token/context compression is used in automated paths.
+10. Phase 7.1 may add automatic proposal generation only after update/merge, auditable apply, prompt surfacing, and harness safety exist.
+11. Phase 8.1 should reuse Phase 6.3 backup/report patterns where useful, but proposal-driven workflow edits remain disabled until a later phase-plan patch explicitly enables them.
+12. Phase 9 remains deferred until after workflow and token tools.
+13. Phase 10 must remain schema-only until a later approved total spec adds DAG execution.
 
 ## Validation Gates
 
@@ -853,10 +1011,12 @@ Phase-specific hard gates:
 - Phase 5.1: archive-aware context references must require explicit paths and must not affect active task resolution.
 - Phase 6: proposals must be stored without mutation.
 - Phase 6.1: proposal CLI intake must expose list/show/skip behavior without mutation beyond proposal status.
-- Phase 6.2: proposal apply must reject disallowed targets, including workflow assets, before mutation.
-- Phase 6.3: human edit observations must not mutate proposals, workflows, templates, rules, or task state.
-- Phase 6.4: prompt surfacing and completion snapshots must be explicitly requested, read-only, and must not mutate proposal or human edit records.
+- Phase 6.2: proposal update/merge must update only pending/refining proposals, revalidate every update, and preserve previous revisions.
+- Phase 6.3: proposal apply must reject disallowed targets, including workflow assets, before mutation, and must write backups/reports with before/after hashes and validation results.
+- Phase 6.4: human edit observations must not mutate proposals, workflows, templates, rules, or task state.
+- Phase 6.5: prompt surfacing and completion snapshots must be explicitly requested, read-only, and must not mutate proposal or human edit records.
 - Phase 7: retry budget and circuit breaker tests must demonstrate blocked-state behavior.
+- Phase 7.1: automatic generation must remain explicit-command-only, must use update/merge instead of duplicate proposals when applicable, and must never apply proposals.
 - Phase 8: full context mode must remain available.
 - Phase 8.1: workflow edits must validate the resulting workflow before final write.
 - Phase 9: viewer commands must be read-only.
@@ -867,10 +1027,11 @@ Phase-specific hard gates:
 | Risk | Affected phases | Mitigation |
 |---|---|---|
 | Stale baseline warning makes future validation ambiguous | 4.2 | Re-run runtime-bin validation and document whether the total-spec alias warning is stale or required a narrow fix |
-| Migration apply is mistaken for evolution apply | 6.2 | Keep a separate evolution apply runner with stricter allow-lists |
+| Migration apply is mistaken for evolution apply | 6.3 | Keep a separate evolution apply runner with stricter allow-lists |
 | Archive semantics split between migration and general tasks | 5 | Use `.playspec/tasks/archived/{taskId}/` with explicit archive store APIs; do not reuse migration archive paths |
-| Evolution becomes a broad file mutation engine | 6.2 | Require action schemas, target allow-lists, backups, reports, approval, and defer workflow mutations until workflow editing primitives exist |
-| Human edit observations become automatic behavior | 6.3 | Persist observations only; do not generate proposals, mutate assets, or auto-apply from them |
+| Stale proposal buildup hides the active improvement plan | 6.2, 7.1 | Prefer update/merge for pending/refining proposals, preserve revisions, and reject duplicate active proposals for the same improvement area |
+| Evolution becomes a broad file mutation engine | 6.3 | Require action schemas, target allow-lists, backups, reports, approval, and defer workflow mutations until workflow editing primitives exist |
+| Human edit observations become automatic behavior | 6.4 | Persist observations only; do not generate proposals, mutate assets, or auto-apply from them |
 | MCP accidentally gains HEAD fallback | 5, 6, 7, 8 | Require `resolveMcpTaskId()` in every MCP tool and regression tests |
 | Token modes hide required evidence | 8 | Keep full mode, strict missing-file failures, compact omission metadata, and sidecar metadata compatibility |
 | Harness creates unbounded loops | 7 | First-class retry budgets, blocked states, and reset events |
