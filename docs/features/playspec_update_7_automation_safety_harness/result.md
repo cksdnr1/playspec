@@ -17,6 +17,10 @@
 - Kept harness state outside `TaskRecord` and `task.yaml`.
 - Did not add MCP harness tools, automatic proposal generation, autonomous runner behavior, prompt rendering changes, or completion routing changes.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/70
+
 ## Files Changed
 
 - `src/core/types.ts`

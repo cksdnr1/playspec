@@ -1,5 +1,7 @@
 # PR Notes: PlaySpec Update 7 Automation Safety Harness
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/70
+
 ## Summary
 
 - Adds a task-scoped automation safety harness record at `.playspec/tasks/active/{taskId}/harness.yaml`.
