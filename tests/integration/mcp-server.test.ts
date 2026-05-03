@@ -179,6 +179,20 @@ describe('buildMcpServer', () => {
       toolSpy.mockRestore();
     }
   });
+
+  it('does not register proposal or evolution intake tools in Phase 6', () => {
+    const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
+    try {
+      buildMcpServer(workspace.dir);
+      const toolNames = toolSpy.mock.calls.map((call) => String(call[0]));
+      expect(toolNames.filter((name) => name.includes('proposal'))).toEqual([]);
+      expect(toolNames.filter((name) => name.includes('evolution'))).toEqual([]);
+      expect(toolNames).not.toContain('playspec_create_evolution_proposal');
+      expect(toolNames).not.toContain('playspec_list_evolution_proposals');
+    } finally {
+      toolSpy.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

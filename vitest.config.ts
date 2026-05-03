@@ -15,6 +15,7 @@ export default defineConfig({
       '#utils': path.resolve(__dirname, 'src/utils'),
       '#mcp': path.resolve(__dirname, 'src/mcp'),
       '#migration': path.resolve(__dirname, 'src/migration'),
+      '#evolution': path.resolve(__dirname, 'src/evolution'),
     },
   },
   test: {

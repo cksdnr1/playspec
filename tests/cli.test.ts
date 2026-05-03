@@ -131,6 +131,14 @@ describe('CLI placeholder', () => {
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
     expect(output).toMatch(/playspec/i);
+    expect(output).not.toMatch(/^\s+evolution\b/m);
+  });
+
+  it('does not register a public evolution command group in Phase 6', async () => {
+    const result = await runCli(['evolution'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("unknown command 'evolution'");
   });
 
   it('lists and shows built-in workflow assets', async () => {
