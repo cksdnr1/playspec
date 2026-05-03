@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { access } from 'node:fs/promises';
+import { parse as parseYaml } from 'yaml';
 import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
@@ -23,7 +24,9 @@ import {
   ContextPathEscapesWorkspaceError,
   ContextFileNotFoundError,
   InvalidRecoveryTargetError,
+  HarnessBlockedError,
 } from '#core/errors.js';
+import { HarnessRecordSchema } from '#core/schemas.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
@@ -44,8 +47,13 @@ import type {
   SetCurrentPhaseResult,
   PromptRenderOptions,
   CompletePhaseOptions,
+  HarnessAttemptResult,
+  HarnessRecord,
 } from '#core/types.js';
-import { withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
+import { getHarnessRecordPath } from '#utils/paths.js';
+import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
+
+const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -306,6 +314,87 @@ export class PlaySpecCore {
     return this.taskStore.archiveCompletedTask(taskId);
   }
 
+  async getHarnessStatus(taskId: string, phaseId?: string): Promise<HarnessRecord> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+    const resolvedPhaseId = await this.resolveHarnessPhaseId(task, phaseId);
+    const record = await this.readHarnessRecord(task, resolvedPhaseId);
+    if (record.phaseId === resolvedPhaseId) {
+      return record;
+    }
+    return this.createDefaultHarnessRecord(task.id, resolvedPhaseId, record.resetEvents);
+  }
+
+  async recordHarnessAttempt(
+    taskId: string,
+    phaseId: string,
+    result: HarnessAttemptResult,
+    reason?: string
+  ): Promise<HarnessRecord> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+    const resolvedPhaseId = await this.resolveHarnessPhaseId(task, phaseId);
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+
+    return withWriteLock(taskRoot, async () => {
+      const existing = await this.readHarnessRecord(task, resolvedPhaseId);
+      if (existing.blocked || existing.circuitBreaker) {
+        throw new HarnessBlockedError(task.id, resolvedPhaseId);
+      }
+
+      const now = new Date().toISOString();
+      const attemptCount = result === 'failure'
+        ? existing.attemptCount + 1
+        : existing.attemptCount;
+      const shouldBlock = result === 'failure' && attemptCount >= existing.retryBudget;
+      const updated: HarnessRecord = {
+        ...existing,
+        taskId: task.id,
+        phaseId: resolvedPhaseId,
+        attemptCount,
+        lastResult: result,
+        lastFailureReason: result === 'failure' ? (reason ?? null) : null,
+        blocked: result === 'success' ? false : shouldBlock,
+        circuitBreaker: result === 'success' ? false : shouldBlock,
+        updatedAt: now,
+      };
+
+      return this.writeHarnessRecord(task, updated);
+    });
+  }
+
+  async resetHarness(taskId: string, reason?: string): Promise<HarnessRecord> {
+    const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+
+    return withWriteLock(taskRoot, async () => {
+      const resolvedPhaseId = await this.resolveHarnessPhaseId(task);
+      const existing = await this.readHarnessRecord(task, resolvedPhaseId);
+      const now = new Date().toISOString();
+      const updated: HarnessRecord = {
+        ...existing,
+        taskId: task.id,
+        blocked: false,
+        circuitBreaker: false,
+        updatedAt: now,
+        resetEvents: [
+          ...existing.resetEvents,
+          {
+            timestamp: now,
+            taskId: task.id,
+            previousBlocked: existing.blocked,
+            previousCircuitBreaker: existing.circuitBreaker,
+            ...(reason !== undefined && reason !== '' ? { reason } : {}),
+            source: 'cli',
+          },
+        ],
+      };
+
+      return this.writeHarnessRecord(task, updated);
+    });
+  }
+
   async collectEvidence(taskId: string): Promise<EvidenceResult> {
     const task = await this.taskStore.getTask(taskId);
     this.assertTaskIsActive(task);
@@ -431,6 +520,59 @@ export class PlaySpecCore {
 
   private getAbsoluteTaskRoot(task: TaskRecord): string {
     return path.join(this.workspaceRoot, task.paths.taskRoot);
+  }
+
+  private async resolveHarnessPhaseId(task: TaskRecord, phaseId?: string): Promise<string> {
+    const workflow = await this.workflowLoader.load(task.workflow);
+    if (phaseId !== undefined) {
+      if (!workflow.phaseOrder.includes(phaseId) || !workflow.phases[phaseId]) {
+        throw new InvalidRecoveryTargetError(phaseId, task.workflow, workflow.phaseOrder);
+      }
+      return phaseId;
+    }
+    const resolved = this.phaseResolver.resolveCurrentPhase(task, workflow);
+    return resolved.phaseId;
+  }
+
+  private async readHarnessRecord(task: TaskRecord, phaseId: string): Promise<HarnessRecord> {
+    const harnessPath = getHarnessRecordPath(this.workspaceRoot, task.id);
+    try {
+      const content = await readTextFile(harnessPath);
+      return HarnessRecordSchema.parse(parseYaml(content) as unknown);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return this.createDefaultHarnessRecord(task.id, phaseId);
+      }
+      throw error;
+    }
+  }
+
+  private createDefaultHarnessRecord(
+    taskId: string,
+    phaseId: string,
+    resetEvents: HarnessRecord['resetEvents'] = []
+  ): HarnessRecord {
+    return {
+      taskId,
+      phaseId,
+      attemptCount: 0,
+      retryBudget: DEFAULT_HARNESS_RETRY_BUDGET,
+      lastResult: null,
+      lastFailureReason: null,
+      blocked: false,
+      circuitBreaker: false,
+      updatedAt: new Date().toISOString(),
+      resetEvents,
+    };
+  }
+
+  private async writeHarnessRecord(task: TaskRecord, record: HarnessRecord): Promise<HarnessRecord> {
+    const validated = HarnessRecordSchema.parse(record);
+    await writeTextFileAtomic(
+      getHarnessRecordPath(this.workspaceRoot, task.id),
+      stringifyYaml(validated)
+    );
+    return validated;
   }
 
   private assertTaskIsActive(task: TaskRecord): void {

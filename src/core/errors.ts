@@ -316,6 +316,16 @@ export class LoopGuardError extends PlaySpecError {
   }
 }
 
+export class HarnessBlockedError extends PlaySpecError {
+  constructor(taskId: string, phaseId: string) {
+    super(
+      `Harness is blocked for task "${taskId}" phase "${phaseId}".`,
+      'Inspect `playspec harness status --task <TASK_ID>` and run `playspec harness reset --task <TASK_ID>` after human review.'
+    );
+    this.name = 'HarnessBlockedError';
+  }
+}
+
 export class UnexpectedResultError extends PlaySpecError {
   constructor(phaseId: string) {
     super(

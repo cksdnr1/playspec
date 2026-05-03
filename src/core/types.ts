@@ -239,3 +239,27 @@ export interface SetCurrentPhaseResult {
   previousPhase: PhaseId | null;
   currentPhase: PhaseId;
 }
+
+export type HarnessAttemptResult = 'success' | 'failure';
+
+export interface HarnessResetEvent {
+  timestamp: string;
+  taskId: TaskId;
+  previousBlocked: boolean;
+  previousCircuitBreaker: boolean;
+  reason?: string;
+  source: string;
+}
+
+export interface HarnessRecord {
+  taskId: TaskId;
+  phaseId: PhaseId;
+  attemptCount: number;
+  retryBudget: number;
+  lastResult: HarnessAttemptResult | null;
+  lastFailureReason: string | null;
+  blocked: boolean;
+  circuitBreaker: boolean;
+  updatedAt: string;
+  resetEvents: HarnessResetEvent[];
+}

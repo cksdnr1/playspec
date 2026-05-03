@@ -20,6 +20,10 @@ export function getActiveTaskRoot(workspaceRoot: string, taskId: string): string
   return path.join(workspaceRoot, '.playspec', 'tasks', 'active', taskId);
 }
 
+export function getHarnessRecordPath(workspaceRoot: string, taskId: string): string {
+  return path.join(getActiveTaskRoot(workspaceRoot, taskId), 'harness.yaml');
+}
+
 export function getArchivedTasksRoot(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec', 'tasks', 'archived');
 }
