@@ -262,8 +262,29 @@ Registered MCP tools:
 - `playspec_collect_evidence`
 - `playspec_run_state_desync_check`
 - `playspec_rollback_state`
+- `playspec_add_context`
+- `playspec_set_current_phase`
+- `playspec_create_snapshot`
+- `playspec_plan_rollback`
+- `playspec_execute_git_rollback`
+- `playspec_get_harness_status`
+- `playspec_record_harness_attempt`
+- `playspec_reset_harness`
+- `playspec_generate_evolution_proposal`
+- `playspec_list_evolution_proposals`
+- `playspec_get_evolution_proposal`
+- `playspec_store_evolution_proposal`
+- `playspec_update_evolution_proposal`
+- `playspec_append_evolution_evidence`
+- `playspec_skip_evolution_proposal`
+- `playspec_diff_evolution_proposal`
+- `playspec_apply_evolution_proposal`
+- `playspec_record_human_edit_observation`
+- `playspec_update_human_edit_observation_status`
 
 MCP calls that operate on a task require either `taskId` or `sessionId`. If both are supplied, explicit `taskId` wins. MCP context resolution never reads `.playspec/HEAD`; `HEAD` is CLI-only.
+
+Mutation-heavy MCP tools require explicit confirmation fields: `playspec_execute_git_rollback` requires `confirm: true`, and `playspec_apply_evolution_proposal` requires `approved: true`. Archive and migration operations remain CLI-only.
 
 Typical MCP flow:
 
