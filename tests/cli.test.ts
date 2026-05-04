@@ -104,6 +104,23 @@ async function createAdditionalActiveTask(title: string, workflow = 'multi-spec'
   return taskId;
 }
 
+async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
+  await writeTextFile(
+    path.join(root, id, 'workflow.yaml'),
+    `id: ${id}
+description: ${description}
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`
+  );
+  await writeTextFile(path.join(root, id, 'templates', 'start.md'), '# {{TASK_TITLE}}\n');
+}
+
 async function initGitRepo(): Promise<void> {
   await execa('git', ['init'], { cwd: workspace.dir });
   await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
@@ -838,14 +855,70 @@ review:
   });
 
   it('lists and shows built-in workflow assets', async () => {
-    const result = await runCli(['workflow', 'list'], workspace.dir);
-    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir);
+    const userWorkflows = path.join(workspace.dir, 'isolated-user-workflows');
+    const env = { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows };
+    const result = await runCli(['workflow', 'list'], workspace.dir, { env });
+    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir, { env });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('mono-spec');
+    expect(result.stdout).toContain('mono-spec\tbuiltin');
     expect(show.exitCode).toBe(0);
     expect(show.stdout).toContain('Workflow: mono-spec');
+    expect(show.stdout).toContain('Source: builtin');
     expect(show.stdout).toContain('Artifacts:');
+  });
+
+  it('lists duplicate workflow IDs once using project over user over builtin priority', async () => {
+    const userWorkflows = path.join(workspace.dir, 'user-workflows');
+    await writeWorkflow(userWorkflows, 'mono-spec', 'User duplicate');
+    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Project duplicate');
+
+    const result = await runCli(['workflow', 'list'], workspace.dir, {
+      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
+    });
+    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir, {
+      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
+    });
+
+    const monoSpecLines = result.stdout.split('\n').filter((line) => line.startsWith('mono-spec\t'));
+    expect(result.exitCode).toBe(0);
+    expect(monoSpecLines).toEqual(['mono-spec\tproject - Project duplicate']);
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('Source: project');
+    expect(show.stdout).toContain('Description: Project duplicate');
+    expect(show.stdout).not.toContain(userWorkflows);
+  });
+
+  it('supports init workflow install destinations from the CLI', async () => {
+    const userWorkflows = path.join(workspace.dir, 'user-workflows');
+    const userInit = await runCli(['init', '--workflow-install', 'user'], workspace.dir, {
+      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
+    });
+    expect(userInit.exitCode).toBe(0);
+    expect(userInit.stdout).toContain('Default workflows: user');
+    await expect(access(path.join(userWorkflows, 'mono-spec', 'workflow.yaml'))).resolves.toBeUndefined();
+
+    const skipWorkspace = await createTempWorkspace();
+    try {
+      const skipInit = await runCli(['init', '--workflow-install', 'skip'], skipWorkspace.dir, {
+        env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: path.join(skipWorkspace.dir, 'user-workflows') },
+      });
+      expect(skipInit.exitCode).toBe(0);
+      expect(skipInit.stdout).toContain('Default workflows: skip');
+      await expect(access(path.join(skipWorkspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+    } finally {
+      await skipWorkspace.cleanup();
+    }
+
+    const invalidWorkspace = await createTempWorkspace();
+    try {
+      const invalidInit = await runCli(['init', '--workflow-install', 'elsewhere'], invalidWorkspace.dir);
+      expect(invalidInit.exitCode).toBe(1);
+      expect(invalidInit.stderr).toContain('Invalid workflow install destination');
+      await expect(access(path.join(invalidWorkspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+    } finally {
+      await invalidWorkspace.cleanup();
+    }
   });
 
   it('validates a workflow directory', async () => {
@@ -1400,9 +1473,9 @@ phases:
 
   it('reports the missing template path via the CLI when rendering fails', async () => {
     await createActiveTask('Broken Template Task');
-    const userWorkflows = path.join(workspace.dir, 'user-workflows');
+    const projectWorkflows = path.join(workspace.dir, '.playspec', 'workflows');
     await writeTextFile(
-      path.join(userWorkflows, 'multi-spec', 'workflow.yaml'),
+      path.join(projectWorkflows, 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
 variables:
@@ -1418,14 +1491,14 @@ phases:
     );
 
     const result = await runCli(['next'], workspace.dir, {
-      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
+      env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: path.join(workspace.dir, 'user-workflows') },
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Template file not found');
     expect(result.stderr).toContain(
       path.join(
-        userWorkflows,
+        projectWorkflows,
         'multi-spec',
         'templates',
         'missing',

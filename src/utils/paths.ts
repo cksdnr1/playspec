@@ -4,6 +4,10 @@ export function getPlayspecRoot(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec');
 }
 
+export function getProjectWorkflowsRoot(workspaceRoot: string): string {
+  return path.join(getPlayspecRoot(workspaceRoot), 'workflows');
+}
+
 export function getTasksRoot(workspaceRoot: string): string {
   return getActiveTasksRoot(workspaceRoot);
 }

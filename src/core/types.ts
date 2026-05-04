@@ -131,7 +131,8 @@ export interface ArtifactDeclaration {
   description?: string;
 }
 
-export type WorkflowSource = 'builtin' | 'user';
+export type WorkflowSource = 'project' | 'user' | 'builtin';
+export type WorkflowInstallDestination = 'project' | 'user' | 'skip';
 
 export interface ResolvedWorkflow {
   id: string;

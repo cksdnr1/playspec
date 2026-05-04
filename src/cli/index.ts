@@ -167,9 +167,10 @@ program
   .command('init')
   .description('Initialize a .playspec workspace')
   .option('--preset <name>', 'Preset to use', 'default')
-  .action(async (opts: { preset: string }) => {
+  .option('--workflow-install <destination>', 'Install default workflows to project, user, or skip')
+  .action(async (opts: { preset: string; workflowInstall?: string }) => {
     try {
-      await runInit(process.cwd(), opts.preset);
+      await runInit(process.cwd(), opts.preset, { workflowInstall: opts.workflowInstall });
     } catch (err) {
       handleError(err);
     }

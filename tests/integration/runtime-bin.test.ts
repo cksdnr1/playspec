@@ -106,7 +106,8 @@ describe('package runtime bins', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stderr).not.toContain('ERR_PACKAGE_IMPORT_NOT_DEFINED');
       await expect(access(path.join(workspace.dir, '.playspec/HEAD'))).resolves.not.toThrow();
-      await expect(access(path.join(userWorkflowRoot, 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
+      await expect(access(path.join(workspace.dir, '.playspec', 'workflows', 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
+      await expect(access(path.join(userWorkflowRoot, 'mono-spec', 'workflow.yaml'))).rejects.toThrow();
     } finally {
       await workspace.cleanup();
     }
