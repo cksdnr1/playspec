@@ -93,7 +93,7 @@ program
   .version(pkg.version);
 
 const workflowCommand = program
-  .command('workflow')
+  .command('workflow', { hidden: true })
   .description('Manage workflow runtime assets');
 
 workflowCommand
@@ -216,7 +216,7 @@ program
 
 // list
 program
-  .command('list')
+  .command('list', { hidden: true })
   .description('List all active tasks')
   .action(async () => {
     try {
@@ -240,7 +240,7 @@ program
 
 // current
 program
-  .command('current')
+  .command('current', { hidden: true })
   .description('Show the current active task (from HEAD)')
   .action(async () => {
     try {
@@ -341,7 +341,7 @@ program
 
 // next (deprecated alias for prompt)
 program
-  .command('next')
+  .command('next', { hidden: true })
   .description('[deprecated] Use `prompt` instead')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--write', 'Write prompt to prompts/ directory', false)
@@ -375,7 +375,7 @@ program
 
 // rewind
 program
-  .command('rewind')
+  .command('rewind', { hidden: true })
   .description('Move the current phase pointer backward in the workflow (recovery)')
   .option('--steps <n>', 'Number of phases to rewind (default: 1 in interactive mode)')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
@@ -422,7 +422,7 @@ program
 
 // evidence
 program
-  .command('evidence')
+  .command('evidence', { hidden: true })
   .description('Collect git evidence for the current workflow phase')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .action(async (opts: { task?: string }) => {
@@ -435,7 +435,7 @@ program
 
 // snapshot
 program
-  .command('snapshot')
+  .command('snapshot', { hidden: true })
   .description('Create task and prompt snapshots for the current workflow phase')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .action(async (opts: { task?: string }) => {
@@ -448,7 +448,7 @@ program
 
 // desync-check
 program
-  .command('desync-check')
+  .command('desync-check', { hidden: true })
   .description('Check task state against the current git workspace')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .action(async (opts: { task?: string }) => {
@@ -461,7 +461,7 @@ program
 
 // rollback
 program
-  .command('rollback')
+  .command('rollback', { hidden: true })
   .description('Preview or perform safe rollback for the active task')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--state-only', 'Restore PlaySpec task state only', false)
@@ -482,7 +482,7 @@ program
 
 // harness
 const harnessCommand = program
-  .command('harness')
+  .command('harness', { hidden: true })
   .description('Inspect and update automation safety harness state');
 
 harnessCommand
@@ -527,7 +527,7 @@ harnessCommand
 
 // close
 program
-  .command('close')
+  .command('close', { hidden: true })
   .description('Close a completed task into archive storage')
   .requiredOption('--task <id>', 'Completed task ID to close')
   .action(async (opts: { task: string }) => {
@@ -540,7 +540,7 @@ program
 
 // archive
 const archiveCommand = program
-  .command('archive')
+  .command('archive', { hidden: true })
   .description('Inspect archived tasks');
 
 archiveCommand
@@ -568,7 +568,7 @@ archiveCommand
 
 // evolution
 const evolutionCommand = program
-  .command('evolution')
+  .command('evolution', { hidden: true })
   .description('Inspect and manage evolution proposals and human edit observations');
 
 evolutionCommand
@@ -708,7 +708,7 @@ evolutionCommand
 
 // migrate
 program
-  .command('migrate')
+  .command('migrate', { hidden: true })
   .description('Migrate historical markdown documents into structured PlaySpec state')
   .option('--mode <mode>', 'Migration mode: review (default), dry-run, auto', 'review')
   .option('--source <path>', 'Source directory or file to scan for markdown documents')

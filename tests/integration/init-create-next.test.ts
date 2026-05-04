@@ -539,8 +539,8 @@ describe('init → create → next (end-to-end)', () => {
     const activeListTasks = await runCli(['list-tasks']);
 
     expect(rootHelp.exitCode).toBe(0);
-    expect(rootHelp.stdout).toContain('close');
-    expect(rootHelp.stdout).toMatch(/^\s+archive\b/m);
+    expect(rootHelp.stdout).not.toMatch(/^\s+close(?:\s|\[|$)/m);
+    expect(rootHelp.stdout).not.toMatch(/^\s+archive(?:\s|\[|$)/m);
     expect(archiveHelp.exitCode).toBe(0);
     expect(archiveHelp.stdout).toMatch(/^\s+list\b/m);
     expect(archiveHelp.stdout).toMatch(/^\s+show\b/m);
