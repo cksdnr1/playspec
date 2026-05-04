@@ -70,6 +70,22 @@ function makeProposal(id: string, taskId: string): EvolutionProposal {
   };
 }
 
+function getRegisteredToolHandler(toolName: string) {
+  const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
+  buildMcpServer(workspace.dir);
+  const call = toolSpy.mock.calls.find((entry) => entry[0] === toolName);
+  toolSpy.mockRestore();
+  if (!call) throw new Error(`Tool not registered: ${toolName}`);
+  return call.at(-1) as (args: Record<string, unknown>) => Promise<{
+    content: { type: 'text'; text: string }[];
+    isError?: boolean;
+  }>;
+}
+
+function parseToolJson(result: { content: { text: string }[] }) {
+  return JSON.parse(result.content[0].text) as Record<string, unknown>;
+}
+
 // ---------------------------------------------------------------------------
 // McpSessionStore
 // ---------------------------------------------------------------------------
@@ -210,19 +226,87 @@ describe('buildMcpServer', () => {
     }
   });
 
-  it('does not register proposal, evolution intake, or evolution generation tools', () => {
+  it('registers MCP tools for current task lifecycle, harness, and evolution capabilities', () => {
     const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
     try {
       buildMcpServer(workspace.dir);
       const toolNames = toolSpy.mock.calls.map((call) => String(call[0]));
-      expect(toolNames.filter((name) => name.includes('proposal'))).toEqual([]);
-      expect(toolNames.filter((name) => name.includes('evolution'))).toEqual([]);
-      expect(toolNames).not.toContain('playspec_create_evolution_proposal');
-      expect(toolNames).not.toContain('playspec_generate_evolution_proposal');
-      expect(toolNames).not.toContain('playspec_list_evolution_proposals');
+      expect(toolNames).toEqual(expect.arrayContaining([
+        'playspec_add_context',
+        'playspec_set_current_phase',
+        'playspec_create_snapshot',
+        'playspec_plan_rollback',
+        'playspec_execute_git_rollback',
+        'playspec_get_harness_status',
+        'playspec_record_harness_attempt',
+        'playspec_reset_harness',
+        'playspec_generate_evolution_proposal',
+        'playspec_list_evolution_proposals',
+        'playspec_get_evolution_proposal',
+        'playspec_store_evolution_proposal',
+        'playspec_update_evolution_proposal',
+        'playspec_append_evolution_evidence',
+        'playspec_skip_evolution_proposal',
+        'playspec_diff_evolution_proposal',
+        'playspec_apply_evolution_proposal',
+        'playspec_record_human_edit_observation',
+        'playspec_update_human_edit_observation_status',
+      ]));
     } finally {
       toolSpy.mockRestore();
     }
+  });
+
+  it('registers explicit mutation gates for git rollback and evolution apply', () => {
+    const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
+    try {
+      buildMcpServer(workspace.dir);
+      const rollbackCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_execute_git_rollback');
+      const applyCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_apply_evolution_proposal');
+
+      expect(Object.keys(rollbackCall?.[2] as Record<string, unknown>)).toContain('confirm');
+      expect(Object.keys(applyCall?.[2] as Record<string, unknown>)).toContain('approved');
+    } finally {
+      toolSpy.mockRestore();
+    }
+  });
+
+  it('rejects MCP git rollback and evolution apply without explicit approval booleans', async () => {
+    await initWorkspaceWithTask('MCP Mutation Gates');
+    const rollbackHandler = getRegisteredToolHandler('playspec_execute_git_rollback');
+    const applyHandler = getRegisteredToolHandler('playspec_apply_evolution_proposal');
+
+    const rollbackResult = await rollbackHandler({ confirm: false });
+    const applyResult = await applyHandler({ proposalId: 'proposal_missing', approved: false });
+
+    expect(rollbackResult.isError).toBe(true);
+    expect(rollbackResult.content[0].text).toContain('confirm: true');
+    expect(applyResult.isError).toBe(true);
+    expect(applyResult.content[0].text).toContain('approved: true');
+  });
+
+  it('generates an evolution proposal through MCP with explicit session context', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Generate Proposal');
+    await writeTextFile(path.join(workspace.dir, 'evidence.md'), 'Observed update.\n');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
+
+    const handler = getRegisteredToolHandler('playspec_generate_evolution_proposal');
+    const result = await handler({
+      sessionId: 'mcp.codex',
+      fromEvidence: 'evidence.md',
+      target: '.playspec/templates/generated.md',
+      summary: 'Generate via MCP',
+      rationale: 'MCP parity coverage.',
+      risk: 'low',
+      generatedId: 'mcp_generated_proposal',
+    });
+
+    expect(result.isError).toBeUndefined();
+    const body = parseToolJson(result);
+    expect(body['taskId']).toBe(taskId);
+    expect(body['invokedBy']).toBe('mcp');
+    expect((body['proposal'] as EvolutionProposal).id).toBe('mcp_generated_proposal');
   });
 
   it('registers evolution context opt-in only on prompt and complete tools', () => {
