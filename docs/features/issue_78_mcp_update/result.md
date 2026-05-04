@@ -35,4 +35,4 @@
 
 - PR notes written to `docs/features/issue_78_mcp_update/pr.md`.
 - Reusable agent guidance decision: no update needed; existing MCP guidance is sufficient.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/79
