@@ -204,7 +204,7 @@ describe('Phase 2 completion engine', () => {
   it('records the validation template reference when configured', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     await writeTextFile(
-      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'workflow.yaml'),
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
 variables:
@@ -233,7 +233,7 @@ phases:
 `
     );
     await writeTextFile(
-      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'templates', 'phase_template.md'),
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
       '# {{TASK_TITLE}}\n'
     );
 

@@ -18,6 +18,7 @@ import { EvolutionHumanEditStore } from '#evolution/human-edit-store.js';
 import type { EvolutionProposal, HumanEditObservation } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(TESTS_DIR, '../..');
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
 const TSCONFIG_PATH = path.resolve(TESTS_DIR, '../../tsconfig.json');
 const TSX_PATH = path.resolve(TESTS_DIR, '../../node_modules/.bin/tsx');
@@ -134,11 +135,42 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     await expect(access(path.join(ps, 'config.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'sessions', 'cli.default.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(ps, 'tasks', 'active'))).resolves.not.toThrow();
-    await expect(access(path.join(workspace.dir, 'user-workflows', 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(ps, 'workflows', 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
     await expect(
-      access(path.join(workspace.dir, 'user-workflows', 'mono-spec', 'templates', 'tech_spec_draft.md'))
+      access(path.join(ps, 'workflows', 'mono-spec', 'templates', 'tech_spec_draft.md'))
     ).resolves.not.toThrow();
-    await expect(access(path.join(workspace.dir, 'user-workflows', 'multi-spec', 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(ps, 'workflows', 'multi-spec', 'workflow.yaml'))).resolves.not.toThrow();
+  });
+
+  it('can install default workflows into user scope', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'user' });
+
+    await expect(access(path.join(workspace.dir, 'user-workflows', 'mono-spec', 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+  });
+
+  it('can skip default workflow installation', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'skip' });
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+    await expect(access(path.join(workspace.dir, 'user-workflows'))).rejects.toThrow();
+  });
+
+  it('gitignore keeps project workflows committable while ignoring runtime state', async () => {
+    const gitignore = await readFile(path.join(REPO_ROOT, '.gitignore'), 'utf8');
+    await writeFile(path.join(workspace.dir, '.gitignore'), gitignore, 'utf8');
+    await writeTextFile(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'task.yaml'), 'id: task\n');
+    await writeTextFile(path.join(workspace.dir, '.playspec', 'workflows', 'mono-spec', 'workflow.yaml'), 'id: mono-spec\n');
+    await execa('git', ['init'], { cwd: workspace.dir });
+
+    const status = await execa('git', ['status', '--short', '--ignored', '--untracked-files=all'], {
+      cwd: workspace.dir,
+    });
+
+    expect(status.stdout).toContain('?? .playspec/workflows/mono-spec/workflow.yaml');
+    expect(status.stdout).toContain('!! .playspec/tasks/active/task.yaml');
   });
 
   it('creates HEAD as an empty file on init', async () => {
@@ -151,7 +183,7 @@ describe('PresetManager.initWorkspace — structure verification', () => {
   });
 
   it('does not overwrite already installed workflows on init', async () => {
-    const workflowDir = path.join(workspace.dir, 'user-workflows', 'mono-spec');
+    const workflowDir = path.join(workspace.dir, '.playspec', 'workflows', 'mono-spec');
     const workflowFile = path.join(workflowDir, 'workflow.yaml');
     const customWorkflow = 'id: mono-spec\nmode: linear\nphaseOrder: []\nphases: {}\n';
     await mkdir(workflowDir, { recursive: true });
@@ -781,7 +813,7 @@ describe('init → create → next (end-to-end)', () => {
     await manager.initWorkspace(workspace.dir, 'default');
 
     await writeTextFile(
-      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'workflow.yaml'),
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
 mode: linear
 phaseOrder:
@@ -796,7 +828,7 @@ phases:
 `
     );
     await writeTextFile(
-      path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'multi-spec', 'templates', 'phase_template.md'),
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
       '# {{TASK_TITLE}}\n'
     );
 

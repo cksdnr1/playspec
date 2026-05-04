@@ -1,23 +1,53 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { WorkflowNotFoundError } from '#core/errors.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 
 let workspace: TempWorkspace;
+let previousUserWorkflows: string | undefined;
 
 beforeEach(async () => {
   workspace = await createTempWorkspace();
+  previousUserWorkflows = process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  process.env['PLAY_SPEC_USER_WORKFLOWS'] = path.join(workspace.dir, 'user-workflows');
   const manager = new PresetManager();
   await manager.initWorkspace(workspace.dir, 'default');
 });
 
 afterEach(async () => {
+  if (previousUserWorkflows === undefined) {
+    delete process.env['PLAY_SPEC_USER_WORKFLOWS'];
+  } else {
+    process.env['PLAY_SPEC_USER_WORKFLOWS'] = previousUserWorkflows;
+  }
   await workspace.cleanup();
 });
 
 describe('WorkflowLoader', () => {
+  async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
+    await mkdir(path.join(root, id, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(root, id, 'workflow.yaml'),
+      `id: ${id}
+description: ${description}
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(root, id, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
+  }
+
   it('loads multi-spec workflow with expected fields', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     const workflow = await loader.load('multi-spec');
@@ -139,5 +169,49 @@ describe('WorkflowLoader', () => {
   it('throws WorkflowNotFoundError for unknown workflow', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);
+  });
+
+  it('resolves project workflows before user and builtin workflows', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getUserRoot(), 'mono-spec', 'User override');
+    await writeWorkflow(registry.getProjectRoot(), 'mono-spec', 'Project override');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
+
+    expect(workflow.source).toBe('project');
+    expect(workflow.definition.description).toBe('Project override');
+  });
+
+  it('resolves user workflows before builtin when project workflow is absent', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await rm(path.join(registry.getProjectRoot(), 'mono-spec'), { recursive: true, force: true });
+    await writeWorkflow(registry.getUserRoot(), 'mono-spec', 'User override');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
+
+    expect(workflow.source).toBe('user');
+    expect(workflow.definition.description).toBe('User override');
+  });
+
+  it('lists effective workflows once, grouped by source priority then id', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getUserRoot(), 'mono-spec', 'User duplicate');
+    await writeWorkflow(registry.getUserRoot(), 'aaa-user-only', 'User only');
+    await writeWorkflow(registry.getProjectRoot(), 'zzz-project-only', 'Project only');
+
+    const locations = await registry.list();
+    const monoSpecLocations = locations.filter((location) => location.id === 'mono-spec');
+    const projectIndexes = locations
+      .map((location, index) => [location.source, index] as const)
+      .filter(([source]) => source === 'project')
+      .map(([, index]) => index);
+    const userOnlyIndex = locations.findIndex((location) => location.id === 'aaa-user-only');
+
+    expect(monoSpecLocations).toHaveLength(1);
+    expect(monoSpecLocations[0]?.source).toBe('project');
+    expect(projectIndexes.every((index) => index < userOnlyIndex)).toBe(true);
+    expect(locations.filter((location) => location.source === 'project').map((location) => location.id)).toEqual(
+      [...locations.filter((location) => location.source === 'project').map((location) => location.id)].sort()
+    );
   });
 });

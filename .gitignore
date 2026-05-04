@@ -2,5 +2,11 @@ node_modules/
 dist/
 .serena/
 *.log
-.playspec/
+.playspec/*
+!.playspec/workflows/
+!.playspec/workflows/**
+.playspec/tasks/
+.playspec/cache/
+.playspec/tmp/
+.playspec/logs/
 .mcp.json
