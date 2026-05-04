@@ -198,9 +198,68 @@ describe('CLI placeholder', () => {
     const result = await runCli(['--help']);
     // --help exits with 0, output goes to stdout
     const output = result.stdout + result.stderr;
+    const commandLine = (command: string) => new RegExp(`^\\s+${command}(?:\\s|\\[|$)`, 'm');
     expect(output).toMatch(/playspec/i);
-    expect(output).toMatch(/^\s+harness\b/m);
-    expect(output).toMatch(/^\s+evolution\b/m);
+    for (const command of [
+      'init',
+      'create',
+      'list-tasks',
+      'current-task',
+      'get-task',
+      'add-context',
+      'use',
+      'prompt',
+      'specs',
+      'phase',
+      'complete',
+      'status',
+    ]) {
+      expect(output).toMatch(commandLine(command));
+    }
+    for (const command of [
+      'workflow',
+      'list',
+      'current',
+      'next',
+      'rewind',
+      'evidence',
+      'snapshot',
+      'desync-check',
+      'rollback',
+      'harness',
+      'close',
+      'archive',
+      'evolution',
+      'migrate',
+    ]) {
+      expect(output).not.toMatch(commandLine(command));
+    }
+  });
+
+  it('keeps hidden advanced command help directly callable', async () => {
+    const harness = await runCli(['harness', '--help'], workspace.dir);
+    const evolution = await runCli(['evolution', '--help'], workspace.dir);
+    const archive = await runCli(['archive', '--help'], workspace.dir);
+    const workflow = await runCli(['workflow', '--help'], workspace.dir);
+
+    expect(harness.exitCode).toBe(0);
+    expect(harness.stdout + harness.stderr).toContain('status');
+    expect(evolution.exitCode).toBe(0);
+    expect(evolution.stdout + evolution.stderr).toContain('propose');
+    expect(archive.exitCode).toBe(0);
+    expect(archive.stdout + archive.stderr).toContain('list');
+    expect(workflow.exitCode).toBe(0);
+    expect(workflow.stdout + workflow.stderr).toContain('validate');
+  });
+
+  it('keeps migrate callable with a deprecation warning', async () => {
+    await createActiveTask('Migrate Compatibility Task');
+
+    const result = await runCli(['migrate'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stdout).toContain('No source documents found.');
   });
 
   it('registers the Phase 7 harness command surface', async () => {

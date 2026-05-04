@@ -2,29 +2,38 @@
 
 PlaySpec is a local TypeScript CLI and MCP workflow engine for managing LLM-assisted development tasks.
 
-It keeps task state in `.playspec/`, renders phase-specific prompts from workflow templates, records completion evidence, detects drift against Git state, and exposes the same core workflow operations to MCP clients without relying on global CLI `HEAD`.
+It keeps task state in `.playspec/`, renders workflow-specific prompts, records phase completion evidence, and exposes the same core task operations to MCP clients without making MCP depend on the human CLI `HEAD`.
 
-## Current Status
+## The Everyday Journey
 
-Implemented through Phase 4.1. The repository currently includes:
+Use PlaySpec as a small loop around one development task:
 
-- CLI workspace setup and task management.
-- YAML-backed task storage.
-- Default workflow preset.
-- Prompt rendering with required variable validation.
-- Canonical `playspec prompt` command with copy-by-default output, file output, and raw print modes.
-- Phase completion with snapshots, Git evidence, and optional review records.
-- Post-completion next-prompt rendering after `playspec complete`.
-- Routed phase completion support through workflow `results` and `nextByResult`.
-- Compact context headers for CLI workflow commands.
-- Task discovery commands with effective phase display and JSON task output.
-- Git state desync checks and safe rollback planning/state rollback.
-- MCP stdio server with explicit `taskId` or `sessionId` context resolution.
-- Migration plan validation, review/dry-run/auto execution, backups, reports, and optional archive actions.
+```bash
+# 1. Initialize the workspace once
+playspec init --preset default
 
-`playspec prompt` is the current prompt command. `playspec next`, `playspec current`, and `playspec list` remain available as deprecated compatibility aliases.
+# 2. Create a task. mono-spec is the default workflow.
+playspec create "CLI Optimize"
 
-The current code does not register `playspec view`, `playspec close`, harness automation, or evolution proposal commands. Migration is exposed through `playspec migrate`; MCP-specific migration tools are not registered.
+# 3. Render the current phase prompt without using the clipboard
+playspec prompt --no-copy
+
+# 4. Do the requested work, then complete the phase
+playspec complete --no-copy
+
+# 5. At approval gates, choose the route explicitly
+playspec complete --result approved --no-copy
+playspec complete --result needs_revision --no-copy
+
+# 6. Inspect or switch tasks when needed
+playspec status
+playspec list-tasks
+playspec use <taskId>
+```
+
+That is the primary CLI model: create or select one task, render the next prompt, do the deliverable, complete the phase, and repeat.
+
+`playspec --help` is intentionally compact and shows the commands used in this normal loop. Advanced, recovery, archive, evolution, harness, workflow-admin, and deprecated compatibility commands remain callable directly, but they are hidden from root help.
 
 ## Requirements
 
@@ -54,59 +63,26 @@ playspec --help
 playspec-mcp
 ```
 
-## Quick Start
-
-```bash
-# Initialize .playspec with the default preset
-playspec init --preset default
-
-# Create a task and set .playspec/HEAD for human CLI use
-playspec create multi-spec "My Feature"
-
-# Render and copy the active task's next prompt
-playspec prompt
-
-# Save the rendered prompt under the task prompts/ directory
-playspec prompt --write
-
-# Complete the current phase, then render/copy the next prompt
-playspec complete
-
-# Inspect task state
-playspec status
-```
-
-Available workflows in the default preset:
-
-- `multi-spec` — five-phase feature/spec workflow
-- `mono-spec` — ten-step spec, validation, implementation, test, refactor, and PR workflow
-- `simple-bug` — two-phase bug workflow
-- `phase-execution` — five-phase execution workflow for implementing a numbered phase from prior planning context
-
-Only the `default` preset is present in this repository.
-
-## CLI Usage
+## Core CLI Commands
 
 ### Workspace And Tasks
 
 ```bash
 playspec init --preset default
 
-# Interactive wizard — guided flow, no flags needed
+# Interactive wizard in a TTY
 playspec create
 
-# With editor — opens $EDITOR for the source problem
-playspec create mono-spec "Migration Bug Fix" --edit
+# Default workflow is mono-spec
+playspec create "My Feature"
+playspec create --workflow mono-spec "My Feature"
 
-# From a file — user-friendly shorthand
-playspec create mono-spec "Migration Bug Fix" --from problem.md
+# Capture a source problem
+playspec create "My Feature" --edit
+playspec create "My Feature" --from problem.md
+cat problem.md | playspec create "My Feature" --stdin
 
-# Explicit file flag (equivalent to --from without --phase)
-playspec create mono-spec "Migration Bug Fix" --from-file ./problem.md
-
-# From stdin — for scripts and automation only
-cat problem.md | playspec create mono-spec "Migration Bug Fix" --stdin
-
+# Inspect and switch task state
 playspec list-tasks
 playspec current-task
 playspec get-task --task <taskId>
@@ -119,28 +95,44 @@ playspec add-context ./notes.md
 playspec add-context --edit
 ```
 
-`playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted.
+`playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted. MCP clients do not use CLI `HEAD`.
 
-`playspec use` opens an interactive active-task selector in a TTY. Use `playspec use <taskId>` for scripts or direct task switching.
+`playspec use` opens an interactive task selector in a TTY. Use `playspec use <taskId>` for scripts or direct task switching.
 
-`playspec list` and `playspec current` are deprecated compatibility aliases. Prefer `list-tasks` and `current-task` for resolved phase titles, effective first-phase display when a task has not started, and invalid phase diagnostics.
+### Prompt Rendering
 
-#### Source problem input modes
+```bash
+playspec prompt
+playspec prompt --task <taskId>
+playspec prompt --no-copy
+playspec prompt --write
+playspec prompt --print-only
+playspec prompt --out prompt.md
+playspec specs
+playspec specs --path-only
+playspec phase <phaseId>
+playspec phase <phaseId> --task <taskId>
+```
 
-| Mode | Flag | Best for |
-|---|---|---|
-| Interactive wizard | `playspec create` (no args) | First-time or exploratory use |
-| Editor | `--edit` | Writing or editing a problem description in your preferred editor |
-| File | `--from <file>` or `--from-file <file>` | Re-using an existing markdown file |
-| Stdin | `--stdin` | Scripts and automation (heredoc, pipe) |
+`prompt` renders the current workflow phase and copies it to the clipboard by default. Use `--no-copy` to print the prompt body, `--print-only` for raw prompt output, `--write` to save a prompt snapshot under the task, or `--out <file>` for a selected output file.
 
-`--from` without `--phase` is treated as a source problem file path. With `--phase`, `--from` specifies a planning task ID (see Phase Execution Tasks below).
+### Phase Completion
 
-Source problem content is stored as an internal markdown file under the task directory and linked as task context. Non-interactive usage (`PLAY_SPEC_NON_INTERACTIVE=1` or no TTY) must use explicit flags and must not hang waiting for input.
+```bash
+playspec complete
+playspec complete --task <taskId>
+playspec complete --with-review
+playspec complete --result <result>
+playspec complete --no-copy
+```
 
-### Mono-Spec Workflow
+Completion writes snapshots, Git evidence, and optional review records. For routed approval gates, non-interactive usage must pass `--result <result>`.
 
-`mono-spec` is the default compact workflow for a complete implementation pass:
+After successful completion, `complete` reloads the task and renders the next prompt. Use `complete --no-copy` when clipboard access is not desired.
+
+## Mono-Spec Workflow
+
+`mono-spec` is the default workflow for one complete implementation pass:
 
 1. 기술 명세서 업데이트
 2. 기술 교차 검증
@@ -153,139 +145,69 @@ Source problem content is stored as an internal markdown file under the task dir
 9. 리팩토링
 10. PR 준비
 
-The two approval gates use existing routed completion results:
+The two approval gates use routed completion results:
 
 ```bash
-# After step 3
-playspec complete --result approved        # continue to implementation plan creation
-playspec complete --result needs_revision  # return to technical spec validation
-
-# After step 6
-playspec complete --result approved        # continue to implementation
-playspec complete --result needs_revision  # return to implementation plan validation
+playspec complete --result approved
+playspec complete --result needs_revision
 ```
 
-Refactor and PR preparation prompts require `TARGET_BRANCH` and default it to `origin/master` during rendering. Those prompts instruct the agent to compare the current branch against `TARGET_BRANCH`, not stale local assumptions.
+Refactor and PR preparation prompts compare the current branch against `TARGET_BRANCH`, which defaults to `origin/master` during rendering.
 
-### Prompt Rendering
+## Workflows
 
-```bash
-playspec prompt
-playspec prompt --task <taskId>
-playspec prompt --write
-playspec prompt --quiet
-playspec prompt --no-copy
-playspec prompt --print-only
-playspec prompt --out prompt.md
-playspec next                 # deprecated alias
-playspec phase <phaseId>
-playspec phase <phaseId> --task <taskId>
-```
+The default preset includes:
 
-`prompt` renders the current workflow phase and copies it to the clipboard by default. Use `--no-copy` to print the prompt body instead, `--print-only` for raw prompt body output without metadata, or `--out <file>` to write a selected output file. Use `--write` to save a prompt snapshot under the task's `prompts/` directory.
+- `mono-spec` — compact spec, validation, implementation, test, refactor, and PR workflow.
+- `multi-spec` — legacy multi-phase feature/spec workflow.
+- `simple-bug` — legacy simple bug workflow.
+- `phase-execution` — legacy execution workflow for a selected planning phase.
+- `total-plan` — larger planning workflow for work that should be split before implementation.
 
-`next` is deprecated and kept as a compatibility alias. `phase` renders a specific phase without advancing task state.
+Only the `default` preset is present in this repository.
 
-### Phase Completion
+## Advanced Commands
+
+These command groups remain available by direct invocation but are hidden from root help to keep the normal journey compact:
 
 ```bash
-playspec complete
-playspec complete --task <taskId>
-playspec complete --with-review
-playspec complete --quiet
-playspec complete --result <result>
-playspec complete --no-copy
-```
-
-Completion writes:
-
-- `snapshots/phase<N>_before_complete.yaml`
-- `snapshots/phase<N>_prompt.md`
-- `evidence/phase<N>_git_status.txt`
-- `evidence/phase<N>_git_diff_stat.txt`
-- `evidence/phase<N>_changed_files.txt`
-- `reviews/phase<N>_review.yaml` when `--with-review` is used
-
-For routed workflow phases that declare allowed `results`, non-interactive usage must pass `--result <result>`. Interactive terminals are prompted to choose a result.
-
-After successful completion, `complete` reloads the updated task and renders the next prompt using the same copy-by-default behavior as `prompt`. Use `complete --no-copy` to suppress clipboard copying; the command still emits human-readable completion output.
-
-### Evidence And Snapshots
-
-```bash
-playspec evidence
+playspec workflow --help
+playspec harness --help
+playspec archive --help
+playspec evolution --help
 playspec evidence --task <taskId>
-playspec snapshot
 playspec snapshot --task <taskId>
-```
-
-`evidence` manually collects Git evidence for the current phase. `snapshot` manually writes the current task snapshot for the current phase.
-
-### Desync And Rollback
-
-```bash
-playspec desync-check
 playspec desync-check --task <taskId>
-
-playspec rollback
 playspec rollback --task <taskId>
-playspec rollback --state-only
-playspec rollback --git-only --confirm
+playspec close --task <taskId>
 ```
 
-`rollback` without flags prints a rollback plan. `--state-only` restores PlaySpec task state from the last safe point. Git rollback execution requires `--git-only --confirm` and only runs when the computed rollback plan is eligible.
-
-### Migration
+Recovery commands are also direct-use commands:
 
 ```bash
-playspec migrate
-playspec migrate --mode review
-playspec migrate --mode dry-run
-playspec migrate --mode auto
-playspec migrate --source docs/
-playspec migrate --task <taskId>
-playspec migrate --plan <plan.yaml>
-playspec migrate --target-total-spec docs/playspec_total_spec.md
-playspec migrate --target-phase-plan docs/playspec_phase_plan.md
-playspec migrate --mode auto --with-archive
+playspec phase --set <phaseId> --yes
+playspec rewind --steps 1 --yes
 ```
 
-`playspec migrate` promotes historical markdown documents into structured task context. It resolves the target task from `--task` or CLI `HEAD`, then either loads an external YAML `MigrationPlan` through `--plan` or generates a simple plan from markdown files discovered through `--source`, `--target-total-spec`, and `--target-phase-plan`.
+Deprecated compatibility aliases remain callable but are hidden from root help:
 
-Generated plans currently propose `add_context_ref` actions for markdown files that are not already linked in `task.yaml`. External plans may use the full migration action schema:
+```bash
+playspec next      # use playspec prompt
+playspec list      # use playspec list-tasks
+playspec current   # use playspec current-task
+```
 
-- `update_file`
-- `append_section`
-- `replace_section`
-- `update_task_state`
-- `add_context_ref`
-- `remove_context_ref`
-- `archive_file`
-
-`delete_file` is intentionally unsupported.
-
-Migration modes:
-
-- `review` prompts before actions where `requiresReview: true`.
-- `dry-run` validates and persists the plan/report without mutating files.
-- `auto` applies only actions allowed by the runner; review-required actions are skipped unless their matching state promotion confidence is `deterministic`.
-
-`archive_file` actions require `--with-archive`. Plans are always written before mutation, reports are written after execution, and backups are created for backup-required actions when the target exists.
+`playspec migrate` is deprecated and hidden from the primary CLI workflow. It remains callable for compatibility with historical migration tasks, but new work should start from `playspec create` and explicit context files instead of migration.
 
 ## Phase Execution Tasks
 
-Use `phase-execution` when a completed planning task already produced the canonical planning files for a feature:
+Use `phase-execution` when a completed planning task already produced canonical planning files for a feature:
 
 ```bash
-playspec create phase-execution "My Feature" --phase 4 --from <planningTaskId>
+playspec create --workflow phase-execution "My Feature" --phase 4 --from <planningTaskId>
 ```
 
-This creates a task titled like `My Feature Phase 4 Execution`, records `target.phaseNumber`, and links planning context refs to:
-
-- `<projectDocRoot>/<featureSlug>_total_spec.md`
-- `<projectDocRoot>/<featureSlug>_phase_plan.md`
-
-When `--from` is omitted, PlaySpec searches completed planning tasks with a matching title. If multiple matches exist in a non-interactive environment, pass `--from <planningTaskId>`.
+This creates a task titled like `My Feature Phase 4 Execution`, records `target.phaseNumber`, and links planning context refs to the planning task output files.
 
 ## MCP Usage
 
@@ -301,7 +223,7 @@ Run the stdio MCP server from the workspace root:
 playspec-mcp
 ```
 
-Example MCP client command configuration:
+Example MCP client configuration:
 
 ```json
 {
@@ -352,16 +274,6 @@ playspec_render_next_prompt({ "sessionId": "codex-main" })
 playspec_complete_phase({ "sessionId": "codex-main" })
 ```
 
-## Phase 4.1 Migration Notes
-
-The Phase 4.1 spec in `docs/playspec_phase4.1_implementation_spec.md` is implemented as a CLI migration runner. A Claude/Codex MCP client can still assist by reading legacy docs and producing an external YAML plan, then you can run:
-
-```bash
-playspec migrate --plan migration_plan.yaml --mode review
-```
-
-The CLI-generated migration path is intentionally conservative: it discovers markdown files and adds missing `contextRefs`. Higher-risk state promotion should be supplied as a reviewed external plan.
-
 ## `.playspec` Layout
 
 ```text
@@ -397,10 +309,10 @@ The CLI-generated migration path is intentionally conservative: it discovers mar
 
 ## Architecture
 
-- `src/core/` contains task workflow behavior and must receive explicit task IDs where possible.
+- `src/core/` contains task workflow behavior and receives explicit task IDs where possible.
 - `src/cli/` is the human CLI adapter and may resolve `.playspec/HEAD`.
 - `src/mcp/` is the MCP adapter and must use `resolveMcpTaskId()`.
-- `src/migration/` validates and applies migration plans.
+- `src/migration/` contains deprecated migration compatibility code.
 - `src/storage/` contains the `TaskStore` interface and YAML implementation.
 - `src/workflow/` loads and resolves workflow phases.
 - `src/template/` resolves variables and renders templates.
@@ -415,7 +327,7 @@ pnpm test
 pnpm build
 ```
 
-The test suite uses Vitest and includes unit and integration coverage for slug generation, variable resolution, phase resolution, template rendering, task creation/use/current flows, completion/evidence, desync/rollback behavior, routing, migration, and MCP server context handling.
+The test suite uses Vitest and includes unit and integration coverage for slug generation, variable resolution, phase resolution, template rendering, task flows, completion/evidence, desync/rollback behavior, routing, migration compatibility, and MCP server context handling.
 
 ## License
 

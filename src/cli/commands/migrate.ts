@@ -26,6 +26,8 @@ export async function runMigrate(
   workspaceRoot: string,
   options: MigrateOptions = {}
 ): Promise<void> {
+  process.stderr.write('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.\n');
+
   const playspecRoot = getPlayspecRoot(workspaceRoot);
   try {
     await access(playspecRoot);
