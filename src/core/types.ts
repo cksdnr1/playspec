@@ -5,6 +5,14 @@ export type WorkflowId = string;
 
 export type TaskStatus = 'active' | 'completed' | 'archived';
 export type WorkflowMode = 'linear';
+export type TaskLinkType = 'parent' | 'after' | 'related';
+
+export interface TaskLink {
+  type: TaskLinkType;
+  targetTaskId: string;
+  createdAt: string;
+  createdBy?: 'cli' | 'manual' | 'import' | 'agent';
+}
 
 export interface TaskTarget {
   phaseNumber: string;
@@ -49,6 +57,7 @@ export interface TaskRecord {
   rollback?: TaskRollbackState;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
+  links?: TaskLink[];
 }
 
 export interface TaskStateSync {
@@ -84,6 +93,15 @@ export interface CreateTaskInput {
   variables?: Record<string, string>;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
+  links?: TaskLink[];
+}
+
+export interface TaskLinkMutationResult {
+  sourceTaskId: TaskId;
+  targetTaskId: TaskId;
+  type?: TaskLinkType;
+  changed: boolean;
+  warning?: string;
 }
 
 export interface PhaseDefinition {

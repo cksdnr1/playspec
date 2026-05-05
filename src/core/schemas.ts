@@ -66,6 +66,13 @@ export const TaskContextRefSchema = z.object({
   source: z.string(),
 });
 
+export const TaskLinkSchema = z.object({
+  type: z.enum(['parent', 'after', 'related']),
+  targetTaskId: z.string(),
+  createdAt: z.string(),
+  createdBy: z.enum(['cli', 'manual', 'import', 'agent']).optional(),
+});
+
 export const TaskRecordSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -82,6 +89,7 @@ export const TaskRecordSchema = z.object({
   rollback: TaskRollbackStateSchema.optional(),
   target: TaskTargetSchema.optional(),
   contextRefs: z.array(TaskContextRefSchema).optional(),
+  links: z.array(TaskLinkSchema).optional(),
 });
 
 export const TaskSummarySchema = z.object({

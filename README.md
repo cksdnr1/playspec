@@ -76,6 +76,8 @@ playspec create
 # Default workflow is mono-spec
 playspec create "My Feature"
 playspec create --workflow mono-spec "My Feature"
+playspec create "Child Feature" --parent <taskId>
+playspec create "Phase 2 Feature" --parent <taskId> --after <taskId>
 
 # Capture a source problem
 playspec create "My Feature" --edit
@@ -88,11 +90,21 @@ playspec current-task
 playspec get-task --task <taskId>
 playspec get-task --task <taskId> --json
 playspec status
+playspec status <taskId>
 playspec status --task <taskId>
 playspec use
 playspec use <taskId>
 playspec add-context ./notes.md
 playspec add-context --edit
+
+# Lightweight task links
+playspec link <sourceTaskId> <targetTaskId> --as parent
+playspec link <sourceTaskId> <targetTaskId> --as after
+playspec link <sourceTaskId> <targetTaskId> --as related
+playspec link --to <targetTaskId> --as parent
+playspec unlink <sourceTaskId> <targetTaskId>
+playspec unlink <sourceTaskId> <targetTaskId> --as after
+playspec unlink --to <targetTaskId>
 ```
 
 `playspec create` writes `.playspec/HEAD`, which is the active task pointer used by human-facing CLI commands when `--task` is omitted. MCP clients do not use CLI `HEAD`.

@@ -25,6 +25,46 @@ export class TaskNotFoundError extends PlaySpecError {
   }
 }
 
+export class TaskIdResolutionError extends PlaySpecError {
+  constructor(input: string) {
+    super(
+      `No task found matching: ${input}`,
+      'Check the task ID with `playspec list-tasks` and try again.'
+    );
+    this.name = 'TaskIdResolutionError';
+  }
+}
+
+export class AmbiguousTaskIdError extends PlaySpecError {
+  constructor(input: string, matches: string[]) {
+    super(
+      `Ambiguous task ID prefix "${input}" matches: ${matches.join(', ')}`,
+      'Use a longer task ID prefix.'
+    );
+    this.name = 'AmbiguousTaskIdError';
+  }
+}
+
+export class InvalidTaskLinkTypeError extends PlaySpecError {
+  constructor(type: string) {
+    super(
+      `Invalid task link type: ${type}`,
+      'Use one of: parent, after, related.'
+    );
+    this.name = 'InvalidTaskLinkTypeError';
+  }
+}
+
+export class SelfTaskLinkError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Task "${taskId}" cannot link to itself.`,
+      'Choose a different target task.'
+    );
+    this.name = 'SelfTaskLinkError';
+  }
+}
+
 export class NoActiveTaskError extends PlaySpecError {
   constructor() {
     super(

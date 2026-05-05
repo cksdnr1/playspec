@@ -25,6 +25,8 @@ import { runSnapshot } from './commands/snapshot.js';
 import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
+import { runLink } from './commands/link.js';
+import { runUnlink } from './commands/unlink.js';
 import { runHarnessAttempt, runHarnessReset, runHarnessStatus } from './commands/harness.js';
 import { runMigrate } from './commands/migrate.js';
 import { runClose } from './commands/close.js';
@@ -186,7 +188,9 @@ program
   .option('--from-file <path>', 'Seed the task from a source problem file')
   .option('--stdin', 'Seed the task from stdin (for scripts and automation)', false)
   .option('--edit', 'Open $EDITOR to write the source problem', false)
-  .action(async (first: string | undefined, second: string | undefined, opts: { workflow: string; phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean }) => {
+  .option('--parent <taskId>', 'Link the new task to a parent task')
+  .option('--after <taskId>', 'Link the new task after another task')
+  .action(async (first: string | undefined, second: string | undefined, opts: { workflow: string; phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean; parent?: string; after?: string }) => {
     if (!first && !second) {
       const isInteractive = process.stdout.isTTY === true && !process.env['PLAY_SPEC_NON_INTERACTIVE'];
       if (!isInteractive) {
@@ -406,15 +410,43 @@ program
     }
   });
 
+// link
+program
+  .command('link [sourceTaskId] [targetTaskId]')
+  .description('Create a direct task link')
+  .requiredOption('--as <type>', 'Link type: parent, after, or related')
+  .option('--to <taskId>', 'Target task ID when source is the current HEAD task')
+  .action(async (sourceTaskId: string | undefined, targetTaskId: string | undefined, opts: { as: string; to?: string }) => {
+    try {
+      await runLink(process.cwd(), sourceTaskId, targetTaskId, opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// unlink
+program
+  .command('unlink [sourceTaskId] [targetTaskId]')
+  .description('Remove direct task links')
+  .option('--as <type>', 'Link type: parent, after, or related')
+  .option('--to <taskId>', 'Target task ID when source is the current HEAD task')
+  .action(async (sourceTaskId: string | undefined, targetTaskId: string | undefined, opts: { as?: string; to?: string }) => {
+    try {
+      await runUnlink(process.cwd(), sourceTaskId, targetTaskId, opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
 // status
 program
-  .command('status')
+  .command('status [taskId]')
   .description('Show compact header and full task detail for the active task')
   .option('--task <id>', 'Task ID (defaults to HEAD)')
   .option('--quiet', 'Suppress the compact Context Header', false)
-  .action(async (opts: { task?: string; quiet: boolean }) => {
+  .action(async (taskId: string | undefined, opts: { task?: string; quiet: boolean }) => {
     try {
-      await runStatus(process.cwd(), opts.task, opts.quiet);
+      await runStatus(process.cwd(), opts.task ?? taskId, opts.quiet);
     } catch (err) {
       handleError(err);
     }

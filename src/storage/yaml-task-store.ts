@@ -184,6 +184,7 @@ export class YamlTaskStore implements TaskStore {
       },
       ...(input.target !== undefined ? { target: input.target } : {}),
       ...(input.contextRefs !== undefined ? { contextRefs: input.contextRefs } : {}),
+      ...(input.links !== undefined ? { links: input.links } : {}),
     };
 
     // Create task directory structure

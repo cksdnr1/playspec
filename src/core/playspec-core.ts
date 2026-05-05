@@ -25,6 +25,8 @@ import {
   ContextFileNotFoundError,
   InvalidRecoveryTargetError,
   HarnessBlockedError,
+  InvalidTaskLinkTypeError,
+  SelfTaskLinkError,
 } from '#core/errors.js';
 import { HarnessRecordSchema } from '#core/schemas.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
@@ -49,6 +51,8 @@ import type {
   CompletePhaseOptions,
   HarnessAttemptResult,
   HarnessRecord,
+  TaskLinkType,
+  TaskLinkMutationResult,
 } from '#core/types.js';
 import { getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
@@ -117,6 +121,86 @@ export class PlaySpecCore {
     };
     await this.taskStore.updateTask(taskId, { contextRefs: [...existing, newRef] });
     return true;
+  }
+
+  async addTaskLink(
+    sourceTaskId: string,
+    targetTaskId: string,
+    type: TaskLinkType
+  ): Promise<TaskLinkMutationResult> {
+    this.assertValidTaskLinkType(type);
+    if (sourceTaskId === targetTaskId) {
+      throw new SelfTaskLinkError(sourceTaskId);
+    }
+
+    const source = await this.taskStore.getTask(sourceTaskId);
+    await this.taskStore.getTask(targetTaskId);
+
+    const links = source.links ?? [];
+    const exists = links.some((link) => link.type === type && link.targetTaskId === targetTaskId);
+    if (exists) {
+      return {
+        sourceTaskId,
+        targetTaskId,
+        type,
+        changed: false,
+        warning: `Link already exists: ${sourceTaskId} --${type}--> ${targetTaskId}`,
+      };
+    }
+
+    await this.taskStore.updateTask(sourceTaskId, {
+      links: [
+        ...links,
+        {
+          type,
+          targetTaskId,
+          createdAt: new Date().toISOString(),
+          createdBy: 'cli',
+        },
+      ],
+    });
+
+    return { sourceTaskId, targetTaskId, type, changed: true };
+  }
+
+  async removeTaskLink(
+    sourceTaskId: string,
+    targetTaskId: string,
+    type?: TaskLinkType
+  ): Promise<TaskLinkMutationResult> {
+    if (type !== undefined) {
+      this.assertValidTaskLinkType(type);
+    }
+    if (sourceTaskId === targetTaskId) {
+      throw new SelfTaskLinkError(sourceTaskId);
+    }
+
+    const source = await this.taskStore.getTask(sourceTaskId);
+    await this.taskStore.getTask(targetTaskId);
+
+    const links = source.links ?? [];
+    const retained = links.filter((link) => {
+      if (link.targetTaskId !== targetTaskId) return true;
+      return type !== undefined && link.type !== type;
+    });
+
+    if (retained.length === links.length) {
+      return {
+        sourceTaskId,
+        targetTaskId,
+        type,
+        changed: false,
+        warning: type
+          ? `No ${type} link exists from ${sourceTaskId} to ${targetTaskId}`
+          : `No links exist from ${sourceTaskId} to ${targetTaskId}`,
+      };
+    }
+
+    await this.taskStore.updateTask(sourceTaskId, {
+      links: retained.length > 0 ? retained : undefined,
+    });
+
+    return { sourceTaskId, targetTaskId, type, changed: true };
   }
 
   async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
@@ -467,12 +551,45 @@ export class PlaySpecCore {
         ...(definition.variables ?? {}),
       },
     }, variables);
-    const prompt = await this.templateRenderer.render(definition.template, variables, workflow.templateDir);
+    const prompt = this.appendLinkedTaskContext(
+      await this.templateRenderer.render(definition.template, variables, workflow.templateDir),
+      task
+    );
     if (!options.withEvolutionContext) {
       return prompt;
     }
     const context = await this.evolutionContextReader.collect(task);
     return `${prompt.trimEnd()}\n\n${this.evolutionContextReader.formatPromptSection(context)}\n`;
+  }
+
+  private appendLinkedTaskContext(prompt: string, task: TaskRecord): string {
+    const links = task.links ?? [];
+    if (links.length === 0) {
+      return prompt;
+    }
+
+    const sections: string[] = ['Linked task context:'];
+    const sectionMap: Array<[TaskLinkType, string]> = [
+      ['parent', 'Parents'],
+      ['after', 'After'],
+      ['related', 'Related'],
+    ];
+    for (const [type, title] of sectionMap) {
+      const targets = links
+        .filter((link) => link.type === type)
+        .map((link) => link.targetTaskId);
+      if (targets.length === 0) continue;
+      sections.push(`${title}:`);
+      sections.push(...targets.map((target) => `- ${target}`));
+    }
+
+    return `${prompt.trimEnd()}\n\n${sections.join('\n')}\n`;
+  }
+
+  private assertValidTaskLinkType(type: string): asserts type is TaskLinkType {
+    if (type !== 'parent' && type !== 'after' && type !== 'related') {
+      throw new InvalidTaskLinkTypeError(type);
+    }
   }
 
   private resolveNextPhaseId(
