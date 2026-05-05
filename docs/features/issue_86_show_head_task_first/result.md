@@ -4,6 +4,8 @@
 
 Implemented `playspec list-tasks` display ordering so an existing active HEAD task is printed first and remains visibly marked with `[HEAD]`. Non-HEAD task rows keep their original relative order. Empty or stale HEAD values keep the current non-crashing list behavior and do not mark any row.
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/88
+
 ## Files Changed
 
 - `src/cli/commands/list-tasks.ts`

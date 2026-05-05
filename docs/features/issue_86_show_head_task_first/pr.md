@@ -2,6 +2,8 @@
 
 Fixes #86
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/88
+
 ## Summary
 
 - Shows the active HEAD task first in `playspec list-tasks` when HEAD points to an existing active task.
