@@ -31,6 +31,20 @@ function runCli(
   });
 }
 
+function parseListTaskRows(output: string): Array<{ id: string; isHead: boolean; line: string }> {
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .map((line) => {
+      const match = line.match(/^(\S+)(?: \[HEAD\])?\s+\[[^\]]+\]\s+phase:/);
+      if (!match) {
+        return null;
+      }
+      return { id: match[1], isHead: line.includes('[HEAD]'), line };
+    })
+    .filter((row): row is { id: string; isHead: boolean; line: string } => row !== null);
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
@@ -102,6 +116,20 @@ async function createAdditionalActiveTask(title: string, workflow = 'multi-spec'
     workflow,
   });
   return taskId;
+}
+
+async function createMonoSpecTasks(titles: string[]): Promise<void> {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+  const store = new YamlTaskStore(workspace.dir);
+
+  for (const title of titles) {
+    await store.createTask({
+      id: slugify(title),
+      title,
+      workflow: 'mono-spec',
+    });
+  }
 }
 
 async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
@@ -1061,6 +1089,55 @@ phases:
     expect(listTasks.exitCode).toBe(0);
     expect(listTasks.stdout).toContain('Task ID');
     expect(listTasks.stdout).toContain('head_marker_task [HEAD]');
+  });
+
+  it('shows the HEAD task first in list-tasks while preserving other task order', async () => {
+    await createMonoSpecTasks(['Head First Alpha', 'Head First Bravo', 'Head First Charlie']);
+    await writeTextFile(getHeadPath(workspace.dir), '');
+
+    const naturalResult = await runCli(['list-tasks'], workspace.dir);
+    const naturalRows = parseListTaskRows(naturalResult.stdout);
+    expect(naturalResult.exitCode).toBe(0);
+    expect(naturalRows).toHaveLength(3);
+
+    const headTaskId = naturalRows[1].id;
+    await writeTextFile(getHeadPath(workspace.dir), `${headTaskId}\n`);
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+    const rows = parseListTaskRows(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(rows[0]).toMatchObject({ id: headTaskId, isHead: true });
+    expect(rows.slice(1).map((row) => row.id)).toEqual(
+      naturalRows.map((row) => row.id).filter((id) => id !== headTaskId)
+    );
+    expect(rows.filter((row) => row.isHead).map((row) => row.id)).toEqual([headTaskId]);
+  });
+
+  it('lists active tasks without a HEAD marker when HEAD is empty', async () => {
+    await createMonoSpecTasks(['No Head Alpha', 'No Head Bravo']);
+    await writeTextFile(getHeadPath(workspace.dir), '');
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+    const rows = parseListTaskRows(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(rows.map((row) => row.id)).toEqual(expect.arrayContaining(['no_head_alpha', 'no_head_bravo']));
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.isHead)).toBe(false);
+  });
+
+  it('does not crash or mark a task when HEAD points to a missing task', async () => {
+    await createMonoSpecTasks(['Missing Head Alpha', 'Missing Head Bravo']);
+    await writeTextFile(getHeadPath(workspace.dir), 'deleted_task\n');
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+    const rows = parseListTaskRows(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(rows.map((row) => row.id)).toEqual(expect.arrayContaining(['missing_head_alpha', 'missing_head_bravo']));
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.isHead)).toBe(false);
   });
 
   it('reports an actionable init hint when list-tasks runs before init', async () => {
