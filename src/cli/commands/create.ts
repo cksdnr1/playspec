@@ -3,14 +3,15 @@ import path from 'node:path';
 import * as readline from 'node:readline';
 import { tmpdir } from 'node:os';
 import { execa } from 'execa';
-import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError } from '#core/errors.js';
+import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, SelfTaskLinkError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { VariableResolver } from '#template/variable-resolver.js';
+import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import type { TaskContextRef, TaskTarget } from '#core/types.js';
+import type { TaskContextRef, TaskLink, TaskTarget } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
@@ -20,6 +21,8 @@ export interface CreateOptions {
   stdin?: boolean;
   /** Open $EDITOR to write the source problem. */
   edit?: boolean;
+  parent?: string;
+  after?: string;
 }
 
 interface SourceOptions {
@@ -60,12 +63,16 @@ export async function runCreate(
       stdin: options.stdin,
       edit: options.edit,
     });
-    await createNormalTask(workspaceRoot, workflow, title, source);
+    const links = await resolveCreateLinks(workspaceRoot, taskId, options);
+    await createNormalTask(workspaceRoot, workflow, title, source, links);
     return;
   }
 
   if (options.fromFile || options.stdin || options.edit) {
     throw new Error('--from-file, --stdin, and --edit are only supported for normal task creation, not --phase execution tasks.');
+  }
+  if (options.parent || options.after) {
+    throw new Error('--parent and --after are only supported for normal task creation, not --phase execution tasks.');
   }
 
   // Phase-execution flow
@@ -245,7 +252,8 @@ async function createNormalTask(
   workspaceRoot: string,
   workflow: string,
   title: string,
-  source: SourceResult | undefined
+  source: SourceResult | undefined,
+  links?: TaskLink[]
 ): Promise<void> {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspaceRoot);
@@ -259,16 +267,67 @@ async function createNormalTask(
     contextRefs: source
       ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
       : undefined,
+    links,
   });
   if (source) {
     await writeTextFile(path.join(workspaceRoot, source.relativePath), source.content);
   }
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
-  console.log(`Created task "${task.id}" (${title})`);
+  if (links && links.length > 0) {
+    console.log('Created task:');
+    console.log(`  ID: ${task.id}`);
+    console.log(`  Title: ${title}`);
+  } else {
+    console.log(`Created task "${task.id}" (${title})`);
+  }
   if (source) {
     console.log(`Source problem stored: ${source.relativePath}`);
   }
+  if (links && links.length > 0) {
+    console.log('Links:');
+    for (const link of links) {
+      console.log(`  ${link.type}: ${link.targetTaskId}`);
+    }
+  }
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function resolveCreateLinks(
+  workspaceRoot: string,
+  newTaskId: string,
+  options: CreateOptions
+): Promise<TaskLink[] | undefined> {
+  const requested = [
+    options.parent ? { type: 'parent' as const, input: options.parent } : undefined,
+    options.after ? { type: 'after' as const, input: options.after } : undefined,
+  ].filter((value): value is { type: 'parent' | 'after'; input: string } => value !== undefined);
+
+  if (requested.length === 0) {
+    return undefined;
+  }
+
+  const store = new YamlTaskStore(workspaceRoot);
+  const resolver = new TaskIdResolver(store);
+  const createdAt = new Date().toISOString();
+  const links: TaskLink[] = [];
+
+  for (const request of requested) {
+    const resolved = await resolver.resolve(request.input);
+    if (resolved.taskId === newTaskId) {
+      throw new SelfTaskLinkError(newTaskId);
+    }
+    if (resolved.matchedBy === 'prefix') {
+      console.log(`Resolved ${request.input} -> ${resolved.taskId}`);
+    }
+    links.push({
+      type: request.type,
+      targetTaskId: resolved.taskId,
+      createdAt,
+      createdBy: 'cli',
+    });
+  }
+
+  return links;
 }
 
 async function resolveSourceProblem(
