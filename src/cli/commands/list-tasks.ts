@@ -1,8 +1,17 @@
+import { access } from 'node:fs/promises';
+import { WorkspaceNotInitializedError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { getPlayspecRoot } from '#utils/paths.js';
 import { readHeadTaskId, resolveEffectivePhaseDisplay } from '../cli-utils.js';
 
 export async function runListTasks(workspaceRoot: string): Promise<void> {
+  try {
+    await access(getPlayspecRoot(workspaceRoot));
+  } catch {
+    throw new WorkspaceNotInitializedError(workspaceRoot);
+  }
+
   const store = new YamlTaskStore(workspaceRoot);
   const tasks = await store.listActiveTasks();
   const headTaskId = await readHeadTaskId(workspaceRoot);
