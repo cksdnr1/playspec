@@ -78,6 +78,10 @@ Evidence:
 - Full build and test suite pass.
 - Manual CLI smoke test covered real user-visible paths.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/85
+
 ## Remaining Risks
 
 - Suggested-next remains intentionally simple and direct-only. It is not a scheduler.
