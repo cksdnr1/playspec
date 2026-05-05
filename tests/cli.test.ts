@@ -1063,6 +1063,24 @@ phases:
     expect(listTasks.stdout).toContain('head_marker_task [HEAD]');
   });
 
+  it('reports an actionable init hint when list-tasks runs before init', async () => {
+    const result = await runCli(['list-tasks'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Workspace not initialized at:');
+    expect(result.stderr).toContain('playspec init --preset default');
+  });
+
+  it('reports no active tasks after init when list-tasks has an empty task list', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(['list-tasks'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('No active tasks.');
+  });
+
   it('sets HEAD with explicit use <taskId> and prints current-task summary', async () => {
     const firstTaskId = await createActiveTask('Use Explicit First Task');
     const secondTaskId = await createAdditionalActiveTask('Use Explicit Second Task', 'mono-spec');
