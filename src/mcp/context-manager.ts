@@ -8,6 +8,79 @@ import { z } from 'zod';
 import { ContextTierClient } from './context-tier-client.js';
 import type { TaskRecord, PhaseDefinition } from '#core/types.js';
 
+// Type definition for TIER_CONFIGS
+export interface ContextTierConfig {
+  maxTokens: number;
+  maxHistoryTurns: number;
+  includeSystemPrompt: boolean;
+  includePreviousConversations: boolean;
+  includeReasoning: boolean;
+  truncateMiddle: boolean;
+  truncateSize: number;
+}
+
+export const TIER_CONFIGS = {
+  compact: {
+    maxTokens: 2000,
+    maxHistoryTurns: 5,
+    includeSystemPrompt: false,
+    includePreviousConversations: false,
+    includeReasoning: false,
+    truncateMiddle: true,
+    truncateSize: 500,
+  },
+  strict: {
+    maxTokens: 8000,
+    maxHistoryTurns: 20,
+    includeSystemPrompt: true,
+    includePreviousConversations: true,
+    includeReasoning: false,
+    truncateMiddle: false,
+    truncateSize: 2000,
+  },
+  full: {
+    maxTokens: 32000,
+    maxHistoryTurns: 50,
+    includeSystemPrompt: true,
+    includePreviousConversations: true,
+    includeReasoning: true,
+    truncateMiddle: false,
+    truncateSize: 5000,
+  },
+} as const;
+
+export const DEFAULT_TIER = 'strict';
+
+/**
+ * Get tier description
+ */
+export function getTierDescription(tier: string): string {
+  const descriptions: Record<string, string> = {
+    compact: 'Minimal context for fast iteration',
+    strict: 'Standard context with safety checks',
+    full: 'Complete context with detailed history',
+  };
+  return descriptions[tier] || 'Unknown tier';
+}
+
+/**
+ * Create .meta.yaml sidecar for a file
+ */
+export function createMetaSidecar(filePath: string, tier: string, options: { includeMetadata?: boolean; version?: string } = {}): string {
+  const { includeMetadata = true, version = '1.0' } = options;
+  const metaPath = filePath + '.meta.yaml';
+  const meta = {
+    version,
+    contextTier: tier,
+    maxTokens: TIER_CONFIGS[tier].maxTokens,
+    createdAt: new Date().toISOString(),
+    ...(includeMetadata && { description: `Context tier metadata for ${filePath}`, tierDescription: getTierDescription(tier) }),
+  };
+  
+  // This is a stub - actual creation is done by CLI
+  return metaPath;
+}
+
 /**
  * Schema for context tier selection request
  */

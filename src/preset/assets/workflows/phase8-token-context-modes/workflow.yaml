@@ -1,0 +1,189 @@
+id: phase8-token-context-modes
+name: Phase 8 Token Context Modes
+description: Token and context modes implementation - compact/strict/full context tiers
+version: 1
+mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+    description: Feature folder name.
+  TARGET_BRANCH:
+    default: origin/main
+    description: Branch used during final refactor review.
+  SPEC_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/spec.md"
+    description: Technical spec document.
+  PLAN_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/plan.md"
+    description: Implementation plan document.
+  RESULT_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/result.md"
+    description: Implementation and test result document.
+  PR_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/pr.md"
+    description: PR preparation document.
+artifacts:
+  spec:
+    path: "{{SPEC_FILE}}"
+    kind: spec
+  plan:
+    path: "{{PLAN_FILE}}"
+    kind: plan
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
+  pr:
+    path: "{{PR_FILE}}"
+    kind: pr
+phaseOrder:
+  - tech_spec_draft
+  - tech_spec_validate
+  - tech_spec_patch
+  - implementation_plan_create
+  - implementation_plan_validate
+  - implementation_plan_patch
+  - implementation
+  - focused_tests
+  - safe_refactor
+  - pr_prepare
+phases:
+  tech_spec_draft:
+    title: "Context Tier Spec Draft"
+    stepNumber: "1"
+    stepTitle: "Context Tier Specification"
+    template: tech_spec_draft.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+  tech_spec_validate:
+    title: "Context Tier Spec Validation"
+    stepNumber: "2"
+    stepTitle: "Spec Validation"
+    template: tech_spec_validate.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: implementation_plan_create
+        needs_revision: tech_spec_patch
+  tech_spec_patch:
+    title: "Context Tier Spec Update"
+    stepNumber: "3"
+    stepTitle: "Spec Update"
+    template: tech_spec_patch.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+    next: tech_spec_validate
+  implementation_plan_create:
+    title: "Implementation Plan Create"
+    stepNumber: "4"
+    stepTitle: "Plan Creation"
+    template: implementation_plan_create.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+  implementation_plan_validate:
+    title: "Implementation Plan Validation"
+    stepNumber: "5"
+    stepTitle: "Plan Validation"
+    template: implementation_plan_validate.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: implementation_plan_patch
+        needs_revision: implementation_plan_patch
+  implementation_plan_patch:
+    title: "Implementation Plan Update"
+    stepNumber: "6"
+    stepTitle: "Plan Update"
+    template: implementation_plan_patch.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+    next: implementation_plan_validate
+  implementation:
+    title: "Implementation"
+    stepNumber: "7"
+    stepTitle: "Implementation"
+    template: implementation.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+  focused_tests:
+    title: "Tests"
+    stepNumber: "8"
+    stepTitle: "Testing"
+    template: focused_tests.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+  safe_refactor:
+    title: "Safe Refactor"
+    stepNumber: "9"
+    stepTitle: "Refactor"
+    template: safe_refactor.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TARGET_BRANCH
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE
+  pr_prepare:
+    title: "PR Preparation"
+    stepNumber: "10"
+    stepTitle: "PR Preparation"
+    template: pr_prepare.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TARGET_BRANCH
+      - SPEC_FILE
+      - PLAN_FILE
+      - RESULT_FILE
+      - PR_FILE

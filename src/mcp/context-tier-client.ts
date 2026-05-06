@@ -6,7 +6,7 @@
 
 import { readFile, writeFile, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ContextTierConfig, TIER_CONFIGS } from '#cli/context-tier.js';
+import { ContextTierConfig, TIER_CONFIGS, DEFAULT_TIER, getTierDescription, createMetaSidecar } from '#cli/context-tier.js';
 
 export interface ContextTierClient {
   updateTaskContextTier(tier: string, reason?: string): Promise<void>;
@@ -137,18 +137,18 @@ export class ContextTierClientImpl implements ContextTierClient {
       
       try {
         await writeFile(
-          filePath,
-          JSON.stringify(
-            {
-              contextTier: tier,
-              maxTokens: TIER_CONFIGS[tier].maxTokens,
-              tierDescription: this.getTierDescription(tier),
-              updatedAt: new Date().toISOString(),
-            },
-            null,
-            2
-          )
-        );
+        filePath,
+        JSON.stringify(
+          {
+            contextTier: tier,
+            maxTokens: TIER_CONFIGS[tier].maxTokens,
+            tierDescription: getTierDescription(tier),
+            updatedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        )
+      );
         updated.push({ file, tier });
       } catch {
         // File creation failed, continue with others

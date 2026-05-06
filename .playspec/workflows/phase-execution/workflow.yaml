@@ -1,0 +1,71 @@
+id: phase-execution
+name: Phase Execution
+description: Legacy execution workflow for a selected planning phase.
+version: 1
+mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+  PHASE_SPEC_FILE:
+    default: "docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_implementation_spec.md"
+  PHASE_HANDOFF_FILE:
+    default: "docs/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase{{PHASE_NUMBER}}_handoff.md"
+artifacts:
+  phaseSpec:
+    path: "{{PHASE_SPEC_FILE}}"
+    kind: spec
+  phaseHandoff:
+    path: "{{PHASE_HANDOFF_FILE}}"
+    kind: handoff
+phaseOrder:
+  - "1"
+  - "2"
+  - "3"
+  - "4"
+  - "5"
+phases:
+  "1":
+    title: "Phase 1 — Analysis"
+    template: phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
+  "2":
+    title: "Phase 2 — Implementation"
+    template: phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
+  "3":
+    title: "Phase 3 — Verification"
+    template: phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
+  "4":
+    title: "Phase 4 — Review"
+    template: phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE
+  "5":
+    title: "Phase 5 — Handoff"
+    template: phase_template.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - PHASE_NUMBER
+      - TASK_ID
+      - TASK_TITLE
+      - WORKFLOW_TYPE

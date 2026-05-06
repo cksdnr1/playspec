@@ -1,0 +1,154 @@
+id: total-plan
+name: Total Plan
+description: Built-in workflow for planning a larger feature across implementation phases.
+version: 1
+mode: linear
+variables:
+  FEATURE_SLUG:
+    required: true
+    description: Feature folder name.
+  TOTAL_SPEC_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_total_spec.md"
+    description: Total technical spec document.
+  PHASE_PLAN_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/{{FEATURE_SLUG}}_phase_plan.md"
+    description: Phase implementation plan document.
+  RESULT_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/result.md"
+    description: Final planning review result.
+artifacts:
+  totalSpec:
+    path: "{{TOTAL_SPEC_FILE}}"
+    kind: total-spec
+  phasePlan:
+    path: "{{PHASE_PLAN_FILE}}"
+    kind: phase-plan
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
+phaseOrder:
+  - total_spec_draft
+  - total_spec_validate
+  - total_spec_patch
+  - phase_plan_create
+  - phase_plan_validate
+  - phase_plan_patch
+  - final_review
+phases:
+  total_spec_draft:
+    title: "Total Technical Spec Draft"
+    stepNumber: "1"
+    stepTitle: "Total Technical Spec Draft"
+    template: total_spec_draft.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - CONTEXT_FILES
+      - CONTEXT_REFS_DETAIL
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{TOTAL_SPEC_FILE}}"
+  total_spec_validate:
+    title: "Total Technical Spec Validation"
+    stepNumber: "2"
+    stepTitle: "Total Technical Spec Validation"
+    template: total_spec_validate.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - CONTEXT_FILES
+      - CONTEXT_REFS_DETAIL
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{TOTAL_SPEC_FILE}}"
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: phase_plan_create
+        needs_revision: total_spec_patch
+  total_spec_patch:
+    title: "Total Technical Spec Patch"
+    stepNumber: "3"
+    stepTitle: "Total Technical Spec Patch"
+    template: total_spec_patch.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{TOTAL_SPEC_FILE}}"
+    next: total_spec_validate
+  phase_plan_create:
+    title: "Phase Implementation Plan Create"
+    stepNumber: "4"
+    stepTitle: "Phase Implementation Plan Create"
+    template: phase_plan_create.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - SOURCE_PROBLEM_FILE
+      - CONTEXT_FILES
+      - CONTEXT_REFS_DETAIL
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{PHASE_PLAN_FILE}}"
+  phase_plan_validate:
+    title: "Phase Implementation Plan Validation"
+    stepNumber: "5"
+    stepTitle: "Phase Implementation Plan Validation"
+    template: phase_plan_validate.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{PHASE_PLAN_FILE}}"
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: final_review
+        needs_revision: phase_plan_patch
+  phase_plan_patch:
+    title: "Phase Implementation Plan Patch"
+    stepNumber: "6"
+    stepTitle: "Phase Implementation Plan Patch"
+    template: phase_plan_patch.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{PHASE_PLAN_FILE}}"
+    next: phase_plan_validate
+  final_review:
+    title: "Final Planning Review"
+    stepNumber: "7"
+    stepTitle: "Final Planning Review"
+    template: final_review.md
+    requiredVariables:
+      - FEATURE_SLUG
+      - TASK_TITLE
+      - TOTAL_SPEC_FILE
+      - PHASE_PLAN_FILE
+      - RESULT_FILE
+    outputs:
+      - "{{RESULT_FILE}}"
+    next: null
