@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "contextTier": "compact",
+  "maxTokens": 2000,
+  "maxHistoryTurns": 5,
+  "includeSystemPrompt": false,
+  "includePreviousConversations": false,
+  "includeReasoning": false,
+  "truncateMiddle": true,
+  "truncateSize": 500,
+  "description": "Minimal context for fast iteration",
+  "tierDescription": "Compact context tier"
+}

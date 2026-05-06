@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "contextTier": "full",
+  "maxTokens": 32000,
+  "maxHistoryTurns": 50,
+  "includeSystemPrompt": true,
+  "includePreviousConversations": true,
+  "includeReasoning": true,
+  "truncateMiddle": false,
+  "truncateSize": 5000,
+  "description": "Complete context with detailed history",
+  "tierDescription": "Full context tier"
+}
