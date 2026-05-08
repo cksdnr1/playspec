@@ -28,7 +28,7 @@ export class WorkflowLoader {
         `Workflow id mismatch: requested "${workflow}" but ${resolvedLocation.workflowFile} declares "${definition.id}".`
       );
     }
-    await this.validateDefinition(definition, resolvedLocation.templateDir);
+    await this.validateWorkflowDefinition(definition, resolvedLocation.templateDir);
     return {
       id: definition.id,
       rootDir: resolvedLocation.rootDir,
@@ -42,7 +42,7 @@ export class WorkflowLoader {
     const workflowFile = `${rootDir}/workflow.yaml`;
     const content = await readTextFile(workflowFile);
     const definition = WorkflowDefinitionSchema.parse(parseYaml(content) as unknown);
-    await this.validateDefinition(definition, `${rootDir}/templates`);
+    await this.validateWorkflowDefinition(definition, `${rootDir}/templates`);
     return {
       id: definition.id,
       rootDir,
@@ -56,7 +56,7 @@ export class WorkflowLoader {
     return this.registry;
   }
 
-  private async validateDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {
+  async validateWorkflowDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {
     for (const phaseId of definition.phaseOrder) {
       const phase = definition.phases[phaseId];
       if (!phase) {
