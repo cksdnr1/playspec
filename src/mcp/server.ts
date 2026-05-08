@@ -35,9 +35,12 @@ const taskContext = {
   sessionId: z.string().optional(),
 };
 
+const promptContextMode = z.enum(['compact', 'strict', 'full']);
+
 const taskContextWithEvolution = {
   ...taskContext,
   withEvolutionContext: z.boolean().optional(),
+  contextMode: promptContextMode.optional(),
 };
 
 const riskLevel = z.enum(['low', 'medium', 'high']);
@@ -134,6 +137,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       try {
         const taskId = await resolveMcpTaskId(args, sessionStore);
         const prompt = await core.renderNextPrompt(taskId, {
+          contextMode: args.contextMode,
           withEvolutionContext: args.withEvolutionContext,
           evolutionContextSource: 'mcp',
         });
@@ -147,11 +151,13 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_render_phase_prompt',
     'Render a specific workflow phase prompt. Requires taskId or sessionId plus phaseId.',
-    { ...taskContext, phaseId: z.string() },
+    { ...taskContext, phaseId: z.string(), contextMode: promptContextMode.optional() },
     async (args) => {
       try {
         const taskId = await resolveMcpTaskId(args, sessionStore);
-        const prompt = await core.renderExplicitPhasePrompt(taskId, args.phaseId);
+        const prompt = await core.renderExplicitPhasePrompt(taskId, args.phaseId, {
+          contextMode: args.contextMode,
+        });
         return ok({ taskId, phaseId: args.phaseId, prompt });
       } catch (e) {
         return err(e);
@@ -167,6 +173,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       try {
         const taskId = await resolveMcpTaskId(args, sessionStore);
         const completionResult = await core.completePhase(taskId, {
+          contextMode: args.contextMode,
           withReview: args.withReview,
           result: args.result,
           withEvolutionContext: args.withEvolutionContext,

@@ -2,7 +2,7 @@ import path from 'node:path';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
-import { TaskNotActiveError } from '#core/errors.js';
+import { PlaySpecError, TaskNotActiveError } from '#core/errors.js';
 import { printDesyncResult } from './desync-check.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
@@ -13,7 +13,13 @@ import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { resolveOutputFilePath } from '../cli-utils.js';
-import type { TaskRecord } from '#core/types.js';
+import { writePromptArtifactMetadata } from '#core/prompt-artifact-metadata.js';
+import {
+  DEFAULT_PROMPT_CONTEXT_MODE,
+  type PromptArtifactMetadata,
+  type PromptContextMode,
+  type TaskRecord,
+} from '#core/types.js';
 
 export interface PromptRenderResult {
   prompt: string;
@@ -49,6 +55,8 @@ export interface PromptOutputOptions {
   quiet?: boolean;
   write?: boolean;
   outFile?: string;
+  contextMode?: PromptContextMode;
+  generationSource?: PromptArtifactMetadata['generationSource'];
 }
 
 // Shared helper used by both `prompt` and post-completion rendering in `complete`.
@@ -59,6 +67,8 @@ export async function outputPrompt(
   opts: PromptOutputOptions,
 ): Promise<void> {
   const { noCopy = false, printOnly = false, write = false, outFile } = opts;
+  const contextMode = opts.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
+  const generationSource = opts.generationSource ?? 'prompt';
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const phaseResolver = new PhaseResolver();
@@ -76,6 +86,14 @@ export async function outputPrompt(
   if (outFile) {
     wroteOutputPath = await resolveOutputFilePath(workspaceRoot, outFile);
     await writeTextFile(wroteOutputPath, prompt);
+    await writePromptArtifactMetadata({
+      workspaceRoot,
+      promptPath: wroteOutputPath,
+      task,
+      phaseId,
+      contextMode,
+      generationSource,
+    });
   }
 
   if (printOnly) {
@@ -84,7 +102,7 @@ export async function outputPrompt(
       process.stderr.write(`Prompt written: ${path.relative(workspaceRoot, wroteOutputPath)}\n`);
     }
     if (write) {
-      await writePromptSnapshot(workspaceRoot, task.id, prompt);
+      await writePromptSnapshot(workspaceRoot, task, phaseId, prompt, contextMode, generationSource);
     }
     return;
   }
@@ -119,7 +137,7 @@ export async function outputPrompt(
       }
     } else {
       if (!wroteOutputPath) {
-        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task.id, prompt);
+        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task, phaseId, prompt, contextMode, generationSource);
       }
       const fallbackRelPath = path.relative(workspaceRoot, wroteOutputPath);
       if (result.attempted) {
@@ -131,25 +149,68 @@ export async function outputPrompt(
   }
 
   if (write) {
-    const snapshotPath = await writePromptSnapshot(workspaceRoot, task.id, prompt);
+    const snapshotPath = await writePromptSnapshot(workspaceRoot, task, phaseId, prompt, contextMode, generationSource);
     if (noCopy) {
       console.log(`Prompt snapshot written: ${path.relative(workspaceRoot, snapshotPath)}`);
     }
   }
 }
 
-async function writePromptSnapshot(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
+async function writePromptSnapshot(
+  workspaceRoot: string,
+  task: TaskRecord,
+  phaseId: string | undefined,
+  prompt: string,
+  contextMode: PromptContextMode,
+  generationSource: PromptArtifactMetadata['generationSource']
+): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `${timestamp}.md`);
+  const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
+  await writePromptArtifactMetadata({
+    workspaceRoot,
+    promptPath,
+    task,
+    phaseId,
+    contextMode,
+    generationSource,
+  });
   return promptPath;
 }
 
-async function writeFallbackPrompt(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
+async function writeFallbackPrompt(
+  workspaceRoot: string,
+  task: TaskRecord,
+  phaseId: string | undefined,
+  prompt: string,
+  contextMode: PromptContextMode,
+  generationSource: PromptArtifactMetadata['generationSource']
+): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `next-prompt-${timestamp}.md`);
+  const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `next-prompt-${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
+  await writePromptArtifactMetadata({
+    workspaceRoot,
+    promptPath,
+    task,
+    phaseId,
+    contextMode,
+    generationSource,
+  });
   return promptPath;
+}
+
+export function parsePromptContextMode(value: string | undefined): PromptContextMode {
+  if (value === undefined) {
+    return DEFAULT_PROMPT_CONTEXT_MODE;
+  }
+  if (value === 'compact' || value === 'strict' || value === 'full') {
+    return value;
+  }
+  throw new PlaySpecError(
+    `Invalid context mode: ${value}`,
+    'Use one of: compact, strict, full.'
+  );
 }
 
 export async function runPrompt(
@@ -161,6 +222,7 @@ export async function runPrompt(
   write?: boolean,
   outFile?: string,
   withEvolutionContext?: boolean,
+  contextModeOption?: string,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -175,6 +237,7 @@ export async function runPrompt(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
+  const contextMode = parsePromptContextMode(contextModeOption);
   const desync = await core.checkTaskDesync(task.id);
   if (desync.severity === 'high') {
     console.log('High desync warning: workspace reality differs from the last safe point.');
@@ -183,8 +246,17 @@ export async function runPrompt(
   }
 
   const prompt = await core.renderNextPrompt(task.id, {
+    contextMode,
     withEvolutionContext,
     evolutionContextSource: 'prompt',
   });
-  await outputPrompt(workspaceRoot, task, prompt, { noCopy, printOnly, quiet, write, outFile });
+  await outputPrompt(workspaceRoot, task, prompt, {
+    noCopy,
+    printOnly,
+    quiet,
+    write,
+    outFile,
+    contextMode,
+    generationSource: 'prompt',
+  });
 }

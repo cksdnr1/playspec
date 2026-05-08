@@ -149,6 +149,40 @@ phases:
   await writeTextFile(path.join(root, id, 'templates', 'start.md'), '# {{TASK_TITLE}}\n');
 }
 
+async function createContextModeTask(title: string): Promise<{ taskId: string; contextPath: string }> {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+  const workflowRoot = path.join(workspace.dir, '.playspec', 'workflows', 'context-mode-spec');
+  await writeTextFile(
+    path.join(workflowRoot, 'workflow.yaml'),
+    `id: context-mode-spec
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+    requiredVariables:
+      - CONTEXT_REF_CONTENTS
+`
+  );
+  await writeTextFile(path.join(workflowRoot, 'templates', 'start.md'), '# Context\n{{CONTEXT_REF_CONTENTS}}\n');
+
+  const taskId = slugify(title);
+  const contextPath = `docs/${taskId}/context.md`;
+  await writeTextFile(path.join(workspace.dir, contextPath), `Summary line.\n${'x'.repeat(260)}SECRET_DETAIL\n`);
+  const store = new YamlTaskStore(workspace.dir);
+  await store.createTask({
+    id: taskId,
+    title,
+    workflow: 'context-mode-spec',
+    contextRefs: [{ path: contextPath, role: 'planning-context', source: 'manual' }],
+  });
+  await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+  return { taskId, contextPath };
+}
+
 async function initGitRepo(): Promise<void> {
   await execa('git', ['init'], { cwd: workspace.dir });
   await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
@@ -1386,6 +1420,79 @@ phases:
     expect(result.stderr).toContain(`Context ref file not found: ${missingPath}`);
   });
 
+  it('renders compact context mode without context bodies and strict/full with bodies', async () => {
+    await createContextModeTask('Context Mode Render Task');
+
+    const compact = await runCli(['prompt', '--print-only', '--quiet', '--context-mode', 'compact'], workspace.dir);
+    const strict = await runCli(['prompt', '--print-only', '--quiet', '--context-mode', 'strict'], workspace.dir);
+    const full = await runCli(['prompt', '--print-only', '--quiet', '--context-mode', 'full'], workspace.dir);
+
+    expect(compact.exitCode).toBe(0);
+    expect(compact.stdout).toContain('body: (omitted in compact context mode)');
+    expect(compact.stdout).not.toContain('SECRET_DETAIL');
+    expect(strict.exitCode).toBe(0);
+    expect(strict.stdout).toContain('```text');
+    expect(strict.stdout).toContain('SECRET_DETAIL');
+    expect(full.exitCode).toBe(0);
+    expect(full.stdout).toContain('SECRET_DETAIL');
+  });
+
+  it('rejects missing explicit context refs in every context mode', async () => {
+    const { taskId } = await createContextModeTask('Context Mode Missing Ref Task');
+    const missingPath = 'docs/context-mode/missing.md';
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      contextRefs: [{ path: missingPath, role: 'planning-context', source: 'manual' }],
+    });
+
+    for (const mode of ['compact', 'strict', 'full']) {
+      const result = await runCli(['prompt', '--print-only', '--quiet', '--context-mode', mode], workspace.dir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(`Context ref file not found: ${missingPath}`);
+    }
+  });
+
+  it('writes prompt sidecar metadata with compact omitted context', async () => {
+    const { taskId, contextPath } = await createContextModeTask('Prompt Metadata Context Task');
+    const outputPath = 'tmp/context-prompt.md';
+
+    const result = await runCli([
+      'prompt',
+      '--out',
+      outputPath,
+      '--context-mode',
+      'compact',
+    ], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const metadata = parseYaml(await readTextFile(path.join(workspace.dir, `${outputPath}.meta.yaml`))) as Record<string, unknown>;
+
+    expect(result.exitCode).toBe(0);
+    expect(metadata['promptArtifactPath']).toBe(outputPath);
+    expect(metadata['contextMode']).toBe('compact');
+    expect(metadata['generationSource']).toBe('prompt');
+    expect(metadata['taskId']).toBe(taskId);
+    expect(metadata['phaseId']).toBe('start');
+    expect(metadata['omittedContext']).toEqual([
+      {
+        path: contextPath,
+        role: 'planning-context',
+        source: 'manual',
+        reason: 'body omitted in compact context mode',
+      },
+    ]);
+  });
+
+  it('rejects invalid context modes clearly', async () => {
+    await createContextModeTask('Prompt Invalid Context Mode Task');
+
+    const result = await runCli(['prompt', '--print-only', '--quiet', '--context-mode', 'tiny'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid context mode: tiny');
+    expect(result.stderr).toContain('Use one of: compact, strict, full.');
+  });
+
   it('lists relevant existing files for HEAD with specs --path-only', async () => {
     const taskId = await createActiveTask('Specs Path Only Task', 'mono-spec');
     const specPath = `docs/features/${taskId}/spec.md`;
@@ -2508,6 +2615,28 @@ phases:
     expect(promptFiles.some((f) => f.startsWith('next-prompt-'))).toBe(true);
   });
 
+  it('prompt clipboard fallback writes default strict sidecar metadata', async () => {
+    const taskId = await createActiveTask('Prompt Copy Metadata Task');
+
+    const result = await runCli(['prompt'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const promptFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts')
+    );
+    const sidecar = promptFiles.find((f) => f.startsWith('next-prompt-') && f.endsWith('.md.meta.yaml'));
+    const metadata = parseYaml(await readTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts', sidecar ?? '')
+    )) as Record<string, unknown>;
+
+    expect(result.exitCode).toBe(0);
+    expect(sidecar).toBeTruthy();
+    expect(metadata['contextMode']).toBe('strict');
+    expect(metadata['generationSource']).toBe('prompt');
+    expect(metadata['taskId']).toBe(taskId);
+    expect(metadata['omittedContext']).toEqual([]);
+  });
+
   it('prompt --no-copy prints prompt body without clipboard', async () => {
     await createActiveTask('Prompt No Copy Task');
 
@@ -2547,6 +2676,24 @@ phases:
     expect(result.stdout).toContain('Resolved phase:');
     expect(written).toContain('Global Rules');
     expect(result.stdout).not.toContain('Global Rules');
+  });
+
+  it('next copy fallback writes sidecar metadata with next generation source', async () => {
+    const taskId = await createActiveTask('Next Copy Metadata Task');
+
+    const result = await runCli(['next', '--copy', '--context-mode', 'compact'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const promptDir = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts');
+    const promptFiles = await readdir(promptDir);
+    const sidecar = promptFiles.find((f) => f.startsWith('next-prompt-') && f.endsWith('.md.meta.yaml'));
+    const metadata = parseYaml(await readTextFile(path.join(promptDir, sidecar ?? ''))) as Record<string, unknown>;
+
+    expect(result.exitCode).toBe(0);
+    expect(sidecar).toBeTruthy();
+    expect(metadata['contextMode']).toBe('compact');
+    expect(metadata['generationSource']).toBe('next');
+    expect(metadata['taskId']).toBe(taskId);
   });
 
   it('next shows deprecation warning on stderr', async () => {
@@ -2595,6 +2742,38 @@ phases:
     expect(result.stdout).toContain('Resolved phase:');
     expect(result.stdout).toContain('Clipboard unavailable. Prompt written to:');
     expect(task.currentPhase).toBe('2');
+  });
+
+  it('complete writes prompt snapshot and next prompt sidecar metadata', async () => {
+    const taskId = await createActiveTask('Complete Metadata Task');
+    await initGitRepo();
+
+    const result = await runCli(['complete', '--context-mode', 'full'], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const snapshotMetaPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      taskId,
+      'snapshots',
+      'phase1_prompt.md.meta.yaml'
+    );
+    const snapshotMeta = parseYaml(await readTextFile(snapshotMetaPath)) as Record<string, unknown>;
+    const promptDir = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts');
+    const promptFiles = await readdir(promptDir);
+    const nextPromptMetaFile = promptFiles.find((f) => f.startsWith('next-prompt-') && f.endsWith('.md.meta.yaml'));
+    const nextPromptMeta = parseYaml(await readTextFile(path.join(promptDir, nextPromptMetaFile ?? ''))) as Record<string, unknown>;
+
+    expect(result.exitCode).toBe(0);
+    expect(snapshotMeta['contextMode']).toBe('full');
+    expect(snapshotMeta['generationSource']).toBe('complete');
+    expect(snapshotMeta['phaseId']).toBe('1');
+    expect(nextPromptMetaFile).toBeTruthy();
+    expect(nextPromptMeta['contextMode']).toBe('full');
+    expect(nextPromptMeta['generationSource']).toBe('complete');
+    expect(nextPromptMeta['phaseId']).toBe('2');
   });
 
   it('complete --no-copy renders next prompt body after completion without clipboard', async () => {

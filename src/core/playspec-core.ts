@@ -32,7 +32,9 @@ import { HarnessRecordSchema } from '#core/schemas.js';
 import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
+import { writePromptArtifactMetadata } from '#core/prompt-artifact-metadata.js';
 import { EvolutionContextReader } from '#evolution/context-reader.js';
+import { DEFAULT_PROMPT_CONTEXT_MODE } from '#core/types.js';
 import type {
   PhaseDefinition,
   TaskRecord,
@@ -48,6 +50,7 @@ import type {
   RollbackSafePoint,
   SetCurrentPhaseResult,
   PromptRenderOptions,
+  PromptContextMode,
   CompletePhaseOptions,
   HarnessAttemptResult,
   HarnessRecord,
@@ -58,6 +61,20 @@ import { getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
+const CONTEXT_SUMMARY_LIMIT = 240;
+
+function summarizeContextBody(body: string): string {
+  const normalized = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(' ')
+    .replace(/\s+/g, ' ');
+  if (normalized.length <= CONTEXT_SUMMARY_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, CONTEXT_SUMMARY_LIMIT - 3)}...`;
+}
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -203,12 +220,16 @@ export class PlaySpecCore {
     return { sourceTaskId, targetTaskId, type, changed: true };
   }
 
-  async renderExplicitPhasePrompt(taskId: string, phaseId: string): Promise<string> {
+  async renderExplicitPhasePrompt(
+    taskId: string,
+    phaseId: string,
+    options: PromptRenderOptions = {}
+  ): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
     await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.resolve(task.workflow);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow.definition);
-    return this.renderResolvedPhase(task, workflow, phaseId, definition);
+    return this.renderResolvedPhase(task, workflow, phaseId, definition, options);
   }
 
   async checkTaskDesync(taskId: string): Promise<DesyncCheckResult> {
@@ -253,14 +274,17 @@ export class PlaySpecCore {
     );
 
     // Render prompt snapshot only after routing validation passes
-    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
+    const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition, {
+      contextMode: options.contextMode,
+    });
 
     return withWriteLock(taskRoot, async () => {
       const snapshotFiles = await this.writeSnapshots(
         task,
         phaseId,
         promptSnapshot,
-        'completion'
+        'completion',
+        options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE
       );
       const evidenceFiles = await this.writeEvidence(task, phaseId, '');
       const reviewFile = options.withReview
@@ -543,7 +567,12 @@ export class PlaySpecCore {
     definition: PhaseDefinition,
     options: PromptRenderOptions = {}
   ): Promise<string> {
-    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
+    const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
+    const contextEntries = await this.resolveContextEntries(task, contextMode);
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition, {
+      contextMode,
+      contextEntries,
+    });
     this.assertRequiredVariables(workflow.id, phaseId, {
       ...definition,
       variables: {
@@ -723,11 +752,29 @@ export class PlaySpecCore {
     }
   }
 
+  private async resolveContextEntries(
+    task: TaskRecord,
+    contextMode: PromptContextMode
+  ): Promise<Array<{ ref: TaskContextRef; body?: string; summary?: string }>> {
+    if (!task.contextRefs || task.contextRefs.length === 0) {
+      return [];
+    }
+
+    return Promise.all(task.contextRefs.map(async (ref) => {
+      const body = await readTextFile(path.resolve(this.workspaceRoot, ref.path));
+      if (contextMode === 'compact') {
+        return { ref, summary: summarizeContextBody(body) };
+      }
+      return { ref, body };
+    }));
+  }
+
   private async writeSnapshots(
     task: TaskRecord,
     phaseId: string,
     prompt: string,
-    mode: 'completion' | 'manual'
+    mode: 'completion' | 'manual',
+    contextMode: PromptContextMode = DEFAULT_PROMPT_CONTEXT_MODE
   ): Promise<string[]> {
     const taskSnapshotFile =
       mode === 'completion'
@@ -748,6 +795,14 @@ export class PlaySpecCore {
       path.join(this.getAbsoluteTaskRoot(task), promptSnapshotFile),
       prompt
     );
+    await writePromptArtifactMetadata({
+      workspaceRoot: this.workspaceRoot,
+      promptPath: path.join(this.getAbsoluteTaskRoot(task), promptSnapshotFile),
+      task,
+      phaseId,
+      contextMode,
+      generationSource: 'complete',
+    });
 
     return [taskSnapshotFile, promptSnapshotFile];
   }

@@ -232,11 +232,34 @@ export interface SnapshotResult {
 }
 
 export interface PromptRenderOptions {
+  contextMode?: PromptContextMode;
   withEvolutionContext?: boolean;
   evolutionContextSource?: 'prompt' | 'next' | 'complete' | 'mcp';
 }
 
+export type PromptContextMode = 'compact' | 'strict' | 'full';
+
+export const DEFAULT_PROMPT_CONTEXT_MODE: PromptContextMode = 'strict';
+
+export interface PromptOmittedContextEntry {
+  path: string;
+  reason: string;
+  role?: string;
+  source?: string;
+}
+
+export interface PromptArtifactMetadata {
+  promptArtifactPath: string;
+  contextMode: PromptContextMode;
+  generationSource: 'prompt' | 'next' | 'complete';
+  taskId: TaskId;
+  phaseId?: PhaseId;
+  generatedAt: string;
+  omittedContext: PromptOmittedContextEntry[];
+}
+
 export interface CompletePhaseOptions {
+  contextMode?: PromptContextMode;
   withReview?: boolean;
   result?: string;
   withEvolutionContext?: boolean;

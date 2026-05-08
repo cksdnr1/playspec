@@ -3,7 +3,14 @@ import {
   CircularVariableDefaultError,
   UnknownVariableDefaultError,
 } from '#core/errors.js';
-import type { PhaseDefinition, TaskRecord, VariableDeclaration, WorkflowDefinition } from '#core/types.js';
+import type {
+  PhaseDefinition,
+  PromptContextMode,
+  TaskContextRef,
+  TaskRecord,
+  VariableDeclaration,
+  WorkflowDefinition,
+} from '#core/types.js';
 
 export interface ResolvedVariables {
   FEATURE_SLUG: string;
@@ -20,6 +27,7 @@ export interface ResolvedVariables {
   SOURCE_PROBLEM_FILE: string;
   CONTEXT_FILES: string;
   CONTEXT_REFS_DETAIL: string;
+  CONTEXT_REF_CONTENTS: string;
   SPEC_FILE: string;
   PLAN_FILE: string;
   RESULT_FILE: string;
@@ -40,7 +48,8 @@ export class VariableResolver {
     task: TaskRecord,
     phaseId: string,
     workflow?: WorkflowDefinition,
-    definition?: PhaseDefinition
+    definition?: PhaseDefinition,
+    options: VariableResolveOptions = {}
   ): ResolvedVariables {
     const featureSlug =
       task.variables['FEATURE_SLUG'] ?? slugify(task.title);
@@ -51,7 +60,7 @@ export class VariableResolver {
     const phaseNumber = stepNumber;
 
     const projectDocRoot = task.paths.projectDocRoot;
-    const contextVariables = resolveContextVariables(task);
+    const contextVariables = resolveContextVariables(task, options);
 
     const engineVariables: ResolvedVariables = {
       FEATURE_SLUG: featureSlug,
@@ -68,6 +77,7 @@ export class VariableResolver {
       SOURCE_PROBLEM_FILE: contextVariables.SOURCE_PROBLEM_FILE,
       CONTEXT_FILES: contextVariables.CONTEXT_FILES,
       CONTEXT_REFS_DETAIL: contextVariables.CONTEXT_REFS_DETAIL,
+      CONTEXT_REF_CONTENTS: contextVariables.CONTEXT_REF_CONTENTS,
       SPEC_FILE: '',
       PLAN_FILE: '',
       RESULT_FILE: '',
@@ -100,6 +110,17 @@ export class VariableResolver {
       ...task.variables,
     };
   }
+}
+
+export interface VariableResolveOptions {
+  contextMode?: PromptContextMode;
+  contextEntries?: ResolvedContextEntry[];
+}
+
+export interface ResolvedContextEntry {
+  ref: TaskContextRef;
+  body?: string;
+  summary?: string;
 }
 
 const DEFAULT_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
@@ -176,9 +197,12 @@ function renderDefault(
   });
 }
 
-function resolveContextVariables(task: TaskRecord): Pick<
+function resolveContextVariables(
+  task: TaskRecord,
+  options: VariableResolveOptions
+): Pick<
   ResolvedVariables,
-  'SOURCE_PROBLEM_FILE' | 'CONTEXT_FILES' | 'CONTEXT_REFS_DETAIL'
+  'SOURCE_PROBLEM_FILE' | 'CONTEXT_FILES' | 'CONTEXT_REFS_DETAIL' | 'CONTEXT_REF_CONTENTS'
 > {
   const contextRefs = task.contextRefs ?? [];
   const contextFiles = contextRefs.length > 0
@@ -189,12 +213,14 @@ function resolveContextVariables(task: TaskRecord): Pick<
         .map((ref) => `- \`${ref.path}\` (role: ${ref.role}, source: ${ref.source})`)
         .join('\n')
     : '(none)';
+  const contextRefContents = resolveContextRefContents(options.contextMode ?? 'strict', options.contextEntries ?? []);
 
   if (contextRefs.length === 0) {
     return {
       SOURCE_PROBLEM_FILE: task.variables['SOURCE_PROBLEM_FILE'] ?? '(not provided)',
       CONTEXT_FILES: contextFiles,
       CONTEXT_REFS_DETAIL: contextRefsDetail,
+      CONTEXT_REF_CONTENTS: contextRefContents,
     };
   }
 
@@ -209,5 +235,39 @@ function resolveContextVariables(task: TaskRecord): Pick<
     SOURCE_PROBLEM_FILE: sourceProblemFile,
     CONTEXT_FILES: contextFiles,
     CONTEXT_REFS_DETAIL: contextRefsDetail,
+    CONTEXT_REF_CONTENTS: contextRefContents,
   };
+}
+
+function resolveContextRefContents(
+  contextMode: PromptContextMode,
+  contextEntries: ResolvedContextEntry[]
+): string {
+  if (contextEntries.length === 0) {
+    return '(none)';
+  }
+
+  return contextEntries
+    .map((entry) => {
+      const header = [
+        `### \`${entry.ref.path}\``,
+        `role: ${entry.ref.role}`,
+        `source: ${entry.ref.source}`,
+      ];
+      if (contextMode === 'compact') {
+        return [
+          ...header,
+          entry.summary ? `summary: ${entry.summary}` : 'summary: (not available)',
+          'body: (omitted in compact context mode)',
+        ].join('\n');
+      }
+      return [
+        ...header,
+        '',
+        '```text',
+        entry.body ?? '',
+        '```',
+      ].join('\n');
+    })
+    .join('\n\n');
 }

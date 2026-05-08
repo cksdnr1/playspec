@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { access, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -41,6 +42,39 @@ async function initWorkspaceWithTask(title: string, workflow = 'multi-spec') {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspace.dir);
   await store.createTask({ id: taskId, title, workflow });
+  await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+  return { taskId, store };
+}
+
+async function initWorkspaceWithContextModeTask(title: string) {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+  const workflowRoot = path.join(workspace.dir, '.playspec', 'workflows', 'context-mode-spec');
+  await writeTextFile(
+    path.join(workflowRoot, 'workflow.yaml'),
+    `id: context-mode-spec
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+    requiredVariables:
+      - CONTEXT_REF_CONTENTS
+`
+  );
+  await writeTextFile(path.join(workflowRoot, 'templates', 'start.md'), '# Context\n{{CONTEXT_REF_CONTENTS}}\n');
+  const taskId = slugify(title);
+  const contextPath = `docs/${taskId}/context.md`;
+  await writeTextFile(path.join(workspace.dir, contextPath), `Summary line.\n${'x'.repeat(260)}MCP_SECRET_DETAIL\n`);
+  const store = new YamlTaskStore(workspace.dir);
+  await store.createTask({
+    id: taskId,
+    title,
+    workflow: 'context-mode-spec',
+    contextRefs: [{ path: contextPath, role: 'planning-context', source: 'manual' }],
+  });
   await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
   return { taskId, store };
 }
@@ -320,6 +354,9 @@ describe('buildMcpServer', () => {
       expect(Object.keys(renderCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
       expect(Object.keys(completeCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
       expect(Object.keys(phaseCall?.[2] as Record<string, unknown>)).not.toContain('withEvolutionContext');
+      expect(Object.keys(renderCall?.[2] as Record<string, unknown>)).toContain('contextMode');
+      expect(Object.keys(completeCall?.[2] as Record<string, unknown>)).toContain('contextMode');
+      expect(Object.keys(phaseCall?.[2] as Record<string, unknown>)).toContain('contextMode');
     } finally {
       toolSpy.mockRestore();
     }
@@ -364,6 +401,42 @@ describe('MCP render matches Core render', () => {
     expect(prompt).toContain('## Evolution Context');
     expect(prompt).toContain('proposal_mcp_visible');
     expect(prompt).not.toContain('MCP should not embed this summary.');
+  });
+
+  it('MCP render prompt honors compact/full context modes without writing sidecars', async () => {
+    const { taskId } = await initWorkspaceWithContextModeTask('MCP Context Mode Render');
+    const handler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const compactResult = await handler({ taskId, contextMode: 'compact' });
+    const fullResult = await handler({ taskId, contextMode: 'full' });
+    const compactBody = parseToolJson(compactResult) as { prompt: string };
+    const fullBody = parseToolJson(fullResult) as { prompt: string };
+
+    expect(compactResult.isError).toBeUndefined();
+    expect(compactBody.prompt).toContain('body: (omitted in compact context mode)');
+    expect(compactBody.prompt).not.toContain('MCP_SECRET_DETAIL');
+    expect(fullResult.isError).toBeUndefined();
+    expect(fullBody.prompt).toContain('MCP_SECRET_DETAIL');
+
+    await expect(
+      access(path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        taskId,
+        'prompts'
+      ))
+    ).resolves.not.toThrow();
+    const promptFiles = await readdir(path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      taskId,
+      'prompts'
+    ));
+    expect(promptFiles.some((file) => file.endsWith('.meta.yaml'))).toBe(false);
   });
 });
 

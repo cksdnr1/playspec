@@ -10,7 +10,9 @@ import { formatContextHeader } from '../context-header.js';
 import { copyToClipboard } from '#utils/clipboard.js';
 import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 import { resolveOutputFilePath } from '../cli-utils.js';
-import { renderPromptWithContext } from './prompt.js';
+import { writePromptArtifactMetadata } from '#core/prompt-artifact-metadata.js';
+import type { PromptContextMode, TaskRecord } from '#core/types.js';
+import { parsePromptContextMode, renderPromptWithContext } from './prompt.js';
 
 export async function runNext(
   workspaceRoot: string,
@@ -20,6 +22,7 @@ export async function runNext(
   copy?: boolean,
   outFile?: string,
   withEvolutionContext?: boolean,
+  contextModeOption?: string,
 ): Promise<void> {
   process.stderr.write('Warning: `playspec next` is deprecated. Use `playspec prompt` instead.\n');
 
@@ -36,6 +39,7 @@ export async function runNext(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
+  const contextMode = parsePromptContextMode(contextModeOption);
   const desync = await core.checkTaskDesync(task.id);
   if (desync.severity === 'high') {
     console.log('High desync warning: workspace reality differs from the last safe point.');
@@ -44,6 +48,7 @@ export async function runNext(
   }
 
   const prompt = await core.renderNextPrompt(task.id, {
+    contextMode,
     withEvolutionContext,
     evolutionContextSource: 'next',
   });
@@ -57,6 +62,14 @@ export async function runNext(
   if (outFile) {
     wroteOutputPath = await resolveOutputFilePath(workspaceRoot, outFile);
     await writeTextFile(wroteOutputPath, prompt);
+    await writePromptArtifactMetadata({
+      workspaceRoot,
+      promptPath: wroteOutputPath,
+      task,
+      phaseId: display.id,
+      contextMode,
+      generationSource: 'next',
+    });
   }
 
   console.log(phaseLine);
@@ -70,7 +83,7 @@ export async function runNext(
       }
     } else {
       if (!wroteOutputPath) {
-        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task.id, prompt);
+        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task, display.id, prompt, contextMode);
       }
       const fallbackRelPath = path.relative(workspaceRoot, wroteOutputPath);
       if (result.attempted) {
@@ -106,15 +119,37 @@ export async function runNext(
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `${timestamp}.md`);
     await writeTextFile(promptPath, prompt);
+    await writePromptArtifactMetadata({
+      workspaceRoot,
+      promptPath,
+      task,
+      phaseId: display.id,
+      contextMode,
+      generationSource: 'next',
+    });
     if (statusOnly) {
       console.log(`Prompt snapshot written: ${path.relative(workspaceRoot, promptPath)}`);
     }
   }
 }
 
-async function writeFallbackPrompt(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
+async function writeFallbackPrompt(
+  workspaceRoot: string,
+  task: TaskRecord,
+  phaseId: string | undefined,
+  prompt: string,
+  contextMode: PromptContextMode
+): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `next-prompt-${timestamp}.md`);
+  const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `next-prompt-${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
+  await writePromptArtifactMetadata({
+    workspaceRoot,
+    promptPath,
+    task,
+    phaseId,
+    contextMode,
+    generationSource: 'next',
+  });
   return promptPath;
 }
