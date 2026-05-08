@@ -9,11 +9,16 @@ import { getTaskRoot } from '#utils/paths.js';
 import { formatContextHeader } from '../context-header.js';
 import { copyToClipboard } from '#utils/clipboard.js';
 import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
+import {
+  DEFAULT_PROMPT_CONTEXT_MODE,
+  normalizePromptContextMode,
+  writePromptArtifactMetadata,
+} from '#core/prompt-metadata.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { formatGateRoutes, formatNextRoute, gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { resolveOutputFilePath } from '../cli-utils.js';
-import type { TaskRecord } from '#core/types.js';
+import type { PromptContextMode, PromptGenerationSource, TaskRecord } from '#core/types.js';
 
 export interface PromptRenderResult {
   prompt: string;
@@ -49,6 +54,8 @@ export interface PromptOutputOptions {
   quiet?: boolean;
   write?: boolean;
   outFile?: string;
+  contextMode?: PromptContextMode;
+  generationSource?: PromptGenerationSource;
 }
 
 // Shared helper used by both `prompt` and post-completion rendering in `complete`.
@@ -58,7 +65,14 @@ export async function outputPrompt(
   prompt: string,
   opts: PromptOutputOptions,
 ): Promise<void> {
-  const { noCopy = false, printOnly = false, write = false, outFile } = opts;
+  const {
+    noCopy = false,
+    printOnly = false,
+    write = false,
+    outFile,
+    contextMode = DEFAULT_PROMPT_CONTEXT_MODE,
+    generationSource = 'prompt',
+  } = opts;
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const phaseResolver = new PhaseResolver();
@@ -76,6 +90,14 @@ export async function outputPrompt(
   if (outFile) {
     wroteOutputPath = await resolveOutputFilePath(workspaceRoot, outFile);
     await writeTextFile(wroteOutputPath, prompt);
+    await writePromptArtifactMetadata({
+      workspaceRoot,
+      task,
+      promptArtifactPath: wroteOutputPath,
+      contextMode,
+      generationSource,
+      phaseId,
+    });
   }
 
   if (printOnly) {
@@ -84,7 +106,7 @@ export async function outputPrompt(
       process.stderr.write(`Prompt written: ${path.relative(workspaceRoot, wroteOutputPath)}\n`);
     }
     if (write) {
-      await writePromptSnapshot(workspaceRoot, task.id, prompt);
+      await writePromptSnapshot(workspaceRoot, task, prompt, contextMode, generationSource, phaseId);
     }
     return;
   }
@@ -119,7 +141,7 @@ export async function outputPrompt(
       }
     } else {
       if (!wroteOutputPath) {
-        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task.id, prompt);
+        wroteOutputPath = await writeFallbackPrompt(workspaceRoot, task, prompt, contextMode, generationSource, phaseId);
       }
       const fallbackRelPath = path.relative(workspaceRoot, wroteOutputPath);
       if (result.attempted) {
@@ -131,24 +153,54 @@ export async function outputPrompt(
   }
 
   if (write) {
-    const snapshotPath = await writePromptSnapshot(workspaceRoot, task.id, prompt);
+    const snapshotPath = await writePromptSnapshot(workspaceRoot, task, prompt, contextMode, generationSource, phaseId);
     if (noCopy) {
       console.log(`Prompt snapshot written: ${path.relative(workspaceRoot, snapshotPath)}`);
     }
   }
 }
 
-async function writePromptSnapshot(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
+async function writePromptSnapshot(
+  workspaceRoot: string,
+  task: TaskRecord,
+  prompt: string,
+  contextMode: PromptContextMode,
+  generationSource: PromptGenerationSource,
+  phaseId: string
+): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `${timestamp}.md`);
+  const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
+  await writePromptArtifactMetadata({
+    workspaceRoot,
+    task,
+    promptArtifactPath: promptPath,
+    contextMode,
+    generationSource,
+    phaseId,
+  });
   return promptPath;
 }
 
-async function writeFallbackPrompt(workspaceRoot: string, taskId: string, prompt: string): Promise<string> {
+export async function writeFallbackPrompt(
+  workspaceRoot: string,
+  task: TaskRecord,
+  prompt: string,
+  contextMode: PromptContextMode,
+  generationSource: PromptGenerationSource,
+  phaseId: string
+): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const promptPath = path.join(getTaskRoot(workspaceRoot, taskId), 'prompts', `next-prompt-${timestamp}.md`);
+  const promptPath = path.join(getTaskRoot(workspaceRoot, task.id), 'prompts', `next-prompt-${timestamp}.md`);
   await writeTextFile(promptPath, prompt);
+  await writePromptArtifactMetadata({
+    workspaceRoot,
+    task,
+    promptArtifactPath: promptPath,
+    contextMode,
+    generationSource,
+    phaseId,
+  });
   return promptPath;
 }
 
@@ -161,6 +213,7 @@ export async function runPrompt(
   write?: boolean,
   outFile?: string,
   withEvolutionContext?: boolean,
+  contextModeOption?: string,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -175,6 +228,7 @@ export async function runPrompt(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
+  const contextMode = normalizePromptContextMode(contextModeOption);
   const desync = await core.checkTaskDesync(task.id);
   if (desync.severity === 'high') {
     console.log('High desync warning: workspace reality differs from the last safe point.');
@@ -185,6 +239,15 @@ export async function runPrompt(
   const prompt = await core.renderNextPrompt(task.id, {
     withEvolutionContext,
     evolutionContextSource: 'prompt',
+    contextMode,
   });
-  await outputPrompt(workspaceRoot, task, prompt, { noCopy, printOnly, quiet, write, outFile });
+  await outputPrompt(workspaceRoot, task, prompt, {
+    noCopy,
+    printOnly,
+    quiet,
+    write,
+    outFile,
+    contextMode,
+    generationSource: 'prompt',
+  });
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -266,6 +266,40 @@ describe('init → create → next (end-to-end)', () => {
     await expect(core.renderNextPrompt(taskId)).rejects.toThrow(MissingContextRefError);
   });
 
+  it('renders compact, strict, and full context modes with explicit context refs', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await mkdir(path.join(workspace.dir, 'docs', 'features', 'context_modes'), { recursive: true });
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'context_modes', 'source.md'),
+      '# Source Problem\n\nImplement context modes.\n'
+    );
+
+    const taskId = slugify('Context Mode Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Context Mode Task',
+      workflow: 'multi-spec',
+      contextRefs: [
+        { path: 'docs/features/context_modes/source.md', role: 'source-problem', source: 'test' },
+      ],
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const compactPrompt = await core.renderNextPrompt(taskId, { contextMode: 'compact' });
+    const strictPrompt = await core.renderNextPrompt(taskId, { contextMode: 'strict' });
+    const fullPrompt = await core.renderNextPrompt(taskId, { contextMode: 'full' });
+
+    expect(compactPrompt).toContain('## Compact Context Summary');
+    expect(compactPrompt).toContain('docs/features/context_modes/source.md');
+    expect(compactPrompt).not.toContain('```');
+    expect(strictPrompt).toContain('## Context Files');
+    expect(strictPrompt).toContain('# Source Problem');
+    expect(fullPrompt).toContain('## Context Files');
+    expect(fullPrompt).toContain('Implement context modes.');
+  });
+
   it('renderNextPrompt succeeds when contextRefs is empty', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
@@ -281,6 +315,45 @@ describe('init → create → next (end-to-end)', () => {
     const core = new PlaySpecCore(workspace.dir, store);
     const prompt = await core.renderNextPrompt(taskId);
     expect(prompt).toBeTruthy();
+  });
+
+  it('prompt --write records context mode metadata sidecar next to prompt snapshots', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await mkdir(path.join(workspace.dir, 'docs', 'features', 'metadata'), { recursive: true });
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'metadata', 'context.md'),
+      '# Metadata Context\n\nThis body is omitted in compact mode.\n'
+    );
+
+    const taskId = slugify('Prompt Metadata Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Prompt Metadata Task',
+      workflow: 'multi-spec',
+      contextRefs: [
+        { path: 'docs/features/metadata/context.md', role: 'planning-context', source: 'test' },
+      ],
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+
+    const result = await runCli(['prompt', '--print-only', '--write', '--context-mode', 'compact']);
+    const promptDir = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts');
+    const metadataFiles = (await readdir(promptDir)).filter((file) => file.endsWith('.md.meta.yaml'));
+    const metadata = parseYaml(await readFile(path.join(promptDir, metadataFiles[0]!), 'utf-8')) as {
+      contextMode: string;
+      generationSource: string;
+      taskId: string;
+      omittedContext: Array<{ path: string }>;
+    };
+
+    expect(result.exitCode).toBe(0);
+    expect(metadataFiles).toHaveLength(1);
+    expect(metadata.contextMode).toBe('compact');
+    expect(metadata.generationSource).toBe('prompt');
+    expect(metadata.taskId).toBe(taskId);
+    expect(metadata.omittedContext[0]?.path).toBe('docs/features/metadata/context.md');
   });
 
   it('renderNextPrompt ignores stored evolution proposals in Phase 6', async () => {

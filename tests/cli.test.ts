@@ -1973,6 +1973,14 @@ phases:
     expect(result.stdout).toContain('Clipboard unavailable. Prompt written to: .playspec/tasks/active/next_copy_fallback_task/prompts/next-prompt-');
     expect(result.stdout).not.toContain('Global Rules');
     expect(promptFiles.some((file) => file.startsWith('next-prompt-'))).toBe(true);
+    const metadataFile = promptFiles.find((file) => file.startsWith('next-prompt-') && file.endsWith('.md.meta.yaml'));
+    expect(metadataFile).toBeDefined();
+    const metadata = parseYaml(await readTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts', metadataFile!)
+    )) as { contextMode: string; generationSource: string; taskId: string };
+    expect(metadata.contextMode).toBe('compact');
+    expect(metadata.generationSource).toBe('next');
+    expect(metadata.taskId).toBe(taskId);
   });
 
   it('writes next --copy --out even when clipboard fails without extra fallback', async () => {

@@ -317,9 +317,10 @@ program
   .option('--write', 'Write prompt snapshot to prompts/ directory', false)
   .option('--out <file>', 'Write prompt to a user-selected output file')
   .option('--with-evolution-context', 'Include read-only evolution context summaries', false)
-  .action(async (opts: { task?: string; copy: boolean; printOnly: boolean; quiet: boolean; write: boolean; out?: string; withEvolutionContext: boolean }) => {
+  .option('--context-mode <mode>', 'Context mode: compact, strict, or full')
+  .action(async (opts: { task?: string; copy: boolean; printOnly: boolean; quiet: boolean; write: boolean; out?: string; withEvolutionContext: boolean; contextMode?: string }) => {
     try {
-      await runPrompt(process.cwd(), opts.task, !opts.copy, opts.printOnly, opts.quiet, opts.write, opts.out, opts.withEvolutionContext);
+      await runPrompt(process.cwd(), opts.task, !opts.copy, opts.printOnly, opts.quiet, opts.write, opts.out, opts.withEvolutionContext, opts.contextMode);
     } catch (err) {
       handleError(err);
     }
@@ -353,9 +354,10 @@ program
   .option('--copy', 'Copy rendered prompt to clipboard', false)
   .option('--out <file>', 'Write prompt to a user-selected output file')
   .option('--with-evolution-context', 'Include read-only evolution context summaries', false)
-  .action(async (opts: { task?: string; write: boolean; quiet: boolean; copy: boolean; out?: string; withEvolutionContext: boolean }) => {
+  .option('--context-mode <mode>', 'Context mode: compact, strict, or full')
+  .action(async (opts: { task?: string; write: boolean; quiet: boolean; copy: boolean; out?: string; withEvolutionContext: boolean; contextMode?: string }) => {
     try {
-      await runNext(process.cwd(), opts.task, opts.write, opts.quiet, opts.copy, opts.out, opts.withEvolutionContext);
+      await runNext(process.cwd(), opts.task, opts.write, opts.quiet, opts.copy, opts.out, opts.withEvolutionContext, opts.contextMode);
     } catch (err) {
       handleError(err);
     }
@@ -402,9 +404,10 @@ program
   .option('--result <value>', 'Result value for result-bearing phases (required in non-interactive mode)')
   .option('--no-copy', 'Do not copy the next prompt to clipboard after completion')
   .option('--with-evolution-context', 'Include read-only evolution context summaries and write a completion context snapshot', false)
-  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string; copy: boolean; withEvolutionContext: boolean }) => {
+  .option('--context-mode <mode>', 'Context mode for completion prompt snapshots and the rendered next prompt')
+  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string; copy: boolean; withEvolutionContext: boolean; contextMode?: string }) => {
     try {
-      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result, !opts.copy, opts.withEvolutionContext);
+      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result, !opts.copy, opts.withEvolutionContext, opts.contextMode);
     } catch (err) {
       handleError(err);
     }

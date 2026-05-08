@@ -100,6 +100,25 @@ export const TaskSummarySchema = z.object({
   workflow: z.string(),
 });
 
+export const PromptContextModeSchema = z.enum(['compact', 'strict', 'full']);
+
+export const OmittedPromptContextSchema = z.object({
+  path: z.string(),
+  role: z.string(),
+  source: z.string(),
+  reason: z.string(),
+});
+
+export const PromptArtifactMetadataSchema = z.object({
+  promptArtifactPath: z.string(),
+  contextMode: PromptContextModeSchema,
+  generationSource: z.enum(['prompt', 'next', 'complete', 'mcp']),
+  taskId: z.string(),
+  phaseId: z.string().optional(),
+  generatedAt: z.string(),
+  omittedContext: z.array(OmittedPromptContextSchema),
+});
+
 export const PhaseDefinitionSchema = z.object({
   title: z.string(),
   template: z.string(),

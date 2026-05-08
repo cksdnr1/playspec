@@ -8,6 +8,7 @@ import { gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { formatContextHeader } from '../context-header.js';
 import { MissingResultError } from '#core/errors.js';
 import { outputPrompt } from './prompt.js';
+import { normalizePromptContextMode } from '#core/prompt-metadata.js';
 
 async function promptResultSelection(phaseLabel: string, results: string[]): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -40,6 +41,7 @@ export async function runComplete(
   resultOption?: string,
   noCopy?: boolean,
   withEvolutionContext?: boolean,
+  contextModeOption?: string,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
@@ -73,7 +75,13 @@ export async function runComplete(
   }
 
   const core = new PlaySpecCore(workspaceRoot, store);
-  const completionResult = await core.completePhase(task.id, { withReview, result, withEvolutionContext });
+  const contextMode = normalizePromptContextMode(contextModeOption);
+  const completionResult = await core.completePhase(task.id, {
+    withReview,
+    result,
+    withEvolutionContext,
+    contextMode,
+  });
   if (!completedPhaseLabel || (completionResult.nextPhase && !nextPhaseLabel)) {
     const workflowLoader = new WorkflowLoader(workspaceRoot);
     const workflow = await workflowLoader.load(task.workflow);
@@ -113,8 +121,13 @@ export async function runComplete(
       const prompt = await core.renderNextPrompt(updatedTask.id, {
         withEvolutionContext,
         evolutionContextSource: 'complete',
+        contextMode,
       });
-      await outputPrompt(workspaceRoot, updatedTask, prompt, { noCopy });
+      await outputPrompt(workspaceRoot, updatedTask, prompt, {
+        noCopy,
+        contextMode,
+        generationSource: 'complete',
+      });
     } catch (err) {
       const hint = `playspec prompt --task ${task.id}`;
       const msg = err instanceof Error ? err.message : String(err);

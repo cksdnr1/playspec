@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readdir } from 'node:fs/promises';
 import { execa } from 'execa';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
@@ -318,8 +319,11 @@ describe('buildMcpServer', () => {
       const phaseCall = toolSpy.mock.calls.find((call) => call[0] === 'playspec_render_phase_prompt');
 
       expect(Object.keys(renderCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
+      expect(Object.keys(renderCall?.[2] as Record<string, unknown>)).toContain('contextMode');
       expect(Object.keys(completeCall?.[2] as Record<string, unknown>)).toContain('withEvolutionContext');
+      expect(Object.keys(completeCall?.[2] as Record<string, unknown>)).toContain('contextMode');
       expect(Object.keys(phaseCall?.[2] as Record<string, unknown>)).not.toContain('withEvolutionContext');
+      expect(Object.keys(phaseCall?.[2] as Record<string, unknown>)).toContain('contextMode');
     } finally {
       toolSpy.mockRestore();
     }
@@ -364,6 +368,38 @@ describe('MCP render matches Core render', () => {
     expect(prompt).toContain('## Evolution Context');
     expect(prompt).toContain('proposal_mcp_visible');
     expect(prompt).not.toContain('MCP should not embed this summary.');
+  });
+
+  it('MCP prompt contextMode matches core rendering and writes no sidecar metadata', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'mcp-context.md'),
+      '# MCP Context\n\nStrict mode embeds this body.\n'
+    );
+    const taskId = slugify('MCP Context Mode');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'MCP Context Mode',
+      workflow: 'multi-spec',
+      contextRefs: [
+        { path: 'docs/mcp-context.md', role: 'planning-context', source: 'test' },
+      ],
+    });
+
+    const handler = getRegisteredToolHandler('playspec_render_next_prompt');
+    const result = await handler({ taskId, contextMode: 'strict' });
+    const body = parseToolJson(result);
+    const corePrompt = await new PlaySpecCore(workspace.dir, store).renderNextPrompt(taskId, {
+      contextMode: 'strict',
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(body['prompt']).toBe(corePrompt);
+    expect(body['prompt']).toContain('Strict mode embeds this body.');
+    const promptArtifacts = await readdir(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts'));
+    expect(promptArtifacts.some((file) => file.endsWith('.meta.yaml'))).toBe(false);
   });
 });
 

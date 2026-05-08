@@ -231,15 +231,38 @@ export interface SnapshotResult {
   snapshotFiles: string[];
 }
 
+export type PromptContextMode = 'compact' | 'strict' | 'full';
+
+export type PromptGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';
+
+export interface OmittedPromptContext {
+  path: string;
+  role: string;
+  source: string;
+  reason: string;
+}
+
+export interface PromptArtifactMetadata {
+  promptArtifactPath: string;
+  contextMode: PromptContextMode;
+  generationSource: PromptGenerationSource;
+  taskId: TaskId;
+  phaseId?: PhaseId;
+  generatedAt: string;
+  omittedContext: OmittedPromptContext[];
+}
+
 export interface PromptRenderOptions {
   withEvolutionContext?: boolean;
-  evolutionContextSource?: 'prompt' | 'next' | 'complete' | 'mcp';
+  evolutionContextSource?: PromptGenerationSource;
+  contextMode?: PromptContextMode;
 }
 
 export interface CompletePhaseOptions {
   withReview?: boolean;
   result?: string;
   withEvolutionContext?: boolean;
+  contextMode?: PromptContextMode;
 }
 
 export interface CompletionResult {
