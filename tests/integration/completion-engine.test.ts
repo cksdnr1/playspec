@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import lockfile from 'proper-lockfile';
 import { execa } from 'execa';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -110,6 +111,14 @@ describe('Phase 2 completion engine', () => {
     await expect(
       access(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'snapshots', 'phase1_prompt.md'))
     ).resolves.not.toThrow();
+    const metadata = parseYaml(await readFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'snapshots', 'phase1_prompt.md.meta.yaml'),
+      'utf-8'
+    )) as { contextMode: string; generationSource: string; taskId: string; phaseId: string };
+    expect(metadata.contextMode).toBe('compact');
+    expect(metadata.generationSource).toBe('complete');
+    expect(metadata.taskId).toBe(taskId);
+    expect(metadata.phaseId).toBe('1');
     await expect(
       access(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'evidence', 'phase1_git_status.txt'))
     ).resolves.not.toThrow();
