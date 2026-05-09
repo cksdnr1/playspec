@@ -1,9 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import path from 'node:path';
 import { z, ZodError } from 'zod';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { PlaySpecError } from '#core/errors.js';
-import type { HarnessAttemptResult } from '#core/types.js';
+import { TaskIdResolver } from '#core/task-id-resolver.js';
+import type { HarnessAttemptResult, TaskLinkType } from '#core/types.js';
+import { WorkflowEditor } from '#workflow/workflow-editor.js';
+import { WorkflowInstaller } from '#workflow/workflow-installer.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
 import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
 import { generateEvolutionProposal } from '#evolution/proposal-generator.js';
@@ -44,12 +50,18 @@ const taskContextWithEvolution = {
 const riskLevel = z.enum(['low', 'medium', 'high']);
 const harnessAttemptResult = z.enum(['success', 'failure']);
 const humanEditStatus = z.enum(['ignored', 'superseded']);
+const taskLinkType = z.enum(['parent', 'after', 'related']);
 
 export function buildMcpServer(workspaceRoot: string): McpServer {
   const server = new McpServer({ name: 'playspec', version: '0.1.0' });
   const taskStore = new YamlTaskStore(workspaceRoot);
   const core = new PlaySpecCore(workspaceRoot, taskStore);
   const sessionStore = new McpSessionStore(workspaceRoot);
+  const taskIdResolver = new TaskIdResolver(taskStore);
+  const workflowRegistry = new WorkflowRegistry(workspaceRoot);
+  const workflowLoader = new WorkflowLoader(workspaceRoot);
+  const workflowInstaller = new WorkflowInstaller(workspaceRoot);
+  const workflowEditor = new WorkflowEditor(workspaceRoot);
   const proposalStore = new EvolutionProposalStore(workspaceRoot);
   const humanEditStore = new EvolutionHumanEditStore(workspaceRoot);
 
@@ -121,6 +133,225 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
           }
         }
         return ok({ session, task });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_link_tasks',
+    'Create a direct task link. Provide sourceTaskId or taskId/sessionId for the source.',
+    { ...taskContext, sourceTaskId: z.string().optional(), targetTaskId: z.string(), type: taskLinkType },
+    async (args) => {
+      try {
+        const sourceTaskId = await resolveMcpSourceTaskId(args, sessionStore, taskIdResolver);
+        const target = await taskIdResolver.resolve(args.targetTaskId);
+        const result = await core.addTaskLink(sourceTaskId, target.taskId, args.type as TaskLinkType);
+        return ok({
+          ...result,
+          resolved: {
+            sourceTaskId,
+            target,
+          },
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_unlink_tasks',
+    'Remove direct task links. Provide sourceTaskId or taskId/sessionId for the source.',
+    { ...taskContext, sourceTaskId: z.string().optional(), targetTaskId: z.string(), type: taskLinkType.optional() },
+    async (args) => {
+      try {
+        const sourceTaskId = await resolveMcpSourceTaskId(args, sessionStore, taskIdResolver);
+        const target = await taskIdResolver.resolve(args.targetTaskId);
+        const result = await core.removeTaskLink(sourceTaskId, target.taskId, args.type as TaskLinkType | undefined);
+        return ok({
+          ...result,
+          resolved: {
+            sourceTaskId,
+            target,
+          },
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_list_workflows',
+    'List available workflows with effective project/user/builtin priority',
+    async () => {
+      try {
+        const locations = await workflowRegistry.list();
+        const workflows = await Promise.all(
+          locations.map(async (location) => {
+            const workflow = await workflowLoader.resolve(location.id);
+            return {
+              id: workflow.id,
+              source: workflow.source,
+              rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
+              name: workflow.definition.name,
+              description: workflow.definition.description,
+              phaseOrder: workflow.definition.phaseOrder,
+            };
+          })
+        );
+        return ok({ workflows });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_show_workflow',
+    'Show a workflow definition and source details',
+    { workflowId: z.string() },
+    async (args) => {
+      try {
+        const workflow = await workflowLoader.resolve(args.workflowId);
+        return ok({
+          id: workflow.id,
+          source: workflow.source,
+          rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
+          templateDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.templateDir),
+          definition: workflow.definition,
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_validate_workflow',
+    'Validate a workflow directory',
+    { workflowPath: z.string() },
+    async (args) => {
+      try {
+        const workflow = await workflowLoader.resolveFromDirectory(resolveWorkspacePath(workspaceRoot, args.workflowPath));
+        return ok({
+          id: workflow.id,
+          source: workflow.source,
+          rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
+          phaseOrder: workflow.definition.phaseOrder,
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_install_workflow',
+    'Install a user workflow directory',
+    { workflowPath: z.string() },
+    async (args) => {
+      try {
+        const workflowId = await workflowInstaller.install(resolveWorkspacePath(workspaceRoot, args.workflowPath));
+        return ok({ workflowId });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_remove_workflow',
+    'Remove a user workflow. Requires confirm true.',
+    { workflowId: z.string(), confirm: z.boolean() },
+    async (args) => {
+      try {
+        if (args.confirm !== true) {
+          throw new PlaySpecError(
+            'MCP workflow removal requires confirm: true.',
+            'Inspect playspec_list_workflows or playspec_show_workflow before removing a user workflow.'
+          );
+        }
+        await workflowInstaller.remove(args.workflowId);
+        return ok({ workflowId: args.workflowId, removed: true });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_export_workflow',
+    'Export a workflow directory',
+    { workflowId: z.string(), outDir: z.string().optional() },
+    async (args) => {
+      try {
+        const target = resolveWorkspacePath(workspaceRoot, args.outDir ?? args.workflowId);
+        await workflowInstaller.export(args.workflowId, target);
+        return ok({
+          workflowId: args.workflowId,
+          targetPath: toWorkspaceRelativeOrAbsolute(workspaceRoot, target),
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_workflow_add_phase',
+    'Add a phase to an installed project workflow',
+    {
+      workflowId: z.string(),
+      afterPhaseId: z.string(),
+      newPhaseId: z.string(),
+      title: z.string(),
+      templatePath: z.string(),
+    },
+    async (args) => {
+      try {
+        return ok(await workflowEditor.addPhase(args));
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_workflow_remove_phase',
+    'Remove a phase from an installed project workflow',
+    { workflowId: z.string(), phaseId: z.string(), replacement: z.string().optional() },
+    async (args) => {
+      try {
+        return ok(await workflowEditor.removePhase(args));
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_workflow_reorder_phase',
+    'Reorder a phase in an installed project workflow',
+    { workflowId: z.string(), phaseId: z.string(), afterPhaseId: z.string() },
+    async (args) => {
+      try {
+        return ok(await workflowEditor.reorderPhase(args));
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_workflow_set_template',
+    'Set a phase template in an installed project workflow',
+    { workflowId: z.string(), phaseId: z.string(), templatePath: z.string() },
+    async (args) => {
+      try {
+        return ok(await workflowEditor.setTemplate(args));
       } catch (e) {
         return err(e);
       }
@@ -580,4 +811,29 @@ async function loadValidationReportIfPresent(
     }
     throw error;
   }
+}
+
+async function resolveMcpSourceTaskId(
+  input: { sourceTaskId?: string; taskId?: string; sessionId?: string },
+  sessionStore: McpSessionStore,
+  taskIdResolver: TaskIdResolver
+): Promise<string> {
+  if (input.sourceTaskId) {
+    const source = await taskIdResolver.resolve(input.sourceTaskId);
+    return source.taskId;
+  }
+  return resolveMcpTaskId(input, sessionStore);
+}
+
+function resolveWorkspacePath(workspaceRoot: string, inputPath: string): string {
+  return path.isAbsolute(inputPath) ? inputPath : path.resolve(workspaceRoot, inputPath);
+}
+
+function toWorkspaceRelativeOrAbsolute(workspaceRoot: string, filePath: string): string {
+  const relative = path.relative(workspaceRoot, filePath);
+  if (relative === '') return '.';
+  if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+    return relative.split(path.sep).join(path.posix.sep);
+  }
+  return filePath;
 }

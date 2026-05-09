@@ -252,6 +252,18 @@ describe('buildMcpServer', () => {
         'playspec_apply_evolution_proposal',
         'playspec_record_human_edit_observation',
         'playspec_update_human_edit_observation_status',
+        'playspec_link_tasks',
+        'playspec_unlink_tasks',
+        'playspec_list_workflows',
+        'playspec_show_workflow',
+        'playspec_validate_workflow',
+        'playspec_install_workflow',
+        'playspec_remove_workflow',
+        'playspec_export_workflow',
+        'playspec_workflow_add_phase',
+        'playspec_workflow_remove_phase',
+        'playspec_workflow_reorder_phase',
+        'playspec_workflow_set_template',
       ]));
     } finally {
       toolSpy.mockRestore();
@@ -308,6 +320,80 @@ describe('buildMcpServer', () => {
     expect(body['taskId']).toBe(taskId);
     expect(body['invokedBy']).toBe('mcp');
     expect((body['proposal'] as EvolutionProposal).id).toBe('mcp_generated_proposal');
+  });
+
+  it('links and unlinks tasks through MCP without HEAD fallback', async () => {
+    const { taskId, store } = await initWorkspaceWithTask('MCP Link Source');
+    await store.createTask({ id: 'mcp_link_target', title: 'MCP Link Target', workflow: 'multi-spec' });
+    await writeTextFile(getHeadPath(workspace.dir), 'mcp_link_target\n');
+
+    const linkHandler = getRegisteredToolHandler('playspec_link_tasks');
+    const unlinkHandler = getRegisteredToolHandler('playspec_unlink_tasks');
+
+    const missingContext = await linkHandler({ targetTaskId: 'mcp_link_target', type: 'related' });
+    const linked = await linkHandler({
+      taskId,
+      targetTaskId: 'mcp_link_target',
+      type: 'related',
+    });
+    const linkedTask = await store.getTask(taskId);
+    const unlinked = await unlinkHandler({
+      sourceTaskId: taskId,
+      targetTaskId: 'mcp_link_target',
+      type: 'related',
+    });
+
+    expect(missingContext.isError).toBe(true);
+    expect(missingContext.content[0].text).toContain('requires taskId or sessionId');
+    expect(linked.isError).toBeUndefined();
+    expect(parseToolJson(linked)['changed']).toBe(true);
+    expect(linkedTask.links).toMatchObject([
+      { type: 'related', targetTaskId: 'mcp_link_target' },
+    ]);
+    expect(unlinked.isError).toBeUndefined();
+    expect(parseToolJson(unlinked)['changed']).toBe(true);
+    expect((await store.getTask(taskId)).links).toBeUndefined();
+  });
+
+  it('shows and edits project workflows through MCP', async () => {
+    await initWorkspaceWithTask('MCP Workflow Edit', 'multi-spec');
+    const showHandler = getRegisteredToolHandler('playspec_show_workflow');
+    const addPhaseHandler = getRegisteredToolHandler('playspec_workflow_add_phase');
+    const reorderHandler = getRegisteredToolHandler('playspec_workflow_reorder_phase');
+    const setTemplateHandler = getRegisteredToolHandler('playspec_workflow_set_template');
+    const removePhaseHandler = getRegisteredToolHandler('playspec_workflow_remove_phase');
+
+    const shown = await showHandler({ workflowId: 'mono-spec' });
+    const added = await addPhaseHandler({
+      workflowId: 'mono-spec',
+      afterPhaseId: 'tech_spec_draft',
+      newPhaseId: 'mcp_review',
+      title: 'MCP Review',
+      templatePath: 'phase_template.md',
+    });
+    const reordered = await reorderHandler({
+      workflowId: 'mono-spec',
+      phaseId: 'mcp_review',
+      afterPhaseId: 'implementation_plan_create',
+    });
+    const templated = await setTemplateHandler({
+      workflowId: 'mono-spec',
+      phaseId: 'mcp_review',
+      templatePath: 'implementation.md',
+    });
+    const removed = await removePhaseHandler({
+      workflowId: 'mono-spec',
+      phaseId: 'mcp_review',
+    });
+
+    expect(shown.isError).toBeUndefined();
+    expect(parseToolJson(shown)['source']).toBe('project');
+    expect(added.isError).toBeUndefined();
+    expect(parseToolJson(added)['afterPhaseIds']).toContain('mcp_review');
+    expect(reordered.isError).toBeUndefined();
+    expect(templated.isError).toBeUndefined();
+    expect(removed.isError).toBeUndefined();
+    expect(parseToolJson(removed)['afterPhaseIds']).not.toContain('mcp_review');
   });
 
   it('registers evolution context opt-in only on prompt and complete tools', () => {
