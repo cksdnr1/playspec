@@ -27,6 +27,12 @@
 
 Full test result: 24 test files passed, 404 tests passed.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/96
+- Issue label `agent-pr-created` added.
+- Reusable agent guidance: no AGENTS.md update needed; the existing MCP context rules already covered the important no-HEAD boundary.
+
 ## Refactor Review
 
 - Reviewed the branch diff after verification.

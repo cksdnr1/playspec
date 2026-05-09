@@ -1,6 +1,8 @@
 # Issue 94 MCP Link And Missing Tools PR
 
-Draft PR body will include:
+Draft PR: https://github.com/cksdnr1/playspec/pull/96
+
+PR body includes:
 
 Fixes #94
 
@@ -15,3 +17,5 @@ Fixes #94
 - `pnpm install`
 - `pnpm build`
 - `pnpm test`
+
+Full suite: 24 test files passed, 404 tests passed.
