@@ -17,6 +17,7 @@ import { runUse } from './commands/use.js';
 import { runNext } from './commands/next.js';
 import { runPrompt } from './commands/prompt.js';
 import { runSpecs } from './commands/specs.js';
+import { runView } from './commands/view.js';
 import { runPhase } from './commands/phase.js';
 import { runRewind } from './commands/rewind.js';
 import { runComplete } from './commands/complete.js';
@@ -401,6 +402,23 @@ program
   .action(async (opts: { task?: string; print: boolean; pathOnly: boolean; copy: boolean; showMissing: boolean; forceLarge: boolean }) => {
     try {
       await runSpecs(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// view
+program
+  .command('view [file]')
+  .description('Render a local PlaySpec markdown file or task artifact as HTML')
+  .option('--task <id>', 'Task ID for artifact viewing')
+  .option('--artifact <type>', 'Task artifact: source, spec, plan, result, pr, prompt, evidence, snapshot, or review')
+  .option('--open', 'Open the generated HTML in the local browser', false)
+  .option('--stdout', 'Print generated HTML instead of writing viewer cache output', false)
+  .option('--clear-cache', 'Clear generated viewer cache output', false)
+  .action(async (file: string | undefined, opts: { task?: string; artifact?: string; open: boolean; stdout: boolean; clearCache: boolean }) => {
+    try {
+      await runView(process.cwd(), file, opts);
     } catch (err) {
       handleError(err);
     }

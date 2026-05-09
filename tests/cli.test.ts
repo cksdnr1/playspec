@@ -1376,6 +1376,80 @@ phases:
     expect(prompt.stdout).toContain(`- \`${archivedArtifactPath}\` (role: planning-context, source: manual)`);
   });
 
+  it('views an explicit markdown file as generated HTML', async () => {
+    await createActiveTask('Viewer Explicit File Task', 'mono-spec');
+    await writeTextFile(
+      path.join(workspace.dir, 'docs/viewer-note.md'),
+      '# Viewer Note\n\nHello **viewer**.\n\n<script>alert(1)</script>\n\n![Remote](https://example.com/image.png)\n'
+    );
+
+    const result = await runCli(['view', 'docs/viewer-note.md'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Rendered docs/viewer-note.md');
+    expect(result.stdout).toContain('Output: .playspec/viewer/cache/');
+    const outputPath = result.stdout.match(/Output: (.+\.html)/)?.[1];
+    expect(outputPath).toBeTruthy();
+    const html = await readTextFile(path.join(workspace.dir, outputPath!));
+    expect(html).toContain('<h1>Viewer Note</h1>');
+    expect(html).toContain('<strong>viewer</strong>');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('Image: Remote (https://example.com/image.png)');
+  });
+
+  it('views a task workflow artifact by task id and artifact type', async () => {
+    const taskId = await createActiveTask('Viewer Artifact Task', 'mono-spec');
+    const specPath = path.join('docs/features', taskId, 'spec.md');
+    await writeTextFile(path.join(workspace.dir, specPath), '# Artifact Spec\n');
+
+    const result = await runCli(['view', '--task', taskId, '--artifact', 'spec'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Rendered ${specPath}`);
+    const outputPath = result.stdout.match(/Output: (.+\.html)/)?.[1];
+    expect(outputPath).toBeTruthy();
+    const html = await readTextFile(path.join(workspace.dir, outputPath!));
+    expect(html).toContain('<h1>Artifact Spec</h1>');
+  });
+
+  it('rejects workspace-escaping viewer paths', async () => {
+    await createActiveTask('Viewer Escape Task', 'mono-spec');
+
+    const result = await runCli(['view', '../outside.md'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('escapes workspace');
+  });
+
+  it('does not mutate task state while viewing a task artifact', async () => {
+    const taskId = await createActiveTask('Viewer Read Only Task', 'mono-spec');
+    const specPath = path.join('docs/features', taskId, 'spec.md');
+    const taskPath = path.join(workspace.dir, '.playspec/tasks/active', taskId, 'task.yaml');
+    await writeTextFile(path.join(workspace.dir, specPath), '# Read Only Spec\n');
+    const before = await readTextFile(taskPath);
+
+    const result = await runCli(['view', '--task', taskId, '--artifact', 'spec'], workspace.dir);
+    const after = await readTextFile(taskPath);
+
+    expect(result.exitCode).toBe(0);
+    expect(after).toBe(before);
+  });
+
+  it('clears only generated viewer cache output', async () => {
+    await createActiveTask('Viewer Cache Clear Task', 'mono-spec');
+    await writeTextFile(path.join(workspace.dir, '.playspec/viewer/cache/generated.html'), '<!doctype html>\n');
+    await writeTextFile(path.join(workspace.dir, 'docs/source.md'), '# Source\n');
+
+    const result = await runCli(['view', '--clear-cache'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Viewer cache cleared.');
+    await expect(access(path.join(workspace.dir, '.playspec/viewer/cache/generated.html'))).rejects.toThrow();
+    await expect(access(path.join(workspace.dir, 'docs/source.md'))).resolves.toBeUndefined();
+  });
+
   it('rejects missing archived artifact context refs during prompt rendering', async () => {
     const taskId = await createActiveTask('Missing Archived Context Task', 'mono-spec');
     const missingPath = '.playspec/tasks/archived/missing_task/outputs/result.md';
