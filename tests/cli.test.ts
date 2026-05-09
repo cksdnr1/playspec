@@ -2032,7 +2032,7 @@ phases:
     expect(result.stdout).not.toContain('Gate:');
   });
 
-  it('prints mono-spec step metadata and gate routes on current-task', async () => {
+  it('prints mono-spec phase metadata and gate routes on current-task', async () => {
     const taskId = await createActiveTask('Mono Current Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
     await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
@@ -2040,8 +2040,8 @@ phases:
     const result = await runCli(['current-task'], workspace.dir);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Step:        2. 기술 교차 검증');
-    expect(result.stdout).toContain('Step ID:      tech_spec_validate');
+    expect(result.stdout).toContain('Phase:       2. 기술 교차 검증');
+    expect(result.stdout).toContain('Phase ID:    tech_spec_validate');
     expect(result.stdout).toContain('Gate:');
     expect(result.stdout).toContain('- approved -> 4. 구현 계획서 생성');
     expect(result.stdout).toContain('- needs_revision -> 3. 기술 명세서 업데이트');
@@ -2055,8 +2055,8 @@ phases:
     const result = await runCli(['current-task'], workspace.dir);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Step:        3. 기술 명세서 업데이트');
-    expect(result.stdout).toContain('Step ID:      tech_spec_patch');
+    expect(result.stdout).toContain('Phase:       3. 기술 명세서 업데이트');
+    expect(result.stdout).toContain('Phase ID:    tech_spec_patch');
     expect(result.stdout).toContain('Next:');
     expect(result.stdout).toContain('- 2. 기술 교차 검증');
     expect(result.stdout).not.toContain('Gate:');
@@ -2568,11 +2568,13 @@ phases:
   });
 
   it('current shows deprecation warning on stderr', async () => {
-    await createActiveTask('Current Deprecation Task');
+    await createActiveTask('Current Deprecation Task', 'mono-spec');
 
     const result = await runCli(['current'], workspace.dir);
 
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Phase:   1. 기술 명세서 업데이트 (effective)');
+    expect(result.stdout).toContain('Phase ID: tech_spec_draft (effective)');
     expect(result.stderr).toContain('`playspec current` is deprecated');
     expect(result.stderr).toContain('`playspec current-task`');
   });
