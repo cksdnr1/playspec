@@ -19,9 +19,9 @@ export async function runGetTask(workspaceRoot: string, taskId: string, json?: b
   console.log(`Title:        ${task.title}`);
   console.log(`Workflow:     ${task.workflow}`);
   console.log(`Status:       ${task.status}`);
-  console.log(`${`${eph.phaseLabel}:`.padEnd(13)}${eph.phaseDisplay}`);
+  console.log(`Phase:       ${eph.phaseDisplay}`);
   if (eph.phaseIdDisplay) {
-    console.log(`Step ID:      ${eph.phaseIdDisplay}`);
+    console.log(`Phase ID:    ${eph.phaseIdDisplay}`);
   }
   console.log(`Context refs: ${contextRefsCount}`);
 }

@@ -17,9 +17,9 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   console.log(`Title:        ${task.title}`);
   console.log(`Workflow:     ${task.workflow}`);
   console.log(`Status:       ${task.status}`);
-  console.log(`${`${eph.phaseLabel}:`.padEnd(13)}${eph.phaseDisplay}`);
+  console.log(`Phase:       ${eph.phaseDisplay}`);
   if (eph.phaseIdDisplay) {
-    console.log(`Step ID:      ${eph.phaseIdDisplay}`);
+    console.log(`Phase ID:    ${eph.phaseIdDisplay}`);
   }
   if (eph.gateRouteLines.length > 0) {
     console.log('Gate:');
