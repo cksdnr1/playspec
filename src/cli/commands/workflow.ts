@@ -2,6 +2,8 @@ import path from 'node:path';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowInstaller } from '#workflow/workflow-installer.js';
+import { WorkflowEditor } from '#workflow/workflow-editor.js';
+import type { WorkflowEditResult } from '#workflow/workflow-editor.js';
 
 export async function runWorkflowList(workspaceRoot: string): Promise<void> {
   const registry = new WorkflowRegistry(workspaceRoot);
@@ -58,4 +60,61 @@ export async function runWorkflowExport(workspaceRoot: string, workflowId: strin
   const target = path.resolve(workspaceRoot, outDir ?? workflowId);
   await new WorkflowInstaller(workspaceRoot).export(workflowId, target);
   console.log(`Exported workflow ${workflowId} to ${target}`);
+}
+
+export async function runWorkflowAddPhase(
+  workspaceRoot: string,
+  opts: { workflow: string; after: string; id: string; title: string; template: string }
+): Promise<void> {
+  const result = await new WorkflowEditor(workspaceRoot).addPhase({
+    workflowId: opts.workflow,
+    afterPhaseId: opts.after,
+    newPhaseId: opts.id,
+    title: opts.title,
+    templatePath: opts.template,
+  });
+  printWorkflowEditResult('Added phase', result);
+}
+
+export async function runWorkflowRemovePhase(
+  workspaceRoot: string,
+  opts: { workflow: string; id: string; replacement?: string }
+): Promise<void> {
+  const result = await new WorkflowEditor(workspaceRoot).removePhase({
+    workflowId: opts.workflow,
+    phaseId: opts.id,
+    replacement: opts.replacement,
+  });
+  printWorkflowEditResult('Removed phase', result);
+}
+
+export async function runWorkflowReorderPhase(
+  workspaceRoot: string,
+  opts: { workflow: string; id: string; after: string }
+): Promise<void> {
+  const result = await new WorkflowEditor(workspaceRoot).reorderPhase({
+    workflowId: opts.workflow,
+    phaseId: opts.id,
+    afterPhaseId: opts.after,
+  });
+  printWorkflowEditResult('Reordered phase', result);
+}
+
+export async function runWorkflowSetTemplate(
+  workspaceRoot: string,
+  opts: { workflow: string; phase: string; template: string }
+): Promise<void> {
+  const result = await new WorkflowEditor(workspaceRoot).setTemplate({
+    workflowId: opts.workflow,
+    phaseId: opts.phase,
+    templatePath: opts.template,
+  });
+  printWorkflowEditResult('Updated phase template', result);
+}
+
+function printWorkflowEditResult(prefix: string, result: WorkflowEditResult): void {
+  console.log(`${prefix} in workflow: ${result.workflowId}`);
+  console.log(`Target: ${result.targetPath}`);
+  console.log(`Backup: ${result.backupPath}`);
+  console.log(`Report: ${result.reportPath}`);
 }
