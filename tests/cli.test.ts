@@ -72,7 +72,11 @@ function runCliInPtyWithInputScript(
     ...args.map(shellQuote),
   ].join(' ');
 
-  return execa('bash', ['-lc', `${inputScript} | script -q -e /dev/null -c ${shellQuote(command)}`], {
+  const scriptCommand = process.platform === 'darwin'
+    ? `script -q /dev/null bash -lc ${shellQuote(command)}`
+    : `script -q -e /dev/null -c ${shellQuote(command)}`;
+
+  return execa('bash', ['-lc', `${inputScript} | ${scriptCommand}`], {
     cwd,
     reject: false,
     env: options.env,

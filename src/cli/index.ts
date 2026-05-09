@@ -46,10 +46,14 @@ import {
 import type { EvolutionRecordEditOptions } from './commands/evolution.js';
 import type { EvolutionGenerateOptions } from './commands/evolution.js';
 import {
+  runWorkflowAddPhase,
   runWorkflowExport,
   runWorkflowInstall,
   runWorkflowList,
+  runWorkflowRemovePhase,
   runWorkflowRemove,
+  runWorkflowReorderPhase,
+  runWorkflowSetTemplate,
   runWorkflowShow,
   runWorkflowValidate,
 } from './commands/workflow.js';
@@ -159,6 +163,64 @@ workflowCommand
   .action(async (id: string, outDir: string | undefined) => {
     try {
       await runWorkflowExport(process.cwd(), id, outDir);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('add-phase')
+  .description('Add a phase to an installed project workflow')
+  .requiredOption('--workflow <id>', 'Workflow ID')
+  .requiredOption('--after <phaseId>', 'Existing phase ID to insert after')
+  .requiredOption('--id <phaseId>', 'New phase ID')
+  .requiredOption('--title <title>', 'New phase title')
+  .requiredOption('--template <path>', 'Template path relative to the workflow templates directory')
+  .action(async (opts: { workflow: string; after: string; id: string; title: string; template: string }) => {
+    try {
+      await runWorkflowAddPhase(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('remove-phase')
+  .description('Remove a phase from an installed project workflow')
+  .requiredOption('--workflow <id>', 'Workflow ID')
+  .requiredOption('--id <phaseId>', 'Phase ID to remove')
+  .option('--replacement <phaseId>', 'Diagnostic replacement phase ID for the edit report')
+  .action(async (opts: { workflow: string; id: string; replacement?: string }) => {
+    try {
+      await runWorkflowRemovePhase(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('reorder-phase')
+  .description('Reorder a phase in an installed project workflow')
+  .requiredOption('--workflow <id>', 'Workflow ID')
+  .requiredOption('--id <phaseId>', 'Phase ID to move')
+  .requiredOption('--after <phaseId>', 'Existing phase ID to move after')
+  .action(async (opts: { workflow: string; id: string; after: string }) => {
+    try {
+      await runWorkflowReorderPhase(process.cwd(), opts);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+workflowCommand
+  .command('set-template')
+  .description('Set a phase template in an installed project workflow')
+  .requiredOption('--workflow <id>', 'Workflow ID')
+  .requiredOption('--phase <phaseId>', 'Phase ID')
+  .requiredOption('--template <path>', 'Template path relative to the workflow templates directory')
+  .action(async (opts: { workflow: string; phase: string; template: string }) => {
+    try {
+      await runWorkflowSetTemplate(process.cwd(), opts);
     } catch (err) {
       handleError(err);
     }
