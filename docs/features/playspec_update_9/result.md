@@ -36,6 +36,10 @@
 - `pnpm test -- tests/cli.test.ts -t "views|viewer|viewing"` passed: 5 tests.
 - `pnpm test` passed: 24 test files, 409 tests.
 
+## Pull Request
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/97
+
 ## Remaining Risks
 
 - Browser opening is environment-dependent; tests cover generated output and stdout instead of launching a GUI.
