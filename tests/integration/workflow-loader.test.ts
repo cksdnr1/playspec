@@ -166,6 +166,36 @@ phases:
     expect(requiredVariables).toContain('PHASE_PLAN_FILE');
   });
 
+  it('loads issue-validate workflow with approval threshold gate and publish artifacts', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+    const workflow = await loader.load('issue-validate');
+
+    expect(workflow.id).toBe('issue-validate');
+    expect(workflow.phaseOrder).toEqual(['issue_validate', 'publish_result']);
+    expect(workflow.variables['ISSUE_NUMBER']?.required).toBe(true);
+    expect(workflow.variables['ISSUE_URL']?.required).toBe(true);
+    expect(workflow.artifacts['validation']?.path).toBe('{{VALIDATION_FILE}}');
+    expect(workflow.artifacts['comment']?.path).toBe('{{ISSUE_COMMENT_FILE}}');
+    expect(workflow.artifacts['bodyUpdate']?.path).toBe('{{ISSUE_BODY_UPDATE_FILE}}');
+    expect(workflow.phases['issue_validate']?.gate?.results).toEqual(['approved', 'rejected']);
+    expect(workflow.phases['issue_validate']?.gate?.nextByResult).toEqual({
+      approved: 'publish_result',
+      rejected: 'publish_result',
+    });
+    expect(workflow.phases['publish_result']?.next).toBeNull();
+
+    const requiredVariables = workflow.phaseOrder.flatMap(
+      (phaseId) => workflow.phases[phaseId]?.requiredVariables ?? []
+    );
+    expect(requiredVariables).toEqual(expect.arrayContaining([
+      'ISSUE_NUMBER',
+      'ISSUE_URL',
+      'VALIDATION_FILE',
+      'ISSUE_COMMENT_FILE',
+      'ISSUE_BODY_UPDATE_FILE',
+    ]));
+  });
+
   it('throws WorkflowNotFoundError for unknown workflow', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);

@@ -1,0 +1,77 @@
+id: issue-validate
+name: Issue Validate
+description: Built-in workflow for validating GitHub issues before implementation.
+version: 1
+mode: linear
+variables:
+  ISSUE_NUMBER:
+    required: true
+    description: GitHub issue number.
+  ISSUE_URL:
+    required: true
+    description: GitHub issue URL.
+  VALIDATION_FILE:
+    default: "docs/issues/{{ISSUE_NUMBER}}/validation.md"
+    description: Issue validation report.
+  ISSUE_COMMENT_FILE:
+    default: "docs/issues/{{ISSUE_NUMBER}}/comment.md"
+    description: GitHub issue comment body.
+  ISSUE_BODY_UPDATE_FILE:
+    default: "docs/issues/{{ISSUE_NUMBER}}/body_update.md"
+    description: Replacement issue body when the issue should be clarified.
+artifacts:
+  validation:
+    path: "{{VALIDATION_FILE}}"
+    kind: validation
+  comment:
+    path: "{{ISSUE_COMMENT_FILE}}"
+    kind: comment
+  bodyUpdate:
+    path: "{{ISSUE_BODY_UPDATE_FILE}}"
+    kind: issue-body
+phaseOrder:
+  - issue_validate
+  - publish_result
+phases:
+  issue_validate:
+    title: "Issue validation"
+    stepNumber: "1"
+    stepTitle: "Validate issue"
+    template: issue_validate.md
+    requiredVariables:
+      - TASK_TITLE
+      - TASK_ID
+      - ISSUE_NUMBER
+      - ISSUE_URL
+      - SOURCE_PROBLEM_FILE
+      - VALIDATION_FILE
+      - ISSUE_COMMENT_FILE
+      - ISSUE_BODY_UPDATE_FILE
+    outputs:
+      - "{{VALIDATION_FILE}}"
+      - "{{ISSUE_COMMENT_FILE}}"
+      - "{{ISSUE_BODY_UPDATE_FILE}}"
+    gate:
+      results:
+        - approved
+        - rejected
+      nextByResult:
+        approved: publish_result
+        rejected: publish_result
+  publish_result:
+    title: "Publish validation result"
+    stepNumber: "2"
+    stepTitle: "Comment and update issue"
+    template: publish_result.md
+    requiredVariables:
+      - TASK_TITLE
+      - TASK_ID
+      - ISSUE_NUMBER
+      - ISSUE_URL
+      - VALIDATION_FILE
+      - ISSUE_COMMENT_FILE
+      - ISSUE_BODY_UPDATE_FILE
+    outputs:
+      - "{{ISSUE_COMMENT_FILE}}"
+      - "{{ISSUE_BODY_UPDATE_FILE}}"
+    next: null

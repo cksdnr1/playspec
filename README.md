@@ -171,6 +171,7 @@ Refactor and PR preparation prompts compare the current branch against `TARGET_B
 The default preset includes:
 
 - `mono-spec` — compact spec, validation, implementation, test, refactor, and PR workflow.
+- `issue-validate` — GitHub issue validation workflow with a 90 point approval threshold, comment output, and optional body rewrite.
 - `multi-spec` — legacy multi-phase feature/spec workflow.
 - `simple-bug` — legacy simple bug workflow.
 - `phase-execution` — legacy execution workflow for a selected planning phase.
