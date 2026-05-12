@@ -22,6 +22,9 @@ variables:
   MAX_ISSUES:
     default: "3"
     description: Maximum number of GitHub issues this workflow may create.
+  ISSUE_LABEL:
+    default: "agent-validation"
+    description: Label to apply to every created GitHub issue.
   OUTPUT_DIR:
     default: "docs/issues/scope-create/{{ISSUE_SCOPE}}"
     description: Directory for workflow reports and issue drafts.
@@ -62,6 +65,7 @@ phases:
       - OUT_OF_SCOPE_RULES
       - DUPLICATE_SEARCH_QUERY
       - MAX_ISSUES
+      - ISSUE_LABEL
       - DISCOVERY_FILE
       - CANDIDATE_ISSUES_FILE
       - CREATED_ISSUES_FILE
@@ -89,6 +93,7 @@ phases:
       - OUT_OF_SCOPE_RULES
       - DUPLICATE_SEARCH_QUERY
       - MAX_ISSUES
+      - ISSUE_LABEL
       - DISCOVERY_FILE
       - CANDIDATE_ISSUES_FILE
       - CREATED_ISSUES_FILE

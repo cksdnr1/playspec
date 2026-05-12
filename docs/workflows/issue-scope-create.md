@@ -24,6 +24,7 @@ Do not use it for implementation work, broad roadmap planning, or general reposi
 - `OUT_OF_SCOPE_RULES`: Boundaries that must not become issues.
 - `DUPLICATE_SEARCH_QUERY`: Base GitHub issue search query.
 - `MAX_ISSUES`: Maximum number of issues to create. Defaults to `3`.
+- `ISSUE_LABEL`: Label applied to every created issue. Defaults to `agent-validation`.
 
 ## Run Example
 
@@ -35,7 +36,8 @@ playspec create "Create scoped inventory mapping issues" \
   --var FOCUS_AREA="ChannelInventory, ChannelProductMapping, ChannelVariantRef joins" \
   --var OUT_OF_SCOPE_RULES="Do not implement fixes. Do not create broad data cleanup issues. Do not touch unrelated reorder UI." \
   --var DUPLICATE_SEARCH_QUERY="inventory mapping ChannelInventory ChannelProductMapping" \
-  --var MAX_ISSUES=3
+  --var MAX_ISSUES=3 \
+  --var ISSUE_LABEL=agent-validation
 
 playspec next
 ```
@@ -52,7 +54,7 @@ or:
 playspec complete --result no_issues
 ```
 
-When candidates exist, the creation phase re-checks duplicates and creates at most `MAX_ISSUES` GitHub issues with `gh issue create`.
+When candidates exist, the creation phase re-checks duplicates and creates at most `MAX_ISSUES` GitHub issues with `gh issue create --label ISSUE_LABEL`.
 
 ## Issue Body Format
 

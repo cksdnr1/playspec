@@ -5,6 +5,7 @@
 **Issue scope:** `{{ISSUE_SCOPE}}`
 **Focus area:** `{{FOCUS_AREA}}`
 **Maximum issues:** `{{MAX_ISSUES}}`
+**Issue label:** `{{ISSUE_LABEL}}`
 
 ## Goal
 

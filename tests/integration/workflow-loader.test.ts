@@ -208,6 +208,7 @@ phases:
     expect(workflow.variables['OUT_OF_SCOPE_RULES']?.required).toBe(true);
     expect(workflow.variables['DUPLICATE_SEARCH_QUERY']?.required).toBe(true);
     expect(workflow.variables['MAX_ISSUES']?.default).toBe('3');
+    expect(workflow.variables['ISSUE_LABEL']?.default).toBe('agent-validation');
     expect(workflow.artifacts['discovery']?.path).toBe('{{DISCOVERY_FILE}}');
     expect(workflow.artifacts['candidates']?.path).toBe('{{CANDIDATE_ISSUES_FILE}}');
     expect(workflow.artifacts['createdIssues']?.path).toBe('{{CREATED_ISSUES_FILE}}');
@@ -231,6 +232,7 @@ phases:
       'OUT_OF_SCOPE_RULES',
       'DUPLICATE_SEARCH_QUERY',
       'MAX_ISSUES',
+      'ISSUE_LABEL',
       'DISCOVERY_FILE',
       'CANDIDATE_ISSUES_FILE',
       'CREATED_ISSUES_FILE',
@@ -265,6 +267,7 @@ phases:
     expect(discovery).toContain('Prefer zero issues over broad or speculative issues');
     expect(creation).toContain('Do not implement code in the target repository');
     expect(creation).toContain('Create at most `{{MAX_ISSUES}}` issues');
+    expect(creation).toContain('gh issue create --repo {{TARGET_REPOSITORY}} --label {{ISSUE_LABEL}}');
     expect(creation).toContain('Skip the candidate if the duplicate search now finds');
   });
 

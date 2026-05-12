@@ -4,6 +4,7 @@
 **Target repository:** `{{TARGET_REPOSITORY}}`
 **Issue scope:** `{{ISSUE_SCOPE}}`
 **Focus area:** `{{FOCUS_AREA}}`
+**Issue label:** `{{ISSUE_LABEL}}`
 **Candidate file:** `{{CANDIDATE_ISSUES_FILE}}`
 
 ## Goal
@@ -11,6 +12,8 @@
 Create GitHub issues only for the accepted candidates from `{{CANDIDATE_ISSUES_FILE}}`.
 
 Do not implement code in the target repository. Do not edit files in the target repository. Do not create branches, commits, or pull requests.
+
+Writing `{{DISCOVERY_FILE}}`, `{{CANDIDATE_ISSUES_FILE}}`, or `{{CREATED_ISSUES_FILE}}` is not enough when candidates qualify. Those files are evidence and reporting artifacts. The final output of this phase is actual GitHub issues created with `gh issue create`.
 
 ## Before Creating Issues
 
@@ -34,7 +37,9 @@ Skip the candidate if the duplicate search now finds a substantially matching is
 ## Creation Rules
 
 - Create at most `{{MAX_ISSUES}}` issues.
-- Use `gh issue create --repo {{TARGET_REPOSITORY}}`.
+- Use `gh issue create --repo {{TARGET_REPOSITORY}} --label {{ISSUE_LABEL}}`.
+- Every created issue must include the `{{ISSUE_LABEL}}` label.
+- Do not stop after writing local markdown drafts when a candidate passes the creation rules.
 - The GitHub issue body must preserve the PlaySpec-ready issue sections:
   - Problem
   - Context
@@ -71,7 +76,7 @@ Write `{{CREATED_ISSUES_FILE}}`:
 
 ## Commands Run
 - `gh issue list ...`
-- `gh issue create ...`
+- `gh issue create --repo {{TARGET_REPOSITORY}} --label {{ISSUE_LABEL}} ...`
 ```
 
 If no issues were created, `Created: 0` is valid. Explain why.
