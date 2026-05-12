@@ -21,6 +21,7 @@ export interface CreateOptions {
   stdin?: boolean;
   /** Open $EDITOR to write the source problem. */
   edit?: boolean;
+  var?: string[];
   parent?: string;
   after?: string;
 }
@@ -64,7 +65,7 @@ export async function runCreate(
       edit: options.edit,
     });
     const links = await resolveCreateLinks(workspaceRoot, taskId, options);
-    await createNormalTask(workspaceRoot, workflow, title, source, links);
+    await createNormalTask(workspaceRoot, workflow, title, source, links, parseTaskVariables(options.var));
     return;
   }
 
@@ -73,6 +74,9 @@ export async function runCreate(
   }
   if (options.parent || options.after) {
     throw new Error('--parent and --after are only supported for normal task creation, not --phase execution tasks.');
+  }
+  if (options.var && options.var.length > 0) {
+    throw new Error('--var is only supported for normal task creation, not --phase execution tasks.');
   }
 
   // Phase-execution flow
@@ -253,7 +257,8 @@ async function createNormalTask(
   workflow: string,
   title: string,
   source: SourceResult | undefined,
-  links?: TaskLink[]
+  links?: TaskLink[],
+  variables: Record<string, string> = {}
 ): Promise<void> {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspaceRoot);
@@ -262,8 +267,8 @@ async function createNormalTask(
     title,
     workflow,
     variables: source
-      ? { SOURCE_PROBLEM_FILE: source.relativePath }
-      : undefined,
+      ? { ...variables, SOURCE_PROBLEM_FILE: source.relativePath }
+      : variables,
     contextRefs: source
       ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
       : undefined,
@@ -283,6 +288,10 @@ async function createNormalTask(
   if (source) {
     console.log(`Source problem stored: ${source.relativePath}`);
   }
+  const variableCount = Object.keys(variables).length;
+  if (variableCount > 0) {
+    console.log(`Variables set: ${variableCount}`);
+  }
   if (links && links.length > 0) {
     console.log('Links:');
     for (const link of links) {
@@ -290,6 +299,23 @@ async function createNormalTask(
     }
   }
   console.log(`HEAD set to: ${task.id}`);
+}
+
+function parseTaskVariables(entries: string[] | undefined): Record<string, string> {
+  const variables: Record<string, string> = {};
+  for (const entry of entries ?? []) {
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) {
+      throw new Error(`Invalid --var value "${entry}". Expected KEY=VALUE.`);
+    }
+    const key = entry.slice(0, separatorIndex).trim();
+    const value = entry.slice(separatorIndex + 1);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`Invalid --var key "${key}". Use letters, numbers, and underscores, starting with a letter or underscore.`);
+    }
+    variables[key] = value;
+  }
+  return variables;
 }
 
 async function resolveCreateLinks(

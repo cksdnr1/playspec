@@ -76,6 +76,11 @@ function installPipeHandlers(): void {
   process.stderr.on('error', handlePipeError);
 }
 
+function collectOption(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
+}
+
 installPipeHandlers();
 
 function handleError(err: unknown): never {
@@ -251,9 +256,10 @@ program
   .option('--from-file <path>', 'Seed the task from a source problem file')
   .option('--stdin', 'Seed the task from stdin (for scripts and automation)', false)
   .option('--edit', 'Open $EDITOR to write the source problem', false)
+  .option('--var <key=value>', 'Set a workflow/task variable (repeatable)', collectOption, [])
   .option('--parent <taskId>', 'Link the new task to a parent task')
   .option('--after <taskId>', 'Link the new task after another task')
-  .action(async (first: string | undefined, second: string | undefined, opts: { workflow: string; phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean; parent?: string; after?: string }) => {
+  .action(async (first: string | undefined, second: string | undefined, opts: { workflow: string; phase?: string; from?: string; fromFile?: string; stdin?: boolean; edit?: boolean; var?: string[]; parent?: string; after?: string }) => {
     if (!first && !second) {
       const isInteractive = process.stdout.isTTY === true && !process.env['PLAY_SPEC_NON_INTERACTIVE'];
       if (!isInteractive) {

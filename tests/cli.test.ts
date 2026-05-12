@@ -2529,6 +2529,41 @@ phases:
     expect(task.workflow).toBe('total-plan');
   });
 
+  it('creates a task with repeated workflow variables', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli([
+      'create',
+      'Variable Task',
+      '--workflow',
+      'issue-scope-create',
+      '--var',
+      'TARGET_REPOSITORY=cksdnr1/playspec',
+      '--var',
+      'MAX_ISSUES=2',
+      '--var',
+      'OUT_OF_SCOPE_RULES=Do not implement code.',
+    ], workspace.dir);
+    const task = await new YamlTaskStore(workspace.dir).getTask('variable_task');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Variables set: 3');
+    expect(task.variables['TARGET_REPOSITORY']).toBe('cksdnr1/playspec');
+    expect(task.variables['MAX_ISSUES']).toBe('2');
+    expect(task.variables['OUT_OF_SCOPE_RULES']).toBe('Do not implement code.');
+  });
+
+  it('rejects malformed workflow variables', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runCli(['create', 'Bad Variable Task', '--var', 'MISSING_EQUALS'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid --var value');
+  });
+
   it('creates a task via interactive wizard with piped skip input', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
