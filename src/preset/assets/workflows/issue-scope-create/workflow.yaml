@@ -1,0 +1,97 @@
+id: issue-scope-create
+name: Issue Scope Create
+description: Built-in workflow for finding concrete non-duplicate problems in a narrow scope and creating PlaySpec-ready GitHub issues.
+version: 1
+mode: linear
+variables:
+  TARGET_REPOSITORY:
+    required: true
+    description: Target GitHub repository, for example owner/repo or a local checkout path with GitHub remote.
+  ISSUE_SCOPE:
+    required: true
+    description: Narrow issue discovery scope, such as reorder-risk improvement or inventory mapping correctness.
+  FOCUS_AREA:
+    required: true
+    description: Specific subsystem, workflow, product area, or code path to inspect.
+  OUT_OF_SCOPE_RULES:
+    required: true
+    description: Explicit boundaries that must not be converted into issues.
+  DUPLICATE_SEARCH_QUERY:
+    required: true
+    description: GitHub issue search query used before creating each issue.
+  MAX_ISSUES:
+    default: "3"
+    description: Maximum number of GitHub issues this workflow may create.
+  OUTPUT_DIR:
+    default: "docs/issues/scope-create/{{ISSUE_SCOPE}}"
+    description: Directory for workflow reports and issue drafts.
+  DISCOVERY_FILE:
+    default: "{{OUTPUT_DIR}}/discovery.md"
+    description: Read-only discovery report.
+  CANDIDATE_ISSUES_FILE:
+    default: "{{OUTPUT_DIR}}/candidate_issues.md"
+    description: PlaySpec-ready issue drafts selected for creation.
+  CREATED_ISSUES_FILE:
+    default: "{{OUTPUT_DIR}}/created_issues.md"
+    description: Final report listing created GitHub issues or explaining why none were created.
+artifacts:
+  discovery:
+    path: "{{DISCOVERY_FILE}}"
+    kind: discovery
+  candidates:
+    path: "{{CANDIDATE_ISSUES_FILE}}"
+    kind: issue-candidates
+  createdIssues:
+    path: "{{CREATED_ISSUES_FILE}}"
+    kind: created-issues
+phaseOrder:
+  - scoped_issue_discovery
+  - create_scoped_issues
+phases:
+  scoped_issue_discovery:
+    title: "Scoped issue discovery"
+    stepNumber: "1"
+    stepTitle: "Find concrete non-duplicate issue candidates"
+    template: scoped_issue_discovery.md
+    requiredVariables:
+      - TASK_TITLE
+      - TASK_ID
+      - TARGET_REPOSITORY
+      - ISSUE_SCOPE
+      - FOCUS_AREA
+      - OUT_OF_SCOPE_RULES
+      - DUPLICATE_SEARCH_QUERY
+      - MAX_ISSUES
+      - DISCOVERY_FILE
+      - CANDIDATE_ISSUES_FILE
+      - CREATED_ISSUES_FILE
+    outputs:
+      - "{{DISCOVERY_FILE}}"
+      - "{{CANDIDATE_ISSUES_FILE}}"
+    gate:
+      results:
+        - candidates_found
+        - no_issues
+      nextByResult:
+        candidates_found: create_scoped_issues
+        no_issues: create_scoped_issues
+  create_scoped_issues:
+    title: "Create scoped GitHub issues"
+    stepNumber: "2"
+    stepTitle: "Create only approved scoped issues"
+    template: create_scoped_issues.md
+    requiredVariables:
+      - TASK_TITLE
+      - TASK_ID
+      - TARGET_REPOSITORY
+      - ISSUE_SCOPE
+      - FOCUS_AREA
+      - OUT_OF_SCOPE_RULES
+      - DUPLICATE_SEARCH_QUERY
+      - MAX_ISSUES
+      - DISCOVERY_FILE
+      - CANDIDATE_ISSUES_FILE
+      - CREATED_ISSUES_FILE
+    outputs:
+      - "{{CREATED_ISSUES_FILE}}"
+    next: null

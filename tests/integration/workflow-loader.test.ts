@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
@@ -194,6 +194,78 @@ phases:
       'ISSUE_COMMENT_FILE',
       'ISSUE_BODY_UPDATE_FILE',
     ]));
+  });
+
+  it('loads issue-scope-create workflow as a separate scoped issue creation workflow', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+    const workflow = await loader.load('issue-scope-create');
+
+    expect(workflow.id).toBe('issue-scope-create');
+    expect(workflow.phaseOrder).toEqual(['scoped_issue_discovery', 'create_scoped_issues']);
+    expect(workflow.variables['TARGET_REPOSITORY']?.required).toBe(true);
+    expect(workflow.variables['ISSUE_SCOPE']?.required).toBe(true);
+    expect(workflow.variables['FOCUS_AREA']?.required).toBe(true);
+    expect(workflow.variables['OUT_OF_SCOPE_RULES']?.required).toBe(true);
+    expect(workflow.variables['DUPLICATE_SEARCH_QUERY']?.required).toBe(true);
+    expect(workflow.variables['MAX_ISSUES']?.default).toBe('3');
+    expect(workflow.artifacts['discovery']?.path).toBe('{{DISCOVERY_FILE}}');
+    expect(workflow.artifacts['candidates']?.path).toBe('{{CANDIDATE_ISSUES_FILE}}');
+    expect(workflow.artifacts['createdIssues']?.path).toBe('{{CREATED_ISSUES_FILE}}');
+    expect(workflow.phases['scoped_issue_discovery']?.gate?.results).toEqual([
+      'candidates_found',
+      'no_issues',
+    ]);
+    expect(workflow.phases['scoped_issue_discovery']?.gate?.nextByResult).toEqual({
+      candidates_found: 'create_scoped_issues',
+      no_issues: 'create_scoped_issues',
+    });
+    expect(workflow.phases['create_scoped_issues']?.next).toBeNull();
+
+    const requiredVariables = workflow.phaseOrder.flatMap(
+      (phaseId) => workflow.phases[phaseId]?.requiredVariables ?? []
+    );
+    expect(requiredVariables).toEqual(expect.arrayContaining([
+      'TARGET_REPOSITORY',
+      'ISSUE_SCOPE',
+      'FOCUS_AREA',
+      'OUT_OF_SCOPE_RULES',
+      'DUPLICATE_SEARCH_QUERY',
+      'MAX_ISSUES',
+      'DISCOVERY_FILE',
+      'CANDIDATE_ISSUES_FILE',
+      'CREATED_ISSUES_FILE',
+    ]));
+    expect(workflow.phaseOrder).not.toContain('issue_validate');
+    expect(workflow.phaseOrder).not.toContain('publish_result');
+  });
+
+  it('ships issue-scope-create templates with scoped non-duplicate issue safeguards', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const templateRoot = path.join(registry.getBuiltinRoot(), 'issue-scope-create', 'templates');
+    const discovery = await readFile(path.join(templateRoot, 'scoped_issue_discovery.md'), 'utf8');
+    const creation = await readFile(path.join(templateRoot, 'create_scoped_issues.md'), 'utf8');
+
+    for (const section of [
+      '## Problem',
+      '## Context',
+      '## Impact',
+      '## Scope',
+      '## Out of scope',
+      '## Acceptance criteria',
+      '## Test requirements',
+      '## Risk notes',
+      '## Recommended workflow',
+    ]) {
+      expect(discovery).toContain(section);
+      expect(creation).toContain(section.replace('## ', ''));
+    }
+
+    expect(discovery).toContain('Reject a candidate');
+    expect(discovery).toContain('Duplicate Search');
+    expect(discovery).toContain('Prefer zero issues over broad or speculative issues');
+    expect(creation).toContain('Do not implement code in the target repository');
+    expect(creation).toContain('Create at most `{{MAX_ISSUES}}` issues');
+    expect(creation).toContain('Skip the candidate if the duplicate search now finds');
   });
 
   it('throws WorkflowNotFoundError for unknown workflow', async () => {

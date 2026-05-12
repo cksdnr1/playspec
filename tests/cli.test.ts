@@ -954,6 +954,7 @@ review:
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('mono-spec\tbuiltin');
     expect(result.stdout).toContain('issue-validate\tbuiltin');
+    expect(result.stdout).toContain('issue-scope-create\tbuiltin');
     expect(show.exitCode).toBe(0);
     expect(show.stdout).toContain('Workflow: mono-spec');
     expect(show.stdout).toContain('Source: builtin');
