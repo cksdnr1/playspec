@@ -36,3 +36,9 @@
 - Compared the branch diff against `origin/master`.
 - No additional refactor was applied. The implementation is already limited to one CLI helper/call site plus focused regression tests.
 - Intentionally skipped broader helper extraction in tests to keep the change scoped and avoid unrelated test rewrites.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/107
+- Branch: `agent/issue-102-validate-workflow`
+- Reusable agent guidance: no update needed; existing repository guidance already covers the relevant workflow and module-boundary rules.
