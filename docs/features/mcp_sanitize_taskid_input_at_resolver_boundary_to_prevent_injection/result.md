@@ -46,3 +46,7 @@
 
 - Avoided echoing invalid raw `taskId` values in `McpInvalidTaskIdError` to keep diagnostics stable when input contains null bytes or control characters.
 - Skipped broader extraction or shared validation helpers because this issue only changes the MCP resolver boundary.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/114
