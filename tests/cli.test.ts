@@ -2576,6 +2576,86 @@ phases:
     expect(task.variables['OUT_OF_SCOPE_RULES']).toBe('Do not implement code.');
   });
 
+  it('stores workflow variables when creating a phase-execution task', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const store = new YamlTaskStore(workspace.dir);
+    const planningTask = await store.createTask({
+      id: 'planning_task',
+      title: 'Planning Task',
+      workflow: 'total-plan',
+    });
+    await store.saveTask({
+      ...planningTask,
+      status: 'completed',
+      phaseHistory: [
+        {
+          phase: 'phase_plan_create',
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'planning_task', 'planning_task_total_spec.md'),
+      '# Total spec\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'planning_task', 'planning_task_phase_plan.md'),
+      '# Phase plan\n'
+    );
+
+    const result = await runCli([
+      'create',
+      'Planning Task',
+      '--workflow',
+      'issue-scope-create',
+      '--phase',
+      '1',
+      '--from',
+      'planning_task',
+      '--var',
+      'TARGET_REPOSITORY=cksdnr1/playspec',
+      '--var',
+      'ISSUE_SCOPE=create-var-handoff',
+      '--var',
+      'FOCUS_AREA=src/cli/commands/create.ts',
+      '--var',
+      'OUT_OF_SCOPE_RULES=No broad CLI redesign.',
+      '--var',
+      'DUPLICATE_SEARCH_QUERY=repo:cksdnr1/playspec create var phase',
+    ], workspace.dir);
+    const taskPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'planning_task_phase_1_execution',
+      'task.yaml'
+    );
+    const taskYaml = parseYaml(await readTextFile(taskPath)) as {
+      variables: Record<string, string>;
+      target: { phaseNumber: string };
+      contextRefs: Array<{ role: string; source: string }>;
+    };
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Variables set: 5');
+    expect(taskYaml.variables['FEATURE_SLUG']).toBe('planning_task_phase_1_execution');
+    expect(taskYaml.variables['TARGET_REPOSITORY']).toBe('cksdnr1/playspec');
+    expect(taskYaml.variables['ISSUE_SCOPE']).toBe('create-var-handoff');
+    expect(taskYaml.variables['FOCUS_AREA']).toBe('src/cli/commands/create.ts');
+    expect(taskYaml.variables['OUT_OF_SCOPE_RULES']).toBe('No broad CLI redesign.');
+    expect(taskYaml.variables['DUPLICATE_SEARCH_QUERY']).toBe('repo:cksdnr1/playspec create var phase');
+    expect(taskYaml.target.phaseNumber).toBe('1');
+    expect(taskYaml.contextRefs).toEqual([
+      { path: 'docs/features/planning_task/planning_task_total_spec.md', role: 'planning-context', source: 'planning_task' },
+      { path: 'docs/features/planning_task/planning_task_phase_plan.md', role: 'planning-context', source: 'planning_task' },
+    ]);
+  });
+
   it('rejects malformed workflow variables', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

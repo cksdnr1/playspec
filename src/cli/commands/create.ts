@@ -77,9 +77,7 @@ export async function runCreate(
   if (options.parent || options.after) {
     throw new Error('--parent and --after are only supported for normal task creation, not --phase execution tasks.');
   }
-  if (options.var && options.var.length > 0) {
-    throw new Error('--var is only supported for normal task creation, not --phase execution tasks.');
-  }
+  const variables = parseTaskVariables(options.var);
 
   // Phase-execution flow
   const phaseNumber = options.phase;
@@ -155,10 +153,14 @@ export async function runCreate(
     }
   }
 
-  const task = await store.createTask({ id: taskId, title: finalTitle, workflow, target, contextRefs });
+  const task = await store.createTask({ id: taskId, title: finalTitle, workflow, target, contextRefs, variables });
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
+  const variableCount = Object.keys(variables).length;
+  if (variableCount > 0) {
+    console.log(`Variables set: ${variableCount}`);
+  }
   console.log(`HEAD set to: ${task.id}`);
 }
 
