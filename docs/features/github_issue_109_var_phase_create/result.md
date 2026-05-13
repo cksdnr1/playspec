@@ -36,3 +36,10 @@
 - No additional refactor was applied.
 - The implementation already reuses the existing `parseTaskVariables()` helper and `YamlTaskStore.createTask()` variable contract.
 - Broader extraction or helper changes were intentionally skipped to keep the fix local to the affected CLI branch.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/113
+- Branch: `agent/issue-109-var-phase-create`
+- Commit: `bfa6185`
+- Reusable agent guidance: not documented; this was a narrow CLI bug fix using existing parser and storage behavior.
