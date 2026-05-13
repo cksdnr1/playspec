@@ -45,6 +45,11 @@
 - Re-ran `pnpm test -- tests/integration/mcp-server.test.ts` after the refactor review.
   - 25 tests passed.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/110
+- Reusable agent guidance: not needed; this issue did not reveal a reusable workflow rule beyond the existing MCP context-resolution constraints.
+
 ## Remaining Risks
 
 - `McpSessionStore.loadSession()` still returns `null` for any read or parse failure, so corrupt or unreadable session files will also surface as `McpSessionNotFoundError`. This matches the issue's constraint to avoid changing the session store API.
