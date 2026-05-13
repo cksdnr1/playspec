@@ -1,4 +1,8 @@
-import { McpTaskContextRequiredError, McpSessionContextEmptyError } from './errors.js';
+import {
+  McpTaskContextRequiredError,
+  McpSessionContextEmptyError,
+  McpSessionNotFoundError,
+} from './errors.js';
 import type { McpSessionStore } from './session-store.js';
 
 export async function resolveMcpTaskId(
@@ -11,7 +15,10 @@ export async function resolveMcpTaskId(
 
   if (input.sessionId) {
     const session = await sessionStore.loadSession(input.sessionId);
-    if (!session || session.currentTaskId === null) {
+    if (!session) {
+      throw new McpSessionNotFoundError(input.sessionId);
+    }
+    if (session.currentTaskId === null) {
       throw new McpSessionContextEmptyError(input.sessionId);
     }
     return session.currentTaskId;
