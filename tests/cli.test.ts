@@ -2529,6 +2529,28 @@ phases:
     expect(task.workflow).toBe('total-plan');
   });
 
+  it('rejects an unknown workflow before creating task state or changing HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const prior = await runCli(['create', 'Existing Head Task'], workspace.dir);
+    expect(prior.exitCode).toBe(0);
+
+    const result = await runCli([
+      'create',
+      'Broken Workflow Demo',
+      '--workflow',
+      'definitely-missing',
+    ], workspace.dir);
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'broken_workflow_demo'))).rejects.toThrow();
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('existing_head_task\n');
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Workflow file not found: definitely-missing');
+    expect(result.stderr).toContain('list');
+    expect(result.stderr).toContain('install');
+  });
+
   it('creates a task with repeated workflow variables', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

@@ -881,6 +881,52 @@ describe('init → create → next (end-to-end)', () => {
     ]);
   });
 
+  it('rejects unknown phase-execution workflow before creating task state or changing HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const planningTaskId = slugify('Compatible Planning');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: planningTaskId,
+      title: 'Compatible Planning',
+      workflow: 'total-plan',
+    });
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_total_spec.md`),
+      '# Total Spec\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_phase_plan.md`),
+      '# Phase Plan\n'
+    );
+    await store.updateTask(planningTaskId, { status: 'completed', currentPhase: null });
+    await store.createTask({
+      id: 'existing_head_task',
+      title: 'Existing Head Task',
+      workflow: 'mono-spec',
+    });
+    await writeTextFile(getHeadPath(workspace.dir), 'existing_head_task\n');
+
+    const createResult = await runCli([
+      'create',
+      'Compatible Planning',
+      '--workflow',
+      'definitely-missing',
+      '--phase',
+      '2',
+      '--from',
+      planningTaskId,
+    ]);
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'compatible_planning_phase_2_execution'))).rejects.toThrow();
+    expect(await readFile(getHeadPath(workspace.dir), 'utf8')).toBe('existing_head_task\n');
+    expect(createResult.exitCode).toBe(1);
+    expect(createResult.stderr).toContain('Workflow file not found: definitely-missing');
+    expect(createResult.stderr).toContain('list');
+    expect(createResult.stderr).toContain('install');
+  });
+
   it('fails when a workflow phase requires a missing variable', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
