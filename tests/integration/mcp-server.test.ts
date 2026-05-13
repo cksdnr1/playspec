@@ -14,7 +14,11 @@ import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
-import { McpTaskContextRequiredError, McpSessionContextEmptyError } from '#mcp/errors.js';
+import {
+  McpTaskContextRequiredError,
+  McpSessionContextEmptyError,
+  McpSessionNotFoundError,
+} from '#mcp/errors.js';
 import { buildMcpServer } from '#mcp/server.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
 import type { EvolutionProposal } from '#evolution/types.js';
@@ -176,12 +180,23 @@ describe('resolveMcpTaskId', () => {
     ).rejects.toBeInstanceOf(McpSessionContextEmptyError);
   });
 
-  it('throws McpSessionContextEmptyError when session does not exist', async () => {
+  it('throws McpSessionNotFoundError when session file does not exist', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
     await expect(
-      resolveMcpTaskId({ sessionId: 'mcp.missing' }, sessionStore)
-    ).rejects.toBeInstanceOf(McpSessionContextEmptyError);
+      resolveMcpTaskId({ sessionId: 'nonexistent.session' }, sessionStore)
+    ).rejects.toBeInstanceOf(McpSessionNotFoundError);
+  });
+
+  it('uses a create-session hint when session file does not exist', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId(
+      { sessionId: 'nonexistent.session' },
+      sessionStore
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(McpSessionNotFoundError);
+    expect(error.hint).toContain('create and bind the session');
   });
 
   it('resolves taskId from session when sessionId is provided', async () => {
