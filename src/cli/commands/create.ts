@@ -51,6 +51,8 @@ export async function runCreate(
     throw new WorkspaceNotInitializedError(workspaceRoot);
   }
 
+  await validateWorkflowExists(workspaceRoot, workflow);
+
   if (!options.phase) {
     if (options.from && options.fromFile) {
       throw new Error('--from and --from-file both specify source files. Use only one.');
@@ -158,6 +160,10 @@ export async function runCreate(
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function validateWorkflowExists(workspaceRoot: string, workflow: string): Promise<void> {
+  await new WorkflowLoader(workspaceRoot).resolve(workflow);
 }
 
 async function resolvePlanningArtifacts(
