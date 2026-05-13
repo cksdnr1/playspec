@@ -15,6 +15,7 @@ import { getHeadPath } from '#utils/paths.js';
 import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
 import {
+  McpInvalidTaskIdError,
   McpTaskContextRequiredError,
   McpSessionContextEmptyError,
   McpSessionNotFoundError,
@@ -164,6 +165,34 @@ describe('resolveMcpTaskId', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     const resolved = await resolveMcpTaskId({ taskId }, sessionStore);
     expect(resolved).toBe(taskId);
+  });
+
+  it.each([
+    ['slash path separator', '../feature_a'],
+    ['backslash path separator', '..\\feature_a'],
+    ['null byte', 'feature_a\0suffix'],
+    ['control character', 'feature_a\nsuffix'],
+    ['over 256 characters', 'a'.repeat(257)],
+  ])('rejects direct taskId with %s', async (_reason, taskId) => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ taskId }, sessionStore)).rejects.toBeInstanceOf(
+      McpInvalidTaskIdError
+    );
+  });
+
+  it('documents direct taskId validation rules in the error hint', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId(
+      { taskId: '../feature_a' },
+      sessionStore
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(McpInvalidTaskIdError);
+    expect(error.hint).toContain('256 characters or fewer');
+    expect(error.hint).toContain('path separators');
+    expect(error.hint).toContain('null bytes');
+    expect(error.hint).toContain('control characters');
   });
 
   it('throws McpSessionContextEmptyError when session has null currentTaskId', async () => {
