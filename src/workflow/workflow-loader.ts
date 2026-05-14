@@ -5,7 +5,7 @@ import { WorkflowDefinitionSchema } from './workflow-schema.js';
 import { TemplateNotFoundError } from '#core/errors.js';
 import type { ResolvedWorkflow, WorkflowDefinition } from '#core/types.js';
 import { readTextFile } from '#utils/fs.js';
-import { WorkflowRegistry } from './workflow-registry.js';
+import { assertSafeWorkflowId, WorkflowRegistry } from './workflow-registry.js';
 
 export class WorkflowLoader {
   private readonly registry: WorkflowRegistry;
@@ -15,10 +15,12 @@ export class WorkflowLoader {
   }
 
   async load(workflow: string): Promise<WorkflowDefinition> {
+    assertSafeWorkflowId(workflow);
     return (await this.resolve(workflow)).definition;
   }
 
   async resolve(workflow: string): Promise<ResolvedWorkflow> {
+    assertSafeWorkflowId(workflow);
     const location = this.getRegistry().resolve(workflow);
     const resolvedLocation = await location;
     const content = await readTextFile(resolvedLocation.workflowFile);
@@ -39,15 +41,20 @@ export class WorkflowLoader {
   }
 
   async resolveFromDirectory(rootDir: string): Promise<ResolvedWorkflow> {
-    const workflowFile = `${rootDir}/workflow.yaml`;
+    const location = this.resolveDirectoryLocation(rootDir);
+    const workflowFile = path.join(location.rootDir, 'workflow.yaml');
     const content = await readTextFile(workflowFile);
     const definition = WorkflowDefinitionSchema.parse(parseYaml(content) as unknown);
-    await this.validateWorkflowDefinition(definition, `${rootDir}/templates`);
+    assertSafeWorkflowId(definition.id);
+    if (definition.id !== location.id) {
+      throw new Error(`Workflow id mismatch: directory "${location.id}" but ${workflowFile} declares "${definition.id}".`);
+    }
+    await this.validateWorkflowDefinition(definition, location.templateDir);
     return {
       id: definition.id,
-      rootDir,
-      templateDir: `${rootDir}/templates`,
-      source: 'user',
+      rootDir: location.rootDir,
+      templateDir: location.templateDir,
+      source: location.source,
       definition,
     };
   }
@@ -81,5 +88,59 @@ export class WorkflowLoader {
       throw new Error(`Workflow template path escapes templates directory: ${templatePath}`);
     }
     return resolved;
+  }
+
+  private resolveDirectoryLocation(rootDir: string): {
+    id: string;
+    rootDir: string;
+    templateDir: string;
+    source: ResolvedWorkflow['source'];
+  } {
+    if (rootDir.includes('\0')) {
+      throw new Error(`Workflow directory must not contain null bytes: ${rootDir}`);
+    }
+
+    const registry = this.getRegistry();
+    const resolvedRootDir = path.resolve(rootDir);
+    const sourceRoots = [
+      { source: 'project' as const, root: registry.getProjectRoot() },
+      { source: 'user' as const, root: registry.getUserRoot() },
+      { source: 'builtin' as const, root: registry.getBuiltinRoot() },
+    ];
+
+    for (const { source, root } of sourceRoots) {
+      const sourceRoot = path.resolve(root);
+      const relative = path.relative(sourceRoot, resolvedRootDir);
+      const outsideSourceRoot = relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+      if (outsideSourceRoot) {
+        continue;
+      }
+      if (relative === '') {
+        throw new Error(`Workflow directory must be a direct child of a known workflow source root: ${rootDir}`);
+      }
+
+      const segments = relative.split(path.sep).filter(Boolean);
+      if (segments.length !== 1) {
+        throw new Error(`Workflow directory must be a direct child of a known workflow source root: ${rootDir}`);
+      }
+
+      const id = segments[0] ?? '';
+      assertSafeWorkflowId(id);
+      return {
+        id,
+        rootDir: resolvedRootDir,
+        templateDir: path.join(resolvedRootDir, 'templates'),
+        source,
+      };
+    }
+
+    const id = path.basename(resolvedRootDir);
+    assertSafeWorkflowId(id);
+    return {
+      id,
+      rootDir: resolvedRootDir,
+      templateDir: path.join(resolvedRootDir, 'templates'),
+      source: 'user',
+    };
   }
 }
