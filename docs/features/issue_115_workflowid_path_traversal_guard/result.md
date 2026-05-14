@@ -46,3 +46,11 @@
 
 - `resolveFromDirectory()` continues to support arbitrary custom workflow directories outside known workflow roots for existing CLI/install behavior; those directories are labeled `user` after validating the directory basename and declared workflow ID.
 - Error types are plain `Error` for validation failures, matching the existing workflow loader style for path/template validation errors.
+
+## PR Preparation
+
+- Branch pushed: `agent/issue-115-workflow-id-path-guard`
+- Draft PR: https://github.com/cksdnr1/playspec/pull/117
+- Commit: `4e81be5`
+- Issue label `agent-pr-created` added successfully.
+- Reusable agent guidance: no update needed; existing repository guidance already covers path-safety expectations, and this fix is localized.
