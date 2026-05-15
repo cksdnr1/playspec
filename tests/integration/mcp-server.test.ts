@@ -76,9 +76,9 @@ function makeProposal(id: string, taskId: string): EvolutionProposal {
   };
 }
 
-function getRegisteredToolHandler(toolName: string) {
+function getRegisteredToolHandler(toolName: string, serverWorkspaceRoot = workspace.dir) {
   const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
-  buildMcpServer(workspace.dir);
+  buildMcpServer(serverWorkspaceRoot);
   const call = toolSpy.mock.calls.find((entry) => entry[0] === toolName);
   toolSpy.mockRestore();
   if (!call) throw new Error(`Tool not registered: ${toolName}`);
@@ -256,6 +256,90 @@ describe('resolveMcpTaskId', () => {
 describe('buildMcpServer', () => {
   it('instantiates McpServer without throwing', () => {
     expect(() => buildMcpServer(workspace.dir)).not.toThrow();
+  });
+
+  it('retrieves a same-workspace task with diagnostics', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Same Workspace Lookup');
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['id']).toBe(taskId);
+    expect(body['diagnostics']).toMatchObject({
+      serverWorkspaceRoot: workspace.dir,
+      workspaceRoot: workspace.dir,
+      playspecRoot: path.join(workspace.dir, '.playspec'),
+      headTaskId: taskId,
+      cache: {
+        enabled: false,
+        status: 'not used; task state is read from disk per request',
+      },
+    });
+  });
+
+  it('retrieves an explicit workspace task when the server workspace differs', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const { taskId } = await initWorkspaceWithTask('MCP Explicit Workspace Lookup');
+      const handler = getRegisteredToolHandler('playspec_get_task', serverWorkspace.dir);
+
+      const result = await handler({ taskId, workspaceRoot: workspace.dir });
+      const body = parseToolJson(result);
+
+      expect(result.isError).toBeUndefined();
+      expect(body['id']).toBe(taskId);
+      expect(body['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+        taskSearchPaths: {
+          active: path.join(workspace.dir, '.playspec', 'tasks', 'active'),
+          completed: path.join(workspace.dir, '.playspec', 'tasks', 'active'),
+          archived: path.join(workspace.dir, '.playspec', 'tasks', 'archived'),
+        },
+      });
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
+  it('lists explicit workspace tasks with diagnostics when the server workspace differs', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const { taskId } = await initWorkspaceWithTask('MCP Explicit Workspace List');
+      const handler = getRegisteredToolHandler('playspec_list_tasks', serverWorkspace.dir);
+
+      const result = await handler({ workspaceRoot: workspace.dir });
+      const body = parseToolJson(result);
+
+      expect(result.isError).toBeUndefined();
+      expect(body['active']).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: taskId }),
+      ]));
+      expect(body['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+        playspecRoot: path.join(workspace.dir, '.playspec'),
+      });
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
+  it('includes workspace diagnostics when explicit task lookup misses', async () => {
+    await initWorkspaceWithTask('MCP Missing Lookup Diagnostics');
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId: 'missing_task' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Task not found: missing_task');
+    expect(result.content[0].text).toContain(`effective workspace root: ${workspace.dir}`);
+    expect(result.content[0].text).toContain(
+      `task search paths.active: ${path.join(workspace.dir, '.playspec', 'tasks', 'active')}`
+    );
+    expect(result.content[0].text).toContain('cache: not used; task state is read from disk per request');
   });
 
   it('does not register archive lookup tools in Phase 5', () => {
