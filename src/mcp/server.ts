@@ -20,20 +20,45 @@ import {
 import type { EvolutionRiskLevel, HumanEditObservation } from '#evolution/types.js';
 import { McpSessionStore } from './session-store.js';
 import { resolveMcpTaskId } from './context.js';
+import {
+  collectMcpWorkspaceDiagnostics,
+  formatMcpWorkspaceDiagnostics,
+  resolveMcpWorkspaceRoot,
+  type McpWorkspaceDiagnostics,
+} from './workspace-diagnostics.js';
 
 function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
-function err(error: unknown) {
+function err(error: unknown, diagnostics?: McpWorkspaceDiagnostics) {
   if (error instanceof PlaySpecError) {
     const text = error.hint
       ? `${error.message}\n\nHint: ${error.hint}`
       : error.message;
-    return { content: [{ type: 'text' as const, text }], isError: true as const };
+    return {
+      content: [{
+        type: 'text' as const,
+        text: appendDiagnostics(text, diagnostics),
+      }],
+      isError: true as const,
+    };
   }
   const text = error instanceof Error ? error.message : String(error);
-  return { content: [{ type: 'text' as const, text }], isError: true as const };
+  return {
+    content: [{
+      type: 'text' as const,
+      text: appendDiagnostics(text, diagnostics),
+    }],
+    isError: true as const,
+  };
+}
+
+function appendDiagnostics(text: string, diagnostics?: McpWorkspaceDiagnostics): string {
+  if (!diagnostics) {
+    return text;
+  }
+  return `${text}\n\n${formatMcpWorkspaceDiagnostics(diagnostics)}`;
 }
 
 const taskContext = {
@@ -68,13 +93,17 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_list_tasks',
     'List active and completed PlaySpec tasks',
-    async () => {
+    { workspaceRoot: z.string().optional() },
+    async (args) => {
       try {
+        const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
         const [active, completed] = await Promise.all([
-          taskStore.listActiveTasks(),
-          taskStore.listCompletedTasks(),
+          scopedTaskStore.listActiveTasks(),
+          scopedTaskStore.listCompletedTasks(),
         ]);
-        return ok({ active, completed });
+        const diagnostics = await collectMcpWorkspaceDiagnostics(workspaceRoot, effectiveWorkspaceRoot);
+        return ok({ active, completed, diagnostics });
       } catch (e) {
         return err(e);
       }
@@ -84,13 +113,16 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_get_task',
     'Get full task record by taskId',
-    { taskId: z.string() },
+    { taskId: z.string(), workspaceRoot: z.string().optional() },
     async (args) => {
+      const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+      const diagnostics = await collectMcpWorkspaceDiagnostics(workspaceRoot, effectiveWorkspaceRoot);
       try {
-        const task = await taskStore.getTask(args.taskId);
-        return ok(task);
+        const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
+        const task = await scopedTaskStore.getTask(args.taskId);
+        return ok({ ...task, diagnostics });
       } catch (e) {
-        return err(e);
+        return err(e, diagnostics);
       }
     }
   );
