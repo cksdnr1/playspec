@@ -48,6 +48,25 @@ phases:
     await writeFile(path.join(root, id, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
   }
 
+  async function writeWorkflowInDirectory(root: string, id: string, description: string): Promise<void> {
+    await mkdir(path.join(root, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(root, 'workflow.yaml'),
+      `id: ${id}
+description: ${description}
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(root, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
+  }
+
   it('loads multi-spec workflow with expected fields', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     const workflow = await loader.load('multi-spec');
@@ -57,6 +76,29 @@ phases:
     expect(Array.isArray(workflow.phaseOrder)).toBe(true);
     expect(workflow.phaseOrder.length).toBeGreaterThan(0);
     expect(typeof workflow.phases).toBe('object');
+  });
+
+  it('resolves workflow definitions from an explicit directory', async () => {
+    const workflowRoot = path.join(workspace.dir, 'custom-workflow');
+    await writeWorkflowInDirectory(workflowRoot, 'custom-workflow', 'Custom workflow');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot);
+
+    expect(workflow.id).toBe('custom-workflow');
+    expect(workflow.rootDir).toBe(workflowRoot);
+    expect(workflow.templateDir).toBe(path.join(workflowRoot, 'templates'));
+    expect(workflow.source).toBe('user');
+    expect(workflow.definition.description).toBe('Custom workflow');
+    expect(workflow.definition.mode).toBe('linear');
+    expect(workflow.definition.phaseOrder).toEqual(['start']);
+    expect(workflow.definition.phases['start']?.template).toBe('start.md');
+  });
+
+  it('rejects explicit workflow directories without workflow.yaml', async () => {
+    const workflowRoot = path.join(workspace.dir, 'missing-workflow-file');
+    await mkdir(workflowRoot, { recursive: true });
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow();
   });
 
   it('loaded workflow phases match phaseOrder keys', async () => {
@@ -274,6 +316,13 @@ phases:
   it('throws WorkflowNotFoundError for unknown workflow', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);
+  });
+
+  it('derives the builtin workflow root from preset assets', () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const normalizedRoot = registry.getBuiltinRoot().split(path.sep).join('/');
+
+    expect(normalizedRoot).toMatch(/\/(src|dist)\/preset\/assets\/workflows$/);
   });
 
   it('rejects unsafe workflow ids before registry filesystem lookup', async () => {
