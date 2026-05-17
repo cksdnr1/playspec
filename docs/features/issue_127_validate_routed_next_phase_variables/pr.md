@@ -28,6 +28,10 @@ Fixes #127
 
 - `issue_127_validate_routed_next_phase_variables`
 
+## Draft PR
+
+- https://github.com/cksdnr1/playspec/pull/128
+
 ## Risk Notes
 
 - The preflight only checks required variables; it intentionally does not render the target prompt or perform unrelated context reads.

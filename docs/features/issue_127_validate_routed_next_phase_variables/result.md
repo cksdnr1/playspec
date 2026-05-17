@@ -31,6 +31,12 @@
 - No behavior-preserving code cleanup was warranted; the implementation is already localized to the core helper/preflight and regression tests.
 - Intentionally skipped unrelated formatting or fixture consolidation to avoid churn in the CLI test file.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/128
+- Branch: `agent/issue-127-routed-next-vars`
+- Reusable agent guidance: no new guidance needed; this is a localized core validation fix.
+
 ## Remaining risks
 
 - No known remaining implementation risks.
