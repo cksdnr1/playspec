@@ -163,6 +163,35 @@ ${options.phaseVariables ?? ''}    requiredVariables:
   );
 }
 
+async function writeGatedRequiredTargetWorkflow(): Promise<void> {
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'gated-required-target', 'workflow.yaml'),
+    `id: gated-required-target
+mode: linear
+phaseOrder:
+  - validation
+  - implementation
+phases:
+  validation:
+    title: Validation
+    template: phase_template.md
+    results:
+      - approved
+    nextByResult:
+      approved: implementation
+  implementation:
+    title: Implementation
+    template: phase_template.md
+    requiredVariables:
+      - CUSTOM_REQUIRED
+`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'gated-required-target', 'templates', 'phase_template.md'),
+    '# {{TASK_TITLE}} — {{PHASE_NUMBER}}\n'
+  );
+}
+
 async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
   await writeTextFile(
     path.join(root, id, 'workflow.yaml'),
@@ -2313,6 +2342,38 @@ phases:
     expect(result.stdout).toContain('Next phase: 4. 구현 계획서 생성');
     const task = await store.getTask(taskId);
     expect(task.currentPhase).toBe('implementation_plan_create');
+  });
+
+  it('fails complete --result before mutation when routed target is missing a required variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeGatedRequiredTargetWorkflow();
+
+    const taskId = 'gated_missing_target_variable';
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Gated Missing Target Variable',
+      workflow: 'gated-required-target',
+    });
+    await store.updateTask(taskId, { currentPhase: 'validation' });
+    await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+
+    const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      'Missing required variables for workflow "gated-required-target" phase "implementation": CUSTOM_REQUIRED'
+    );
+    expect(result.stderr).not.toContain('Warning: Could not render next prompt after completion');
+    expect(result.stdout).not.toContain('Completed phase');
+    const task = await store.getTask(taskId);
+    expect(task.currentPhase).toBe('validation');
+    expect(task.phaseHistory).toHaveLength(0);
+    const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
+    expect(await readdir(path.join(taskRoot, 'snapshots'))).toEqual([]);
+    expect(await readdir(path.join(taskRoot, 'evidence'))).toEqual([]);
+    await expect(access(path.join(taskRoot, 'completions', 'index.yaml'))).rejects.toThrow();
   });
 
   describe('mono-spec workflow transitions', () => {
