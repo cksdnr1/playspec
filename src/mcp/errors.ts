@@ -4,7 +4,7 @@ export class McpTaskContextRequiredError extends PlaySpecError {
   constructor() {
     super(
       'MCP tool call requires taskId or sessionId.',
-      'Provide taskId or sessionId in the tool input.'
+      'Provide taskId directly, or call playspec_use_session_task to bind a task to a session and then pass that sessionId.'
     );
     this.name = 'McpTaskContextRequiredError';
   }
