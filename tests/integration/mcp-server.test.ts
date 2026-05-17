@@ -15,6 +15,7 @@ import { getHeadPath } from '#utils/paths.js';
 import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
 import {
+  McpInvalidSessionIdError,
   McpInvalidTaskIdError,
   McpTaskContextRequiredError,
   McpSessionContextEmptyError,
@@ -134,6 +135,22 @@ describe('McpSessionStore', () => {
     const loaded = await sessionStore.loadSession('mcp.codex');
     expect(loaded?.currentTaskId).toBe(taskId2);
   });
+
+  it('rejects unsafe sessionId when binding a session', async () => {
+    const { taskId } = await initWorkspaceWithTask('Feature X');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(
+      sessionStore.setSessionTask('../mcp.codex', taskId, 'codex')
+    ).rejects.toBeInstanceOf(McpInvalidSessionIdError);
+  });
+
+  it('rejects unsafe taskId when binding a session', async () => {
+    await initWorkspaceWithTask('Feature X');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(
+      sessionStore.setSessionTask('mcp.codex', 'feature:x', 'codex')
+    ).rejects.toBeInstanceOf(McpInvalidTaskIdError);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -167,9 +184,25 @@ describe('resolveMcpTaskId', () => {
     expect(resolved).toBe(taskId);
   });
 
+  it('rejects empty string sessionId as context required', async () => {
+    await initWorkspaceWithTask('Test');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ sessionId: '' }, sessionStore)).rejects.toBeInstanceOf(
+      McpTaskContextRequiredError
+    );
+  });
+
+  it('prioritizes valid taskId over empty-string sessionId', async () => {
+    const { taskId } = await initWorkspaceWithTask('Test');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const resolved = await resolveMcpTaskId({ taskId, sessionId: '' }, sessionStore);
+    expect(resolved).toBe(taskId);
+  });
+
   it.each([
     ['slash path separator', '../feature_a'],
     ['backslash path separator', '..\\feature_a'],
+    ['colon', 'feature:a'],
     ['null byte', 'feature_a\0suffix'],
     ['control character', 'feature_a\nsuffix'],
     ['over 256 characters', 'a'.repeat(257)],
@@ -190,9 +223,34 @@ describe('resolveMcpTaskId', () => {
     ).catch((e) => e);
     expect(error).toBeInstanceOf(McpInvalidTaskIdError);
     expect(error.hint).toContain('256 characters or fewer');
+    expect(error.hint).toContain('colons');
     expect(error.hint).toContain('path separators');
     expect(error.hint).toContain('null bytes');
     expect(error.hint).toContain('control characters');
+  });
+
+  it.each([
+    ['slash path separator', '../mcp.codex'],
+    ['backslash path separator', '..\\mcp.codex'],
+    ['colon', 'mcp:codex'],
+    ['non-string', null],
+  ])('rejects malformed sessionId with %s', async (_reason, sessionId) => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ sessionId }, sessionStore)).rejects.toBeInstanceOf(
+      McpInvalidSessionIdError
+    );
+  });
+
+  it('documents context identifier validation rules in the required-context hint', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId({ sessionId: '' }, sessionStore).catch((e) => e);
+    expect(error).toBeInstanceOf(McpTaskContextRequiredError);
+    expect(error.hint).toContain('non-empty taskId or sessionId');
+    expect(error.hint).toContain('256 characters or fewer');
+    expect(error.hint).toContain('colons');
+    expect(error.hint).toContain('path separators');
   });
 
   it('throws McpSessionContextEmptyError when session has null currentTaskId', async () => {
