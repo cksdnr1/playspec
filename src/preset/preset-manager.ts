@@ -58,7 +58,7 @@ export class PresetManager {
 
       const targetDir = path.join(targetRoot, entry.name);
       try {
-        await access(targetDir);
+        await access(path.join(targetDir, 'workflow.yaml'));
         continue;
       } catch {
         await cp(sourceDir, targetDir, { recursive: true });
