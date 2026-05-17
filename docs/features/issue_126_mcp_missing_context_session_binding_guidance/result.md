@@ -37,3 +37,10 @@
 - `git diff --check` passed.
 - No refactor was applied because the implementation diff is already limited to the error hint and focused test assertions.
 - Cleanup outside the touched MCP diagnostic path was intentionally skipped.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/129
+- Branch: `agent/issue-126-mcp-context-guidance`
+- Implementation commit: `4abd1b4`
+- Reusable agent guidance: no AGENTS.md update needed; the existing MCP no-HEAD rule already covers this behavior.
