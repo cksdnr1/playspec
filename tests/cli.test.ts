@@ -136,6 +136,33 @@ async function createMonoSpecTasks(titles: string[]): Promise<void> {
   }
 }
 
+async function writeCustomRequiredWorkflow(options: {
+  workflowVariables?: string;
+  phaseVariables?: string;
+} = {}): Promise<void> {
+  const workflowVariables = options.workflowVariables
+    ? `variables:\n${options.workflowVariables}`
+    : '';
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+    `id: multi-spec
+mode: linear
+${workflowVariables}phaseOrder:
+  - "1"
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+${options.phaseVariables ?? ''}    requiredVariables:
+      - CUSTOM_REQUIRED
+`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+    '# {{TASK_TITLE}}\n\nCustom: {{CUSTOM_REQUIRED}}\n'
+  );
+}
+
 async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
   await writeTextFile(
     path.join(root, id, 'workflow.yaml'),
@@ -1695,6 +1722,91 @@ phases:
     );
   });
 
+  it('rejects create before persistence when the first phase is missing a required variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeCustomRequiredWorkflow();
+
+    const existingTask = await new YamlTaskStore(workspace.dir).createTask({
+      id: 'existing_head_task',
+      title: 'Existing Head Task',
+      workflow: 'mono-spec',
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${existingTask.id}\n`);
+
+    const result = await runCli(
+      ['create', 'Missing Custom Variable', '--workflow', 'multi-spec'],
+      workspace.dir
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      'Missing required variables for workflow "multi-spec" phase "1": CUSTOM_REQUIRED'
+    );
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('existing_head_task\n');
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'missing_custom_variable'))
+    ).rejects.toThrow();
+  });
+
+  it('creates a task when all first-phase required variables are supplied with --var', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeCustomRequiredWorkflow();
+
+    const result = await runCli(
+      ['create', 'Complete Custom Variable', '--workflow', 'multi-spec', '--var', 'CUSTOM_REQUIRED=present'],
+      workspace.dir
+    );
+    const task = await new YamlTaskStore(workspace.dir).getTask('complete_custom_variable');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Variables set: 1');
+    expect(task.variables.CUSTOM_REQUIRED).toBe('present');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('complete_custom_variable\n');
+  });
+
+  it('creates a task when a workflow default satisfies a first-phase required variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeCustomRequiredWorkflow({
+      workflowVariables: `  CUSTOM_REQUIRED:
+    default: workflow-default
+`,
+    });
+
+    const result = await runCli(
+      ['create', 'Workflow Default Variable', '--workflow', 'multi-spec'],
+      workspace.dir
+    );
+    const prompt = await runCli(['prompt', '--no-copy'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.stdout).toContain('workflow-default');
+  });
+
+  it('creates a task when a phase default satisfies a first-phase required variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeCustomRequiredWorkflow({
+      phaseVariables: `    variables:
+      CUSTOM_REQUIRED:
+        default: phase-default
+`,
+    });
+
+    const result = await runCli(
+      ['create', 'Phase Default Variable', '--workflow', 'multi-spec'],
+      workspace.dir
+    );
+    const prompt = await runCli(['prompt', '--no-copy'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.stdout).toContain('phase-default');
+  });
+
   it('renders an explicit phase prompt via the CLI', async () => {
     await createActiveTask('Feature Name');
 
@@ -2596,6 +2708,12 @@ phases:
       '--var',
       'TARGET_REPOSITORY=cksdnr1/playspec',
       '--var',
+      'ISSUE_SCOPE=required-variable-validation',
+      '--var',
+      'FOCUS_AREA=playspec create',
+      '--var',
+      'DUPLICATE_SEARCH_QUERY=repo:cksdnr1/playspec required variable validation',
+      '--var',
       'MAX_ISSUES=2',
       '--var',
       'OUT_OF_SCOPE_RULES=Do not implement code.',
@@ -2603,8 +2721,11 @@ phases:
     const task = await new YamlTaskStore(workspace.dir).getTask('variable_task');
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Variables set: 3');
+    expect(result.stdout).toContain('Variables set: 6');
     expect(task.variables['TARGET_REPOSITORY']).toBe('cksdnr1/playspec');
+    expect(task.variables['ISSUE_SCOPE']).toBe('required-variable-validation');
+    expect(task.variables['FOCUS_AREA']).toBe('playspec create');
+    expect(task.variables['DUPLICATE_SEARCH_QUERY']).toBe('repo:cksdnr1/playspec required variable validation');
     expect(task.variables['MAX_ISSUES']).toBe('2');
     expect(task.variables['OUT_OF_SCOPE_RULES']).toBe('Do not implement code.');
   });
