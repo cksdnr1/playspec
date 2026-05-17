@@ -47,3 +47,5 @@
 
 - Draft PR notes written to `docs/features/fix_preset_workflow_partial_install/pr.md`.
 - Reusable agent guidance decision: no new guidance needed; this was a local preset installer contract fix.
+- Draft PR created: https://github.com/cksdnr1/playspec/pull/124
+- Branch pushed: `agent/issue-122-preset-partial-workflows`
