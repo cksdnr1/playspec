@@ -150,6 +150,29 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
   });
 
+  it('repairs a partial project workflow directory during default workflow installation', async () => {
+    const workflowDir = path.join(workspace.dir, '.playspec', 'workflows', 'mono-spec');
+    await mkdir(workflowDir, { recursive: true });
+
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await expect(access(path.join(workflowDir, 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(workflowDir, 'templates', 'tech_spec_draft.md'))).resolves.not.toThrow();
+  });
+
+  it('repairs a partial user workflow directory during default workflow installation', async () => {
+    const workflowDir = path.join(workspace.dir, 'user-workflows', 'mono-spec');
+    await mkdir(workflowDir, { recursive: true });
+
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'user' });
+
+    await expect(access(path.join(workflowDir, 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(workflowDir, 'templates', 'tech_spec_draft.md'))).resolves.not.toThrow();
+    await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+  });
+
   it('can skip default workflow installation', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'skip' });
