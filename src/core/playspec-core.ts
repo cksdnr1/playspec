@@ -262,6 +262,7 @@ export class PlaySpecCore {
       definition,
       options.result
     );
+    this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
 
     // Render prompt snapshot only after routing validation passes
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
@@ -559,8 +560,7 @@ export class PlaySpecCore {
     options: PromptRenderOptions = {}
   ): Promise<string> {
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
-    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
-    assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+    const variables = this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition);
     const basePrompt = this.appendLinkedTaskContext(
       await this.templateRenderer.render(definition.template, variables, workflow.templateDir),
       task
@@ -571,6 +571,34 @@ export class PlaySpecCore {
     }
     const context = await this.evolutionContextReader.collect(task);
     return `${prompt.trimEnd()}\n\n${this.evolutionContextReader.formatPromptSection(context)}\n`;
+  }
+
+  private assertNextPhaseRequiredVariables(
+    task: TaskRecord,
+    workflow: ResolvedWorkflow,
+    nextPhase: string | null
+  ): void {
+    if (nextPhase === null) {
+      return;
+    }
+
+    const nextDefinition = workflow.definition.phases[nextPhase];
+    if (!nextDefinition) {
+      throw new PhaseNotFoundError(nextPhase, workflow.id);
+    }
+
+    this.resolveAndAssertRequiredVariables(task, workflow, nextPhase, nextDefinition);
+  }
+
+  private resolveAndAssertRequiredVariables(
+    task: TaskRecord,
+    workflow: ResolvedWorkflow,
+    phaseId: string,
+    definition: PhaseDefinition
+  ): Record<string, string> {
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
+    assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+    return variables;
   }
 
   private async appendContextModeSection(

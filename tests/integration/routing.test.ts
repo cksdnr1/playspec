@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -16,6 +16,7 @@ import {
   InvalidRoutingTargetError,
   LoopGuardError,
   UnexpectedResultError,
+  MissingRequiredVariablesError,
 } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
@@ -320,6 +321,49 @@ phases:
 
       const core = new PlaySpecCore(workspace.dir, store);
       await expect(core.completePhase(taskId, { result: 'approved' })).rejects.toThrow(InvalidRoutingTargetError);
+    });
+
+    it('throws before mutation when routed next phase is missing required variables', async () => {
+      const { store, taskId } = await initRoutedWorkspace();
+      await writeTextFile(
+        path.join(process.env['PLAY_SPEC_USER_WORKFLOWS']!, 'routed-spec', 'workflow.yaml'),
+        `id: routed-spec
+mode: linear
+phaseOrder:
+  - validation
+  - implementation
+phases:
+  validation:
+    title: Spec Validation
+    template: phase_template.md
+    results:
+      - approved
+    nextByResult:
+      approved: implementation
+  implementation:
+    title: Implementation
+    template: phase_template.md
+    requiredVariables:
+      - CUSTOM_REQUIRED
+`
+      );
+
+      const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
+      const taskBefore = await store.getTask(taskId);
+      const core = new PlaySpecCore(workspace.dir, store);
+
+      await expect(core.completePhase(taskId, { result: 'approved' })).rejects.toThrow(
+        MissingRequiredVariablesError
+      );
+
+      const taskAfter = await store.getTask(taskId);
+      expect(taskAfter.currentPhase).toBe(taskBefore.currentPhase);
+      expect(taskAfter.phaseHistory).toEqual(taskBefore.phaseHistory);
+      expect(taskAfter.stateSync).toEqual(taskBefore.stateSync);
+      expect(taskAfter.rollback).toEqual(taskBefore.rollback);
+      expect(await readdir(path.join(taskRoot, 'snapshots'))).toEqual([]);
+      expect(await readdir(path.join(taskRoot, 'evidence'))).toEqual([]);
+      await expect(access(path.join(taskRoot, 'completions', 'index.yaml'))).rejects.toThrow();
     });
   });
 
