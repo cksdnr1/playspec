@@ -281,6 +281,32 @@ describe('VariableResolver', () => {
     expect(vars.PHASE_PLAN_FILE).toBe('docs/custom/phases.md');
   });
 
+  it('resolves workflow defaults that reference task variables', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'task-var-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        ISSUE_SCOPE: { required: true },
+        OUTPUT_DIR: { default: 'docs/issues/{{ISSUE_SCOPE}}' },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        ISSUE_SCOPE: 'required-variable-validation',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'start', workflow, workflow.phases.start);
+
+    expect(vars.OUTPUT_DIR).toBe('docs/issues/required-variable-validation');
+  });
+
   it('throws a clear error for unknown default references', () => {
     const workflow: WorkflowDefinition = {
       id: 'bad-default',

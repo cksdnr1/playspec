@@ -9,7 +9,6 @@ import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { CompletionLedgerStore } from '#storage/completion-ledger-store.js';
 import {
-  MissingRequiredVariablesError,
   TaskNotActiveError,
   GitEvidenceCollectionError,
   PhaseNotFoundError,
@@ -35,6 +34,7 @@ import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
 import { EvolutionContextReader } from '#evolution/context-reader.js';
 import { DEFAULT_PROMPT_CONTEXT_MODE, writePromptArtifactMetadata } from '#core/prompt-metadata.js';
+import { assertRequiredVariables } from '#core/required-variables.js';
 import type {
   PhaseDefinition,
   TaskRecord,
@@ -551,32 +551,6 @@ export class PlaySpecCore {
     }));
   }
 
-  private assertRequiredVariables(
-    workflowId: string,
-    phaseId: string,
-    definition: PhaseDefinition,
-    variables: Record<string, string>
-  ): void {
-    const requiredVariables = [
-      ...Object.entries(definition.variables ?? {})
-        .filter(([, declaration]) => declaration.required === true)
-        .map(([name]) => name),
-      ...(definition.requiredVariables ?? []),
-    ];
-    const missingVariables = requiredVariables.filter((name) => {
-      const value = variables[name];
-      return value === undefined || value === '';
-    });
-
-    if (missingVariables.length > 0) {
-      throw new MissingRequiredVariablesError(
-        workflowId,
-        phaseId,
-        missingVariables
-      );
-    }
-  }
-
   private async renderResolvedPhase(
     task: TaskRecord,
     workflow: ResolvedWorkflow,
@@ -586,13 +560,7 @@ export class PlaySpecCore {
   ): Promise<string> {
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
     const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
-    this.assertRequiredVariables(workflow.id, phaseId, {
-      ...definition,
-      variables: {
-        ...(workflow.definition.variables ?? {}),
-        ...(definition.variables ?? {}),
-      },
-    }, variables);
+    assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
     const basePrompt = this.appendLinkedTaskContext(
       await this.templateRenderer.render(definition.template, variables, workflow.templateDir),
       task

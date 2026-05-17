@@ -6,12 +6,14 @@ import { execa } from 'execa';
 import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, SelfTaskLinkError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
+import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { VariableResolver } from '#template/variable-resolver.js';
+import { assertRequiredVariables } from '#core/required-variables.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import type { TaskContextRef, TaskLink, TaskTarget } from '#core/types.js';
+import type { TaskContextRef, TaskLink, TaskRecord, TaskTarget } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
@@ -270,16 +272,28 @@ async function createNormalTask(
 ): Promise<void> {
   const taskId = slugify(title);
   const store = new YamlTaskStore(workspaceRoot);
+  const taskVariables = source
+    ? { ...variables, SOURCE_PROBLEM_FILE: source.relativePath }
+    : variables;
+  const contextRefs: TaskContextRef[] | undefined = source
+    ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
+    : undefined;
+
+  await assertInitialPhaseRequiredVariables(workspaceRoot, {
+    id: taskId,
+    title,
+    workflow,
+    variables: taskVariables,
+    contextRefs,
+    links,
+  });
+
   const task = await store.createTask({
     id: taskId,
     title,
     workflow,
-    variables: source
-      ? { ...variables, SOURCE_PROBLEM_FILE: source.relativePath }
-      : variables,
-    contextRefs: source
-      ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
-      : undefined,
+    variables: taskVariables,
+    contextRefs,
     links,
   });
   if (source) {
@@ -307,6 +321,64 @@ async function createNormalTask(
     }
   }
   console.log(`HEAD set to: ${task.id}`);
+}
+
+async function assertInitialPhaseRequiredVariables(
+  workspaceRoot: string,
+  input: {
+    id: string;
+    title: string;
+    workflow: string;
+    variables: Record<string, string>;
+    contextRefs?: TaskContextRef[];
+    links?: TaskLink[];
+  }
+): Promise<void> {
+  const workflow = await new WorkflowLoader(workspaceRoot).resolve(input.workflow);
+  const task = createTaskPreview(input);
+  const { phaseId, definition } = new PhaseResolver().resolveCurrentPhase(task, workflow.definition);
+  const variables = new VariableResolver().resolve(task, phaseId, workflow.definition, definition);
+
+  assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+}
+
+function createTaskPreview(input: {
+  id: string;
+  title: string;
+  workflow: string;
+  variables: Record<string, string>;
+  contextRefs?: TaskContextRef[];
+  links?: TaskLink[];
+}): TaskRecord {
+  const now = new Date().toISOString();
+  return {
+    id: input.id,
+    title: input.title,
+    workflow: input.workflow,
+    status: 'active',
+    workflowMode: 'linear',
+    currentPhase: null,
+    createdAt: now,
+    updatedAt: now,
+    paths: {
+      taskRoot: path.join('.playspec', 'tasks', 'active', input.id),
+      projectDocRoot: path.join('docs', 'features', input.id),
+    },
+    variables: {
+      FEATURE_SLUG: input.id,
+      ...input.variables,
+    },
+    phaseHistory: [],
+    stateSync: {
+      lastKnownGitHead: null,
+      lastCompletedAt: null,
+    },
+    rollback: {
+      lastSafePoint: null,
+    },
+    ...(input.contextRefs !== undefined ? { contextRefs: input.contextRefs } : {}),
+    ...(input.links !== undefined ? { links: input.links } : {}),
+  };
 }
 
 function parseTaskVariables(entries: string[] | undefined): Record<string, string> {
