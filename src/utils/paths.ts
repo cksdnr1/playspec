@@ -28,6 +28,14 @@ export function getHarnessRecordPath(workspaceRoot: string, taskId: string): str
   return path.join(getActiveTaskRoot(workspaceRoot, taskId), 'harness.yaml');
 }
 
+export function getCompletionRoot(workspaceRoot: string, taskId: string): string {
+  return path.join(getActiveTaskRoot(workspaceRoot, taskId), 'completions');
+}
+
+export function getCompletionIndexPath(workspaceRoot: string, taskId: string): string {
+  return path.join(getCompletionRoot(workspaceRoot, taskId), 'index.yaml');
+}
+
 export function getArchivedTasksRoot(workspaceRoot: string): string {
   return path.join(workspaceRoot, '.playspec', 'tasks', 'archived');
 }

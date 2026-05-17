@@ -244,6 +244,8 @@ describe('CLI placeholder', () => {
       'specs',
       'phase',
       'complete',
+      'log',
+      'show-completion',
       'status',
     ]) {
       expect(output).toMatch(commandLine(command));
@@ -1773,6 +1775,37 @@ phases:
         )
       )
     ).resolves.not.toThrow();
+  });
+
+  it('prints completion logs and markdown records via the CLI', async () => {
+    const taskId = await createActiveTask('CLI Completion Log Task');
+    await initGitRepo();
+
+    const first = await runCli(['complete', '--no-copy'], workspace.dir);
+    const second = await runCli(['complete', '--no-copy'], workspace.dir);
+    const log = await runCli(['log'], workspace.dir);
+    const explicitLog = await runCli(['log', '--task', taskId], workspace.dir);
+    const markdownLog = await runCli(['log', '--markdown'], workspace.dir);
+    const show = await runCli(['show-completion', '0001'], workspace.dir);
+    const missing = await runCli(['show-completion', '9999'], workspace.dir);
+
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(log.exitCode).toBe(0);
+    expect(log.stdout).toMatch(/^0002 2\s+phase_completed\s+/m);
+    expect(log.stdout).toMatch(/0001 1\s+phase_completed\s+/m);
+    expect(log.stdout.indexOf('0002')).toBeLessThan(log.stdout.indexOf('0001'));
+    expect(explicitLog.stdout).toBe(log.stdout);
+    expect(markdownLog.exitCode).toBe(0);
+    expect(markdownLog.stdout).toContain('# Completion 0002: 2');
+    expect(markdownLog.stdout).toContain('\n---\n');
+    expect(markdownLog.stdout).toContain('# Completion 0001: 1');
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('# Completion 0001: 1');
+    expect(show.stdout).toContain(`- Task: ${taskId}`);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain('Completion "9999" not found');
+    expect(missing.stderr).toContain('Available completions: 0001, 0002');
   });
 
   it('marks the task completed on the final workflow phase via the CLI', async () => {

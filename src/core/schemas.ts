@@ -19,11 +19,13 @@ export const PhaseHistoryEntrySchema = z.object({
 
 export const PhaseCompletionSchema = z.object({
   validationTemplate: z.string().optional(),
+  eventType: z.string().optional(),
 });
 
 export const PhaseGateSchema = z.object({
   results: z.array(z.string()).min(1),
   nextByResult: z.record(z.string()),
+  eventTypes: z.record(z.string()).optional(),
 });
 
 export const VariableDeclarationSchema = z.object({
@@ -119,6 +121,31 @@ export const PromptArtifactMetadataSchema = z.object({
   omittedContext: z.array(OmittedPromptContextSchema),
 });
 
+export const CompletionEventSchema = z.object({
+  id: z.string(),
+  sequence: z.number().int().positive(),
+  taskId: z.string(),
+  phase: z.string(),
+  phaseTitle: z.string(),
+  completedAt: z.string(),
+  type: z.string(),
+  result: z.string().optional(),
+  previousPhase: z.string().nullable(),
+  nextPhase: z.string().nullable(),
+  statusAfterCompletion: z.enum(['active', 'completed', 'archived']),
+  gitHead: z.string().nullable(),
+  evidenceFiles: z.array(z.string()),
+  snapshotFiles: z.array(z.string()),
+  reviewFile: z.string().optional(),
+  rollbackSafePointId: z.string().optional(),
+  markdownFile: z.string(),
+});
+
+export const CompletionLedgerSchema = z.object({
+  taskId: z.string(),
+  events: z.array(CompletionEventSchema),
+});
+
 export const PhaseDefinitionSchema = z.object({
   title: z.string(),
   template: z.string(),
@@ -132,6 +159,7 @@ export const PhaseDefinitionSchema = z.object({
   next: z.string().nullable().optional(),
   results: z.array(z.string()).min(1).optional(),
   nextByResult: z.record(z.string()).optional(),
+  eventTypes: z.record(z.string()).optional(),
   maxVisits: z.number().int().positive().optional(),
 });
 
