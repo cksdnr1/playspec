@@ -85,6 +85,7 @@ describe('YamlTaskStore', () => {
     await expect(access(path.join(taskRoot, 'evidence'))).resolves.not.toThrow();
     await expect(access(path.join(taskRoot, 'snapshots'))).resolves.not.toThrow();
     await expect(access(path.join(taskRoot, 'rollback'))).resolves.not.toThrow();
+    await expect(access(path.join(taskRoot, 'completions'))).resolves.not.toThrow();
     await expect(access(path.join(taskRoot, 'task.yaml'))).resolves.not.toThrow();
     await expect(access(path.join(taskRoot, 'memory.yaml'))).resolves.not.toThrow();
   });

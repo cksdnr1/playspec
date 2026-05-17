@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import lockfile from 'proper-lockfile';
@@ -127,6 +127,61 @@ describe('Phase 2 completion engine', () => {
     ).resolves.not.toThrow();
   });
 
+  it('writes one completion ledger event and matching markdown for a successful completion', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { withReview: true });
+    const ledger = parseYaml(await readFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', 'index.yaml'),
+      'utf-8'
+    )) as { taskId: string; events: Array<{ id: string; type: string; markdownFile: string; rollbackSafePointId: string }> };
+    const completionFiles = await readdir(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions')
+    );
+
+    expect(result.completionEvent).toMatchObject({
+      id: '0001',
+      sequence: 1,
+      taskId,
+      phase: '1',
+      type: 'phase_completed',
+      nextPhase: '2',
+      statusAfterCompletion: 'active',
+      evidenceFiles: [
+        'evidence/phase1_git_status.txt',
+        'evidence/phase1_git_diff_stat.txt',
+        'evidence/phase1_changed_files.txt',
+      ],
+      snapshotFiles: [
+        'snapshots/phase1_before_complete.yaml',
+        'snapshots/phase1_prompt.md',
+      ],
+      reviewFile: 'reviews/phase1_review.yaml',
+    });
+    expect(ledger.taskId).toBe(taskId);
+    expect(ledger.events).toHaveLength(1);
+    expect(ledger.events[0]).toMatchObject({
+      id: '0001',
+      type: 'phase_completed',
+      markdownFile: 'completions/0001-1.md',
+    });
+    expect(ledger.events[0]?.rollbackSafePointId).toBe(result.completionEvent?.rollbackSafePointId);
+    expect(completionFiles.filter((file) => file.endsWith('.md'))).toEqual(['0001-1.md']);
+
+    const markdown = await readFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', '0001-1.md'),
+      'utf-8'
+    );
+    expect(markdown).toContain('# Completion 0001: 1');
+    expect(markdown).toContain(`- Task: ${taskId}`);
+    expect(markdown).toContain('- Type: phase_completed');
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/evidence/phase1_git_status.txt`);
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/snapshots/phase1_before_complete.yaml`);
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/reviews/phase1_review.yaml`);
+    expect(markdown).toContain('- Rollback safe point: phase1_');
+  });
+
   it('creates manual evidence and snapshot artifacts without phase mutation', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     const core = new PlaySpecCore(workspace.dir, store);
@@ -159,6 +214,12 @@ describe('Phase 2 completion engine', () => {
     expect(result.nextPhase).toBeNull();
     expect(task.status).toBe('completed');
     expect(task.currentPhase).toBeNull();
+    expect(result.completionEvent).toMatchObject({
+      id: '0001',
+      phase: '5',
+      nextPhase: null,
+      statusAfterCompletion: 'completed',
+    });
   });
 
   it('fails clearly when the task lock is already held', async () => {

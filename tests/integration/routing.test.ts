@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -45,6 +47,9 @@ phases:
     nextByResult:
       approved: implementation
       needs_patch: spec_patch
+    eventTypes:
+      approved: approved
+      needs_patch: needs_revision
     maxVisits: 2
   implementation:
     title: Implementation
@@ -52,6 +57,7 @@ phases:
   spec_patch:
     title: Spec Patch
     template: phase_template.md
+    next: validation
 `;
 
 const SIMPLE_TEMPLATE = `# {{TASK_TITLE}} — {{PHASE_NUMBER}}
@@ -139,6 +145,10 @@ describe('Phase 3.7 — Simple Conditional Routing', () => {
         approved: 'implementation',
         needs_patch: 'spec_patch',
       });
+      expect(workflow.phases['validation']?.eventTypes).toEqual({
+        approved: 'approved',
+        needs_patch: 'needs_revision',
+      });
       expect(workflow.phases['validation']?.maxVisits).toBe(2);
     });
   });
@@ -178,6 +188,12 @@ describe('Phase 3.7 — Simple Conditional Routing', () => {
       const historyEntry = task.phaseHistory.find((e) => e.phase === 'validation');
       expect(historyEntry?.result).toBe('approved');
       expect(historyEntry?.visitCount).toBe(1);
+      expect(result.completionEvent).toMatchObject({
+        id: '0001',
+        phase: 'validation',
+        type: 'approved',
+        result: 'approved',
+      });
     });
 
     it('routes to spec_patch when result is needs_patch', async () => {
@@ -191,6 +207,49 @@ describe('Phase 3.7 — Simple Conditional Routing', () => {
 
       const task = await store.getTask(taskId);
       expect(task.currentPhase).toBe('spec_patch');
+      expect(result.completionEvent).toMatchObject({
+        id: '0001',
+        phase: 'validation',
+        type: 'needs_revision',
+        result: 'needs_patch',
+      });
+    });
+
+    it('records ordered completion events through a revision loop', async () => {
+      const { store, taskId } = await initRoutedWorkspace();
+      const core = new PlaySpecCore(workspace.dir, store);
+
+      await core.completePhase(taskId, { result: 'needs_patch' });
+      await core.completePhase(taskId);
+      await core.completePhase(taskId, { result: 'approved' });
+
+      const ledger = parseYaml(await readFile(
+        path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', 'index.yaml'),
+        'utf-8'
+      )) as { events: Array<{ id: string; phase: string; type: string; result?: string; markdownFile: string }> };
+
+      expect(ledger.events).toMatchObject([
+        {
+          id: '0001',
+          phase: 'validation',
+          type: 'needs_revision',
+          result: 'needs_patch',
+          markdownFile: 'completions/0001-validation-needs_revision.md',
+        },
+        {
+          id: '0002',
+          phase: 'spec_patch',
+          type: 'patch_completed',
+          markdownFile: 'completions/0002-spec_patch.md',
+        },
+        {
+          id: '0003',
+          phase: 'validation',
+          type: 'approved',
+          result: 'approved',
+          markdownFile: 'completions/0003-validation-approved.md',
+        },
+      ]);
     });
   });
 

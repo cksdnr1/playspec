@@ -26,6 +26,8 @@ import { runSnapshot } from './commands/snapshot.js';
 import { runDesyncCheck } from './commands/desync-check.js';
 import { runRollback } from './commands/rollback.js';
 import { runStatus } from './commands/status.js';
+import { runLog } from './commands/log.js';
+import { runShowCompletion } from './commands/show-completion.js';
 import { runLink } from './commands/link.js';
 import { runUnlink } from './commands/unlink.js';
 import { runHarnessAttempt, runHarnessReset, runHarnessStatus } from './commands/harness.js';
@@ -536,6 +538,33 @@ program
   .action(async (taskId: string | undefined, opts: { task?: string; quiet: boolean }) => {
     try {
       await runStatus(process.cwd(), opts.task ?? taskId, opts.quiet);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// log
+program
+  .command('log')
+  .description('Show phase completion events newest-first')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .option('--markdown', 'Print completion markdown records newest-first', false)
+  .action(async (opts: { task?: string; markdown: boolean }) => {
+    try {
+      await runLog(process.cwd(), opts.task, opts.markdown);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+// show-completion
+program
+  .command('show-completion <completionId>')
+  .description('Print a completion markdown record')
+  .option('--task <id>', 'Task ID (defaults to HEAD)')
+  .action(async (completionId: string, opts: { task?: string }) => {
+    try {
+      await runShowCompletion(process.cwd(), completionId, opts.task);
     } catch (err) {
       handleError(err);
     }
