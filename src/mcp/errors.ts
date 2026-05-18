@@ -4,7 +4,7 @@ export class McpTaskContextRequiredError extends PlaySpecError {
   constructor() {
     super(
       'MCP tool call requires taskId or sessionId.',
-      'Provide a non-empty taskId or sessionId of 256 characters or fewer without colons, path separators (`/` or `\\`), null bytes, or control characters.'
+      'Provide a non-empty taskId or sessionId directly, or call playspec_use_session_task to bind a task to a session and then pass that sessionId. IDs must be 256 characters or fewer and must not contain colons, path separators (`/` or `\\`), null bytes, or control characters.'
     );
     this.name = 'McpTaskContextRequiredError';
   }

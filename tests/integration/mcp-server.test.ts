@@ -161,9 +161,12 @@ describe('resolveMcpTaskId', () => {
   it('throws McpTaskContextRequiredError when neither taskId nor sessionId is provided', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
-    await expect(resolveMcpTaskId({}, sessionStore)).rejects.toBeInstanceOf(
-      McpTaskContextRequiredError
-    );
+    const error = await resolveMcpTaskId({}, sessionStore).catch((e) => e);
+
+    expect(error).toBeInstanceOf(McpTaskContextRequiredError);
+    expect(error.hint).toContain('taskId');
+    expect(error.hint).toContain('sessionId');
+    expect(error.hint).toContain('playspec_use_session_task');
   });
 
   it('does not fall back to HEAD when no context is provided', async () => {
@@ -539,6 +542,7 @@ describe('buildMcpServer', () => {
     expect(unlinked.isError).toBeUndefined();
     expect(parseToolJson(unlinked)['changed']).toBe(true);
     expect((await store.getTask(taskId)).links).toBeUndefined();
+    expect(missingContext.content[0].text).toContain('playspec_use_session_task');
   });
 
   it('shows and edits project workflows through MCP', async () => {
