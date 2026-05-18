@@ -26,6 +26,16 @@ Do not use it for implementation work, broad roadmap planning, or general reposi
 - `MAX_ISSUES`: Maximum number of issues to create. Defaults to `3`.
 - `ISSUE_LABEL`: Label applied to every created issue. Defaults to `agent-validation`.
 
+## Report Artifacts
+
+By default, each task writes reports below a task-specific directory:
+
+- `docs/issues/scope-create/{{TASK_ID}}/discovery.md`
+- `docs/issues/scope-create/{{TASK_ID}}/candidate_issues.md`
+- `docs/issues/scope-create/{{TASK_ID}}/created_issues.md`
+
+This keeps repeated scoped discovery runs from overwriting earlier reports in the same checkout. If automation needs a stable shared location, pass `OUTPUT_DIR` explicitly. If individual files need custom names or locations, pass `DISCOVERY_FILE`, `CANDIDATE_ISSUES_FILE`, or `CREATED_ISSUES_FILE` explicitly.
+
 ## Run Example
 
 ```bash
