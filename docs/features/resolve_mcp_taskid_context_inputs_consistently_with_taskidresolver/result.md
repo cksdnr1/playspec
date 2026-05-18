@@ -30,6 +30,10 @@
 - `pnpm test`
   - Passed: 24 files, 455 tests.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/133
+
 ## Safe Refactor Review
 
 - Compared the branch diff against `origin/master`.
