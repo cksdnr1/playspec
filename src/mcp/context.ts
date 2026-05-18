@@ -4,6 +4,7 @@ import {
   McpSessionContextEmptyError,
   McpSessionNotFoundError,
 } from './errors.js';
+import type { TaskIdResolver } from '#core/task-id-resolver.js';
 import type { McpSessionStore } from './session-store.js';
 
 const MAX_MCP_TASK_ID_LENGTH = 256;
@@ -11,11 +12,12 @@ const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/;
 
 export async function resolveMcpTaskId(
   input: { taskId?: string; sessionId?: string },
-  sessionStore: McpSessionStore
+  sessionStore: McpSessionStore,
+  taskIdResolver: TaskIdResolver
 ): Promise<string> {
   if (input.taskId) {
     assertValidMcpTaskId(input.taskId);
-    return input.taskId;
+    return (await taskIdResolver.resolve(input.taskId)).taskId;
   }
 
   if (input.sessionId) {

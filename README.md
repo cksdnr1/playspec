@@ -296,7 +296,7 @@ Registered MCP tools:
 - `playspec_record_human_edit_observation`
 - `playspec_update_human_edit_observation_status`
 
-MCP calls that operate on a task require either `taskId` or `sessionId`. If both are supplied, explicit `taskId` wins. MCP context resolution never reads `.playspec/HEAD`; `HEAD` is CLI-only.
+MCP calls that operate on a task require either `taskId` or `sessionId`. If both are supplied, explicit `taskId` wins. MCP task references resolved through task context accept exact task IDs or unique task ID prefixes; ambiguous prefixes fail with guidance to use a longer prefix. `playspec_use_session_task` stores the canonical resolved task ID for later `sessionId` calls. MCP context resolution never reads `.playspec/HEAD`; `HEAD` is CLI-only.
 
 Mutation-heavy MCP tools require explicit confirmation fields: `playspec_execute_git_rollback` requires `confirm: true`, and `playspec_apply_evolution_proposal` requires `approved: true`. Archive and migration operations remain CLI-only.
 

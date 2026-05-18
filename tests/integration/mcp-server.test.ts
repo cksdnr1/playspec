@@ -9,6 +9,7 @@ import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
+import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
@@ -92,6 +93,10 @@ function parseToolJson(result: { content: { text: string }[] }) {
   return JSON.parse(result.content[0].text) as Record<string, unknown>;
 }
 
+function makeTaskIdResolver() {
+  return new TaskIdResolver(new YamlTaskStore(workspace.dir));
+}
+
 // ---------------------------------------------------------------------------
 // McpSessionStore
 // ---------------------------------------------------------------------------
@@ -144,7 +149,7 @@ describe('resolveMcpTaskId', () => {
   it('throws McpTaskContextRequiredError when neither taskId nor sessionId is provided', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
-    const error = await resolveMcpTaskId({}, sessionStore).catch((e) => e);
+    const error = await resolveMcpTaskId({}, sessionStore, makeTaskIdResolver()).catch((e) => e);
 
     expect(error).toBeInstanceOf(McpTaskContextRequiredError);
     expect(error.hint).toContain('taskId');
@@ -156,17 +161,17 @@ describe('resolveMcpTaskId', () => {
     const { taskId } = await initWorkspaceWithTask('Feature A');
     // HEAD points to taskId but MCP must not use it
     const sessionStore = new McpSessionStore(workspace.dir);
-    const error = await resolveMcpTaskId({}, sessionStore).catch((e) => e);
+    const error = await resolveMcpTaskId({}, sessionStore, makeTaskIdResolver()).catch((e) => e);
     expect(error).toBeInstanceOf(McpTaskContextRequiredError);
     // Crucially: it is NOT NoActiveTaskError (which HEAD fallback would throw)
     expect(error.constructor.name).toBe('McpTaskContextRequiredError');
     expect(taskId).toBeTruthy(); // HEAD is set but we still get context error
   });
 
-  it('returns taskId directly when taskId is provided', async () => {
+  it('resolves an exact taskId when taskId is provided', async () => {
     const { taskId } = await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
-    const resolved = await resolveMcpTaskId({ taskId }, sessionStore);
+    const resolved = await resolveMcpTaskId({ taskId }, sessionStore, makeTaskIdResolver());
     expect(resolved).toBe(taskId);
   });
 
@@ -179,7 +184,7 @@ describe('resolveMcpTaskId', () => {
   ])('rejects direct taskId with %s', async (_reason, taskId) => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
-    await expect(resolveMcpTaskId({ taskId }, sessionStore)).rejects.toBeInstanceOf(
+    await expect(resolveMcpTaskId({ taskId }, sessionStore, makeTaskIdResolver())).rejects.toBeInstanceOf(
       McpInvalidTaskIdError
     );
   });
@@ -189,7 +194,8 @@ describe('resolveMcpTaskId', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     const error = await resolveMcpTaskId(
       { taskId: '../feature_a' },
-      sessionStore
+      sessionStore,
+      makeTaskIdResolver()
     ).catch((e) => e);
     expect(error).toBeInstanceOf(McpInvalidTaskIdError);
     expect(error.hint).toContain('256 characters or fewer');
@@ -208,7 +214,7 @@ describe('resolveMcpTaskId', () => {
       currentTaskId: null,
     });
     await expect(
-      resolveMcpTaskId({ sessionId: 'mcp.empty' }, sessionStore)
+      resolveMcpTaskId({ sessionId: 'mcp.empty' }, sessionStore, makeTaskIdResolver())
     ).rejects.toBeInstanceOf(McpSessionContextEmptyError);
   });
 
@@ -216,7 +222,7 @@ describe('resolveMcpTaskId', () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
     await expect(
-      resolveMcpTaskId({ sessionId: 'nonexistent.session' }, sessionStore)
+      resolveMcpTaskId({ sessionId: 'nonexistent.session' }, sessionStore, makeTaskIdResolver())
     ).rejects.toBeInstanceOf(McpSessionNotFoundError);
   });
 
@@ -225,7 +231,8 @@ describe('resolveMcpTaskId', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     const error = await resolveMcpTaskId(
       { sessionId: 'nonexistent.session' },
-      sessionStore
+      sessionStore,
+      makeTaskIdResolver()
     ).catch((e) => e);
     expect(error).toBeInstanceOf(McpSessionNotFoundError);
     expect(error.hint).toContain('create and bind the session');
@@ -235,7 +242,7 @@ describe('resolveMcpTaskId', () => {
     const { taskId } = await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
-    const resolved = await resolveMcpTaskId({ sessionId: 'mcp.codex' }, sessionStore);
+    const resolved = await resolveMcpTaskId({ sessionId: 'mcp.codex' }, sessionStore, makeTaskIdResolver());
     expect(resolved).toBe(taskId);
   });
 
@@ -247,7 +254,7 @@ describe('resolveMcpTaskId', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.codex', taskIdB, 'codex');
     // session points to B, but explicit taskId A should take precedence
-    const resolved = await resolveMcpTaskId({ taskId: taskIdA, sessionId: 'mcp.codex' }, sessionStore);
+    const resolved = await resolveMcpTaskId({ taskId: taskIdA, sessionId: 'mcp.codex' }, sessionStore, makeTaskIdResolver());
     expect(resolved).toBe(taskIdA);
   });
 });
@@ -487,6 +494,78 @@ describe('buildMcpServer', () => {
     expect(missingContext.content[0].text).toContain('playspec_use_session_task');
   });
 
+  it('renders with a unique MCP taskId prefix and returns the canonical taskId', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Prefix Render Target');
+    const handler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const result = await handler({ taskId: 'mcp_prefix_render' });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['taskId']).toBe(taskId);
+    expect(String(body['prompt'])).toContain('MCP Prefix Render Target');
+  });
+
+  it('rejects ambiguous MCP taskId prefixes with resolver guidance', async () => {
+    const { store } = await initWorkspaceWithTask('MCP Ambiguous Alpha');
+    await store.createTask({
+      id: 'mcp_ambiguous_beta',
+      title: 'MCP Ambiguous Beta',
+      workflow: 'multi-spec',
+    });
+    const handler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const result = await handler({ taskId: 'mcp_ambiguous' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Ambiguous task ID prefix "mcp_ambiguous"');
+    expect(result.content[0].text).toContain('mcp_ambiguous_alpha');
+    expect(result.content[0].text).toContain('mcp_ambiguous_beta');
+    expect(result.content[0].text).toContain('Use a longer task ID prefix.');
+  });
+
+  it('binds MCP sessions to canonical task IDs when given a unique prefix', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Session Prefix Target');
+    const bindHandler = getRegisteredToolHandler('playspec_use_session_task');
+    const renderHandler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const bound = await bindHandler({
+      sessionId: 'mcp.prefix',
+      taskId: 'mcp_session_prefix',
+      adapter: 'codex',
+    });
+    const session = await new McpSessionStore(workspace.dir).loadSession('mcp.prefix');
+    const rendered = await renderHandler({ sessionId: 'mcp.prefix' });
+    const body = parseToolJson(rendered);
+
+    expect(bound.isError).toBeUndefined();
+    expect(parseToolJson(bound)['currentTaskId']).toBe(taskId);
+    expect(session?.currentTaskId).toBe(taskId);
+    expect(rendered.isError).toBeUndefined();
+    expect(body['taskId']).toBe(taskId);
+  });
+
+  it('rejects ambiguous prefixes when binding MCP sessions', async () => {
+    const { store } = await initWorkspaceWithTask('MCP Session Ambiguous Alpha');
+    await store.createTask({
+      id: 'mcp_session_ambiguous_beta',
+      title: 'MCP Session Ambiguous Beta',
+      workflow: 'multi-spec',
+    });
+    const bindHandler = getRegisteredToolHandler('playspec_use_session_task');
+
+    const result = await bindHandler({
+      sessionId: 'mcp.ambiguous',
+      taskId: 'mcp_session_ambiguous',
+    });
+    const session = await new McpSessionStore(workspace.dir).loadSession('mcp.ambiguous');
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Ambiguous task ID prefix "mcp_session_ambiguous"');
+    expect(result.content[0].text).toContain('Use a longer task ID prefix.');
+    expect(session).toBeNull();
+  });
+
   it('shows and edits project workflows through MCP', async () => {
     await initWorkspaceWithTask('MCP Workflow Edit', 'multi-spec');
     const showHandler = getRegisteredToolHandler('playspec_show_workflow');
@@ -558,8 +637,8 @@ describe('MCP render matches Core render', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.claude-code', taskId, 'claude-code');
 
-    const resolvedByTaskId = await resolveMcpTaskId({ taskId }, sessionStore);
-    const resolvedBySession = await resolveMcpTaskId({ sessionId: 'mcp.claude-code' }, sessionStore);
+    const resolvedByTaskId = await resolveMcpTaskId({ taskId }, sessionStore, makeTaskIdResolver());
+    const resolvedBySession = await resolveMcpTaskId({ sessionId: 'mcp.claude-code' }, sessionStore, makeTaskIdResolver());
 
     expect(resolvedByTaskId).toBe(taskId);
     expect(resolvedBySession).toBe(taskId);
@@ -576,7 +655,7 @@ describe('MCP render matches Core render', () => {
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
 
-    const resolved = await resolveMcpTaskId({ sessionId: 'mcp.codex' }, sessionStore);
+    const resolved = await resolveMcpTaskId({ sessionId: 'mcp.codex' }, sessionStore, makeTaskIdResolver());
     const core = new PlaySpecCore(workspace.dir, store);
     const prompt = await core.renderNextPrompt(resolved, {
       withEvolutionContext: true,

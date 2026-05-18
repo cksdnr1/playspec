@@ -133,10 +133,10 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { sessionId: z.string(), taskId: z.string(), adapter: z.string().optional() },
     async (args) => {
       try {
-        await taskStore.getTask(args.taskId);
+        const resolved = await taskIdResolver.resolve(args.taskId);
         const session = await sessionStore.setSessionTask(
           args.sessionId,
-          args.taskId,
+          resolved.taskId,
           args.adapter ?? 'mcp'
         );
         return ok(session);
@@ -396,7 +396,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContextWithEvolution,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const prompt = await core.renderNextPrompt(taskId, {
           withEvolutionContext: args.withEvolutionContext,
           evolutionContextSource: 'mcp',
@@ -415,7 +415,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, phaseId: z.string(), contextMode: z.enum(['compact', 'strict', 'full']).optional() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const prompt = await core.renderExplicitPhasePrompt(taskId, args.phaseId, {
           contextMode: args.contextMode,
         });
@@ -432,7 +432,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContextWithEvolution, withReview: z.boolean().optional(), result: z.string().optional() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const completionResult = await core.completePhase(taskId, {
           withReview: args.withReview,
           result: args.result,
@@ -452,7 +452,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContext,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const evidenceResult = await core.collectEvidence(taskId);
         return ok(evidenceResult);
       } catch (e) {
@@ -467,7 +467,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContext,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const desyncResult = await core.checkTaskDesync(taskId);
         return ok(desyncResult);
       } catch (e) {
@@ -482,7 +482,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContext,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const rollbackResult = await core.rollbackStateOnly(taskId);
         return ok(rollbackResult);
       } catch (e) {
@@ -497,7 +497,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, path: z.string() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const added = await core.addContextRef(taskId, args.path);
         return ok({ taskId, path: args.path, added });
       } catch (e) {
@@ -512,7 +512,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, phaseId: z.string() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.setCurrentPhase(taskId, args.phaseId));
       } catch (e) {
         return err(e);
@@ -526,7 +526,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContext,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.createSnapshot(taskId));
       } catch (e) {
         return err(e);
@@ -540,7 +540,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     taskContext,
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.planRollback(taskId));
       } catch (e) {
         return err(e);
@@ -560,7 +560,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
             'Call playspec_plan_rollback first, inspect the plan, then call with confirm: true.'
           );
         }
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.executeGitRollback(taskId));
       } catch (e) {
         return err(e);
@@ -574,7 +574,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, phaseId: z.string().optional() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.getHarnessStatus(taskId, args.phaseId));
       } catch (e) {
         return err(e);
@@ -588,7 +588,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, phaseId: z.string(), result: harnessAttemptResult, reason: z.string().optional() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.recordHarnessAttempt(
           taskId,
           args.phaseId,
@@ -607,7 +607,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     { ...taskContext, reason: z.string().optional() },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         return ok(await core.resetHarness(taskId, args.reason));
       } catch (e) {
         return err(e);
@@ -630,7 +630,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     },
     async (args) => {
       try {
-        const taskId = await resolveMcpTaskId(args, sessionStore);
+        const taskId = await resolveMcpTaskId(args, sessionStore, taskIdResolver);
         const result = await generateEvolutionProposal(workspaceRoot, {
           taskId,
           evidencePath: args.fromEvidence,
@@ -854,7 +854,7 @@ async function resolveMcpSourceTaskId(
     const source = await taskIdResolver.resolve(input.sourceTaskId);
     return source.taskId;
   }
-  return resolveMcpTaskId(input, sessionStore);
+  return resolveMcpTaskId(input, sessionStore, taskIdResolver);
 }
 
 function resolveWorkspacePath(workspaceRoot: string, inputPath: string): string {
