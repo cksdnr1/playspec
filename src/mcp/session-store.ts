@@ -4,6 +4,7 @@ import { SessionRecordSchema } from '#core/schemas.js';
 import type { SessionRecord } from '#core/types.js';
 import { readTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import { getPlayspecRoot } from '#utils/paths.js';
+import { assertValidMcpSessionId, assertValidMcpTaskId } from './validation.js';
 
 export class McpSessionStore {
   constructor(private readonly workspaceRoot: string) {}
@@ -28,6 +29,8 @@ export class McpSessionStore {
   }
 
   async setSessionTask(sessionId: string, taskId: string, adapter: string): Promise<SessionRecord> {
+    assertValidMcpSessionId(sessionId);
+    assertValidMcpTaskId(taskId);
     const existing = await this.loadSession(sessionId);
     const session: SessionRecord = existing
       ? { ...existing, currentTaskId: taskId }
