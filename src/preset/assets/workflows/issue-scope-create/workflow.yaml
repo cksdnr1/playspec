@@ -26,7 +26,7 @@ variables:
     default: "agent-validation"
     description: Label to apply to every created GitHub issue.
   OUTPUT_DIR:
-    default: "docs/issues/scope-create/{{ISSUE_SCOPE}}"
+    default: "docs/issues/scope-create"
     description: Directory for workflow reports and issue drafts.
   DISCOVERY_FILE:
     default: "{{OUTPUT_DIR}}/discovery.md"

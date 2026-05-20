@@ -9,7 +9,9 @@
 
 ## Goal
 
-Inspect the target repository and find only concrete, actionable, non-duplicate problems inside the user-provided scope.
+Inspect the target repository and find concrete, actionable, non-duplicate problems inside the user-provided scope.
+
+The objective is to produce up to `{{MAX_ISSUES}}` accepted non-duplicate candidates. If a candidate is rejected as a duplicate, continue looking for another candidate in the same scope instead of ending the run. Stop only when `{{MAX_ISSUES}}` non-duplicate candidates have been accepted or the relevant scope has been exhausted and the evidence explains why no more candidates qualify.
 
 This workflow creates GitHub issues. It must not implement code, edit target repository behavior, open pull requests, or create broad roadmap issues.
 
@@ -36,7 +38,7 @@ Before accepting each candidate, search existing issues using:
 gh issue list --repo {{TARGET_REPOSITORY}} --search "{{DUPLICATE_SEARCH_QUERY}} <candidate keywords>" --state all
 ```
 
-Also search local docs and issue references when available. If a likely duplicate exists, do not create a new candidate. Record the duplicate reference in `{{DISCOVERY_FILE}}`.
+Also search local docs and issue references when available. If a likely duplicate exists, do not create a new candidate from it. Record the duplicate reference in `{{DISCOVERY_FILE}}`, then continue searching for a replacement candidate until the accepted candidate count reaches `{{MAX_ISSUES}}` or no concrete scoped candidates remain.
 
 ## Candidate Quality Bar
 
@@ -49,7 +51,17 @@ Accept a candidate only when all are true:
 - The duplicate search did not find an existing issue that substantially covers it.
 - The issue body can be written in the PlaySpec-ready format required below.
 
-Keep candidates narrow. Prefer zero issues over broad or speculative issues.
+Keep candidates narrow. Prefer zero issues over broad or speculative issues, but do not stop at zero merely because the first candidates were duplicates. Exhaust the configured focus area enough to show that every plausible candidate was duplicate, out of scope, too broad, or not actionable.
+
+## Replacement Search Requirement
+
+When a candidate is rejected, continue with another targeted search path before concluding the run:
+
+- If rejected as duplicate, inspect neighboring files, tests, configuration, recent TODO/FIXME comments, failing or skipped tests, stale documentation, and related local issue artifacts inside `{{FOCUS_AREA}}`.
+- If rejected as out of scope, narrow the next search back to `{{ISSUE_SCOPE}}` and `{{FOCUS_AREA}}`.
+- If rejected as too broad, split it into smaller concrete candidates and run duplicate search for each smaller candidate.
+- Do not reuse the same duplicate search terms only. Add candidate-specific keywords from file names, function names, warning/error text, or test names.
+- Continue until `{{MAX_ISSUES}}` accepted candidates are written or the discovery report documents that the scoped evidence was exhausted.
 
 ## Required Issue Format
 
@@ -102,6 +114,8 @@ Write `{{DISCOVERY_FILE}}` with this structure:
 ## Rejected Candidates
 - Candidate:
 - Reason rejected:
+- Replacement search performed:
+- Replacement outcome:
 
 ## Accepted Candidates
 - Title:
