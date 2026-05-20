@@ -25,15 +25,52 @@ export class PresetManager {
     // Ensure .playspec state directories exist.
     await mkdir(path.join(playspecRoot, 'tasks', 'active'), { recursive: true });
 
-    await cp(path.join(presetAssetsDir, 'sessions'), path.join(playspecRoot, 'sessions'), { recursive: true });
-    await cp(path.join(presetAssetsDir, 'config.yaml'), path.join(playspecRoot, 'config.yaml'));
+    // Preset state is user-owned after first init; reruns only fill missing defaults.
+    await this.copyMissing(path.join(presetAssetsDir, 'sessions'), path.join(playspecRoot, 'sessions'));
+    await this.copyFileIfMissing(path.join(presetAssetsDir, 'config.yaml'), path.join(playspecRoot, 'config.yaml'));
     if (workflowInstall !== 'skip') {
       await this.installPresetWorkflows(workspaceRoot, workflowInstall);
     }
 
-    // Create HEAD file (empty — updated by `create` when a task is added)
+    // Create HEAD file (empty — updated by `create` when a task is added).
     const headPath = getHeadPath(workspaceRoot);
-    await writeTextFile(headPath, '');
+    await this.writeTextFileIfMissing(headPath, '');
+  }
+
+  private async copyMissing(sourcePath: string, targetPath: string): Promise<void> {
+    const entries = await readdir(sourcePath, { withFileTypes: true });
+    await mkdir(targetPath, { recursive: true });
+
+    for (const entry of entries) {
+      const sourceEntry = path.join(sourcePath, entry.name);
+      const targetEntry = path.join(targetPath, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyMissing(sourceEntry, targetEntry);
+        continue;
+      }
+
+      await this.copyFileIfMissing(sourceEntry, targetEntry);
+    }
+  }
+
+  private async copyFileIfMissing(sourcePath: string, targetPath: string): Promise<void> {
+    try {
+      await access(targetPath);
+      return;
+    } catch {
+      await mkdir(path.dirname(targetPath), { recursive: true });
+      await cp(sourcePath, targetPath);
+    }
+  }
+
+  private async writeTextFileIfMissing(filePath: string, content: string): Promise<void> {
+    try {
+      await access(filePath);
+      return;
+    } catch {
+      await writeTextFile(filePath, content);
+    }
   }
 
   private async installPresetWorkflows(
