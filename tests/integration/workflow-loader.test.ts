@@ -251,6 +251,8 @@ phases:
     expect(workflow.variables['DUPLICATE_SEARCH_QUERY']?.required).toBe(true);
     expect(workflow.variables['MAX_ISSUES']?.default).toBe('3');
     expect(workflow.variables['ISSUE_LABEL']?.default).toBe('agent-validation');
+    expect(workflow.variables['OUTPUT_DIR']?.default).toBe('docs/issues/scope-create/{{TASK_ID}}');
+    expect(workflow.variables['OUTPUT_DIR']?.default).not.toBe('docs/issues/scope-create');
     expect(workflow.artifacts['discovery']?.path).toBe('{{DISCOVERY_FILE}}');
     expect(workflow.artifacts['candidates']?.path).toBe('{{CANDIDATE_ISSUES_FILE}}');
     expect(workflow.artifacts['createdIssues']?.path).toBe('{{CREATED_ISSUES_FILE}}');
