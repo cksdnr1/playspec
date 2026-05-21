@@ -32,7 +32,7 @@ For each candidate:
 gh issue list --repo {{TARGET_REPOSITORY}} --search "{{DUPLICATE_SEARCH_QUERY}} <candidate keywords>" --state all
 ```
 
-Skip the candidate if the duplicate search now finds a substantially matching issue.
+Skip the candidate if the duplicate search now finds a substantially matching issue, then continue with the next accepted candidate. If fewer than `{{MAX_ISSUES}}` issues are created because one or more candidates became duplicates at final check time, run one additional focused replacement search inside `{{ISSUE_SCOPE}}` and `{{FOCUS_AREA}}` before writing the final report. Create a replacement issue only if it satisfies the same quality bar and duplicate search rules.
 
 ## Creation Rules
 
@@ -51,7 +51,7 @@ Skip the candidate if the duplicate search now finds a substantially matching is
   - Risk notes
   - Recommended workflow
 - Do not create placeholder, umbrella, roadmap, or investigation-only issues.
-- If a candidate needs more research before it is actionable, skip it and record the reason.
+- If a candidate needs more research before it is actionable, skip it, record the reason, and continue to the next candidate or replacement search.
 
 ## Write Final Report
 
@@ -73,6 +73,9 @@ Write `{{CREATED_ISSUES_FILE}}`:
 
 ## Skipped Candidates
 - <title> — <reason>
+
+## Replacement Searches
+- <search path> — <outcome>
 
 ## Commands Run
 - `gh issue list ...`
