@@ -13,7 +13,7 @@ import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import type { TaskContextRef, TaskLink, TaskRecord, TaskTarget } from '#core/types.js';
+import type { ResolvedWorkflow, TaskContextRef, TaskLink, TaskRecord, TaskTarget, VariableDeclaration, WorkflowDefinition } from '#core/types.js';
 
 export interface CreateOptions {
   phase?: string;
@@ -214,6 +214,12 @@ export async function runInteractiveCreate(workspaceRoot: string): Promise<void>
     throw new Error('Task title is required.');
   }
 
+  const resolvedWorkflow = await new WorkflowLoader(workspaceRoot).resolve(workflow);
+  const variables = await collectInteractiveRequiredWorkflowVariables(
+    titleInput,
+    resolvedWorkflow
+  );
+
   console.log('\nHow would you like to provide the source problem?');
   console.log('  1. paste   — type or paste content (enter "---" on its own line to finish)');
   console.log('  2. editor  — open $EDITOR');
@@ -259,7 +265,84 @@ export async function runInteractiveCreate(workspaceRoot: string): Promise<void>
     };
   }
 
-  await createNormalTask(workspaceRoot, workflow, titleInput, sourceResult);
+  await createNormalTask(workspaceRoot, workflow, titleInput, sourceResult, undefined, variables);
+}
+
+async function collectInteractiveRequiredWorkflowVariables(
+  title: string,
+  workflow: ResolvedWorkflow
+): Promise<Record<string, string>> {
+  const declarations = workflow.definition.variables ?? {};
+  const requiredEntries = Object.entries(declarations).filter(
+    ([, declaration]) => declaration.required === true
+  );
+  const variables: Record<string, string> = {};
+
+  for (const [name, declaration] of requiredEntries) {
+    if (hasUsableDefault(workflow.definition, title, variables, name, declaration)) {
+      continue;
+    }
+
+    variables[name] = await askRequiredVariable(name, declaration);
+  }
+
+  return variables;
+}
+
+function hasUsableDefault(
+  workflow: WorkflowDefinition,
+  title: string,
+  variables: Record<string, string>,
+  name: string,
+  declaration: VariableDeclaration
+): boolean {
+  if (!declaration.default) {
+    return false;
+  }
+
+  const task = createTaskPreview({
+    id: slugify(title),
+    title,
+    workflow: workflow.id,
+    variables,
+  });
+  const phaseId = workflow.phaseOrder[0];
+  if (!phaseId) {
+    return false;
+  }
+  const definition = workflow.phases[phaseId];
+  if (!definition) {
+    return false;
+  }
+
+  try {
+    const resolved = new VariableResolver().resolve(task, phaseId, workflow, definition);
+    return resolved[name] !== undefined && resolved[name] !== '';
+  } catch {
+    return false;
+  }
+}
+
+async function askRequiredVariable(
+  name: string,
+  declaration: VariableDeclaration
+): Promise<string> {
+  const description = declaration.description ? ` (${declaration.description})` : '';
+  const prompt = `Required variable ${name}${description}: `;
+
+  while (true) {
+    let answer: string;
+    try {
+      answer = await askQuestion(prompt);
+    } catch {
+      throw new Error('Interactive variable collection cancelled. No task created.');
+    }
+    const value = answer.trim();
+    if (value) {
+      return value;
+    }
+    console.log(`Required variable ${name} cannot be blank.`);
+  }
 }
 
 async function createNormalTask(
@@ -529,10 +612,18 @@ async function readStdin(): Promise<string> {
 
 async function askQuestion(prompt: string): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
     rl.question(prompt, (answer) => {
+      settled = true;
       rl.close();
       resolve(answer);
+    });
+    rl.on('close', () => {
+      if (!settled) {
+        settled = true;
+        reject(new Error('Input closed before a response was provided.'));
+      }
     });
   });
 }

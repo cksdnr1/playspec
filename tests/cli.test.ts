@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, readdir, writeFile } from 'node:fs/promises';
+import { PassThrough } from 'node:stream';
 import { execa } from 'execa';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from './helpers/createTempWorkspace.js';
 import type { TempWorkspace } from './helpers/createTempWorkspace.js';
+import { runInteractiveCreate } from '../src/cli/commands/create.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
@@ -82,6 +84,29 @@ function runCliInPtyWithInputScript(
     env: options.env,
     timeout: 10_000,
   });
+}
+
+async function runInteractiveCreateWithInput(cwd: string, chunks: string[]): Promise<{ error: unknown }> {
+  const originalStdin = process.stdin;
+  const input = new PassThrough();
+  Object.defineProperty(process, 'stdin', { value: input, configurable: true });
+
+  try {
+    const run = runInteractiveCreate(cwd)
+      .then(() => ({ error: undefined }))
+      .catch((error: unknown) => ({ error }));
+
+    for (const chunk of chunks) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      input.write(chunk);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    input.end();
+
+    return await run;
+  } finally {
+    Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true });
+  }
 }
 let workspace: TempWorkspace;
 
@@ -2913,6 +2938,98 @@ phases:
       expect(task.title).toBe('Wizard Skip Task');
       expect(task.contextRefs ?? []).toHaveLength(0);
     }
+  });
+
+  it('collects mono-spec required workflow variables before interactive task creation', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runInteractiveCreateWithInput(workspace.dir, [
+      '\n',
+      'Wizard Feature Task\n',
+      'interactive-feature-slug\n',
+      '4\n',
+    ]);
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask('wizard_feature_task');
+    const prompt = await runCli(['prompt', '--no-copy'], workspace.dir);
+
+    expect(result.error).toBeUndefined();
+    expect(task.variables['FEATURE_SLUG']).toBe('interactive-feature-slug');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('wizard_feature_task\n');
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.stdout).toContain('FEATURE_SLUG=`interactive-feature-slug`');
+  });
+
+  it('collects multiple required workflow variables in the interactive wizard', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runInteractiveCreateWithInput(workspace.dir, [
+      'issue-scope-create\n',
+      'Scope Wizard Task\n',
+      'cksdnr1/playspec\n',
+      'interactive-variable-collection\n',
+      'src/cli/commands/create.ts\n',
+      'Do not change MCP task resolution.\n',
+      'repo:cksdnr1/playspec interactive variable collection\n',
+      '4\n',
+    ]);
+    const task = await new YamlTaskStore(workspace.dir).getTask('scope_wizard_task');
+
+    expect(result.error).toBeUndefined();
+    expect(task.workflow).toBe('issue-scope-create');
+    expect(task.variables['TARGET_REPOSITORY']).toBe('cksdnr1/playspec');
+    expect(task.variables['ISSUE_SCOPE']).toBe('interactive-variable-collection');
+    expect(task.variables['FOCUS_AREA']).toBe('src/cli/commands/create.ts');
+    expect(task.variables['OUT_OF_SCOPE_RULES']).toBe('Do not change MCP task resolution.');
+    expect(task.variables['DUPLICATE_SEARCH_QUERY']).toBe('repo:cksdnr1/playspec interactive variable collection');
+    expect(task.variables['MAX_ISSUES']).toBeUndefined();
+  });
+
+  it('reprompts when an interactive required workflow variable is blank', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runInteractiveCreateWithInput(workspace.dir, [
+      '\n',
+      'Blank Variable Task\n',
+      '\n',
+      'blank-retry-slug\n',
+      '4\n',
+    ]);
+    const task = await new YamlTaskStore(workspace.dir).getTask('blank_variable_task');
+
+    expect(result.error).toBeUndefined();
+    expect(task.variables['FEATURE_SLUG']).toBe('blank-retry-slug');
+  });
+
+  it('does not persist task state when interactive variable collection is cancelled', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const result = await runInteractiveCreateWithInput(workspace.dir, [
+      '\n',
+      'Cancelled Variable Task\n',
+    ]);
+
+    expect(result.error).toBeInstanceOf(Error);
+    expect((result.error as Error).message).toContain('Interactive variable collection cancelled');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('');
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'cancelled_variable_task'))
+    ).rejects.toThrow();
+    await expect(
+      access(path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        'cancelled_variable_task',
+        'sources',
+        'source_problem.md'
+      ))
+    ).rejects.toThrow();
   });
 
   it('rejects HEAD-based phase rendering for completed tasks via the CLI', async () => {
