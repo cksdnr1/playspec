@@ -1072,6 +1072,14 @@ review:
     }
   });
 
+  it('rejects unsafe init preset names before creating workspace state', async () => {
+    const result = await runCli(['init', '--preset', '../default'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Preset name must not contain path separators');
+    await expect(access(path.join(workspace.dir, '.playspec'))).rejects.toThrow();
+  });
+
   it('validates a workflow directory', async () => {
     const workflowRoot = path.join(workspace.dir, 'custom-workflow');
     await writeTextFile(
