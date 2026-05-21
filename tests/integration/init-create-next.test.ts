@@ -217,6 +217,33 @@ describe('PresetManager.initWorkspace — structure verification', () => {
 
     await expect(readFile(workflowFile, 'utf8')).resolves.toBe(customWorkflow);
   });
+
+  it('preserves existing config, HEAD, sessions, and workflows when init reruns', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const playspecRoot = path.join(workspace.dir, '.playspec');
+    const configFile = path.join(playspecRoot, 'config.yaml');
+    const headFile = getHeadPath(workspace.dir);
+    const sessionFile = path.join(playspecRoot, 'sessions', 'cli.default.yaml');
+    const workflowFile = path.join(playspecRoot, 'workflows', 'mono-spec', 'workflow.yaml');
+    const customConfig = 'version: 1\ncustom: preserved\n';
+    const customHead = 'existing_head_task\n';
+    const customSession = 'id: cli.default\ncustom: preserved\n';
+    const customWorkflow = 'id: mono-spec\nmode: linear\nphaseOrder: []\nphases: {}\n';
+
+    await writeFile(configFile, customConfig, 'utf8');
+    await writeFile(headFile, customHead, 'utf8');
+    await writeFile(sessionFile, customSession, 'utf8');
+    await writeFile(workflowFile, customWorkflow, 'utf8');
+
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await expect(readFile(configFile, 'utf8')).resolves.toBe(customConfig);
+    await expect(readFile(headFile, 'utf8')).resolves.toBe(customHead);
+    await expect(readFile(sessionFile, 'utf8')).resolves.toBe(customSession);
+    await expect(readFile(workflowFile, 'utf8')).resolves.toBe(customWorkflow);
+  });
 });
 
 describe('init → create → next (end-to-end)', () => {
