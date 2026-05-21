@@ -18,6 +18,19 @@ export interface WorkflowLocation {
   source: WorkflowSource;
 }
 
+export function assertSafeWorkflowId(workflowId: string): void {
+  if (workflowId.includes('\0')) {
+    throw new Error(`Workflow id must not contain null bytes: ${workflowId}`);
+  }
+  if (path.isAbsolute(workflowId) || path.win32.isAbsolute(workflowId)) {
+    throw new Error(`Workflow id must be relative: ${workflowId}`);
+  }
+  const segments = workflowId.split(/[\\/]+/);
+  if (segments.includes('..')) {
+    throw new Error(`Workflow id must not contain path traversal segments: ${workflowId}`);
+  }
+}
+
 export class WorkflowRegistry {
   private readonly builtinRoot: string;
   private readonly projectRoot: string;
@@ -30,6 +43,8 @@ export class WorkflowRegistry {
   }
 
   async resolve(workflowId: string): Promise<WorkflowLocation> {
+    assertSafeWorkflowId(workflowId);
+
     for (const source of SOURCE_ORDER) {
       const rootDir = this.rootFor(source, workflowId);
       const workflowFile = path.join(rootDir, 'workflow.yaml');

@@ -92,6 +92,35 @@ const totalPlanWorkflow: WorkflowDefinition = {
   },
 };
 
+const issueScopeCreateWorkflow: WorkflowDefinition = {
+  id: 'issue-scope-create',
+  mode: 'linear',
+  phaseOrder: ['scoped_issue_discovery', 'create_scoped_issues'],
+  variables: {
+    TARGET_REPOSITORY: { required: true },
+    ISSUE_SCOPE: { required: true },
+    FOCUS_AREA: { required: true },
+    OUT_OF_SCOPE_RULES: { required: true },
+    DUPLICATE_SEARCH_QUERY: { required: true },
+    MAX_ISSUES: { default: '3' },
+    ISSUE_LABEL: { default: 'agent-validation' },
+    OUTPUT_DIR: { default: 'docs/issues/scope-create/{{TASK_ID}}' },
+    DISCOVERY_FILE: { default: '{{OUTPUT_DIR}}/discovery.md' },
+    CANDIDATE_ISSUES_FILE: { default: '{{OUTPUT_DIR}}/candidate_issues.md' },
+    CREATED_ISSUES_FILE: { default: '{{OUTPUT_DIR}}/created_issues.md' },
+  },
+  phases: {
+    scoped_issue_discovery: {
+      title: 'Scoped issue discovery',
+      template: 'scoped_issue_discovery.md',
+    },
+    create_scoped_issues: {
+      title: 'Create scoped GitHub issues',
+      template: 'create_scoped_issues.md',
+    },
+  },
+};
+
 describe('VariableResolver', () => {
   const resolver = new VariableResolver();
 
@@ -279,6 +308,92 @@ describe('VariableResolver', () => {
 
     expect(vars.TOTAL_SPEC_FILE).toBe('docs/custom/total.md');
     expect(vars.PHASE_PLAN_FILE).toBe('docs/custom/phases.md');
+  });
+
+  it('resolves workflow defaults that reference task variables', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'task-var-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        ISSUE_SCOPE: { required: true },
+        OUTPUT_DIR: { default: 'docs/issues/{{ISSUE_SCOPE}}' },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        ISSUE_SCOPE: 'required-variable-validation',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'start', workflow, workflow.phases.start);
+
+    expect(vars.OUTPUT_DIR).toBe('docs/issues/required-variable-validation');
+  });
+
+  it('resolves issue-scope-create report paths under the task-specific default directory', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      id: 'inventory_mapping_scope',
+      title: 'Inventory Mapping Scope',
+      workflow: 'issue-scope-create',
+      variables: {
+        TARGET_REPOSITORY: 'cksdnr1/playspec',
+        ISSUE_SCOPE: 'inventory mapping correctness',
+        FOCUS_AREA: 'inventory services',
+        OUT_OF_SCOPE_RULES: 'Do not implement fixes.',
+        DUPLICATE_SEARCH_QUERY: 'repo:cksdnr1/playspec inventory mapping',
+      },
+    };
+
+    const vars = resolver.resolve(
+      task,
+      'scoped_issue_discovery',
+      issueScopeCreateWorkflow,
+      issueScopeCreateWorkflow.phases.scoped_issue_discovery
+    );
+
+    expect(vars.OUTPUT_DIR).toBe('docs/issues/scope-create/inventory_mapping_scope');
+    expect(vars.DISCOVERY_FILE).toBe('docs/issues/scope-create/inventory_mapping_scope/discovery.md');
+    expect(vars.CANDIDATE_ISSUES_FILE).toBe('docs/issues/scope-create/inventory_mapping_scope/candidate_issues.md');
+    expect(vars.CREATED_ISSUES_FILE).toBe('docs/issues/scope-create/inventory_mapping_scope/created_issues.md');
+  });
+
+  it('keeps explicit issue-scope-create report path overrides', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      id: 'inventory_mapping_scope',
+      title: 'Inventory Mapping Scope',
+      workflow: 'issue-scope-create',
+      variables: {
+        TARGET_REPOSITORY: 'cksdnr1/playspec',
+        ISSUE_SCOPE: 'inventory mapping correctness',
+        FOCUS_AREA: 'inventory services',
+        OUT_OF_SCOPE_RULES: 'Do not implement fixes.',
+        DUPLICATE_SEARCH_QUERY: 'repo:cksdnr1/playspec inventory mapping',
+        OUTPUT_DIR: 'docs/issues/scope-create',
+        DISCOVERY_FILE: 'tmp/custom/discovery.md',
+        CANDIDATE_ISSUES_FILE: 'tmp/custom/candidates.md',
+        CREATED_ISSUES_FILE: 'tmp/custom/created.md',
+      },
+    };
+
+    const vars = resolver.resolve(
+      task,
+      'scoped_issue_discovery',
+      issueScopeCreateWorkflow,
+      issueScopeCreateWorkflow.phases.scoped_issue_discovery
+    );
+
+    expect(vars.OUTPUT_DIR).toBe('docs/issues/scope-create');
+    expect(vars.DISCOVERY_FILE).toBe('tmp/custom/discovery.md');
+    expect(vars.CANDIDATE_ISSUES_FILE).toBe('tmp/custom/candidates.md');
+    expect(vars.CREATED_ISSUES_FILE).toBe('tmp/custom/created.md');
   });
 
   it('throws a clear error for unknown default references', () => {

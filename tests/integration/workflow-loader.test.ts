@@ -48,6 +48,25 @@ phases:
     await writeFile(path.join(root, id, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
   }
 
+  async function writeWorkflowInDirectory(root: string, id: string, description: string): Promise<void> {
+    await mkdir(path.join(root, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(root, 'workflow.yaml'),
+      `id: ${id}
+description: ${description}
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(root, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
+  }
+
   it('loads multi-spec workflow with expected fields', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     const workflow = await loader.load('multi-spec');
@@ -57,6 +76,29 @@ phases:
     expect(Array.isArray(workflow.phaseOrder)).toBe(true);
     expect(workflow.phaseOrder.length).toBeGreaterThan(0);
     expect(typeof workflow.phases).toBe('object');
+  });
+
+  it('resolves workflow definitions from an explicit directory', async () => {
+    const workflowRoot = path.join(workspace.dir, 'custom-workflow');
+    await writeWorkflowInDirectory(workflowRoot, 'custom-workflow', 'Custom workflow');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot);
+
+    expect(workflow.id).toBe('custom-workflow');
+    expect(workflow.rootDir).toBe(workflowRoot);
+    expect(workflow.templateDir).toBe(path.join(workflowRoot, 'templates'));
+    expect(workflow.source).toBe('user');
+    expect(workflow.definition.description).toBe('Custom workflow');
+    expect(workflow.definition.mode).toBe('linear');
+    expect(workflow.definition.phaseOrder).toEqual(['start']);
+    expect(workflow.definition.phases['start']?.template).toBe('start.md');
+  });
+
+  it('rejects explicit workflow directories without workflow.yaml', async () => {
+    const workflowRoot = path.join(workspace.dir, 'missing-workflow-file');
+    await mkdir(workflowRoot, { recursive: true });
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow();
   });
 
   it('loaded workflow phases match phaseOrder keys', async () => {
@@ -209,6 +251,8 @@ phases:
     expect(workflow.variables['DUPLICATE_SEARCH_QUERY']?.required).toBe(true);
     expect(workflow.variables['MAX_ISSUES']?.default).toBe('3');
     expect(workflow.variables['ISSUE_LABEL']?.default).toBe('agent-validation');
+    expect(workflow.variables['OUTPUT_DIR']?.default).toBe('docs/issues/scope-create/{{TASK_ID}}');
+    expect(workflow.variables['OUTPUT_DIR']?.default).not.toBe('docs/issues/scope-create');
     expect(workflow.artifacts['discovery']?.path).toBe('{{DISCOVERY_FILE}}');
     expect(workflow.artifacts['candidates']?.path).toBe('{{CANDIDATE_ISSUES_FILE}}');
     expect(workflow.artifacts['createdIssues']?.path).toBe('{{CREATED_ISSUES_FILE}}');
@@ -276,6 +320,58 @@ phases:
     await expect(loader.load('nonexistent-workflow')).rejects.toThrow(WorkflowNotFoundError);
   });
 
+  it('derives the builtin workflow root from preset assets', () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const normalizedRoot = registry.getBuiltinRoot().split(path.sep).join('/');
+
+    expect(normalizedRoot).toMatch(/\/(src|dist)\/preset\/assets\/workflows$/);
+  });
+
+  it('rejects unsafe workflow ids before registry filesystem lookup', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const escapedRoot = path.join(registry.getProjectRoot(), '..', 'escaped-workflow');
+    await mkdir(path.join(escapedRoot, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(escapedRoot, 'workflow.yaml'),
+      `id: escaped-workflow
+description: Escaped workflow
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(escapedRoot, 'templates', 'start.md'), '# Escaped\n', 'utf8');
+
+    await expect(registry.resolve('../escaped-workflow')).rejects.toThrow('path traversal');
+    await expect(registry.resolve('../../etc')).rejects.toThrow('path traversal');
+    await expect(registry.resolve('/tmp/escaped-workflow')).rejects.toThrow('relative');
+    await expect(registry.resolve('bad\0workflow')).rejects.toThrow('null bytes');
+  });
+
+  it('rejects unsafe workflow ids at loader entry points', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+
+    await expect(loader.load('../mono-spec')).rejects.toThrow('path traversal');
+    await expect(loader.resolve('../../etc')).rejects.toThrow('path traversal');
+    await expect(loader.load('/tmp/mono-spec')).rejects.toThrow('relative');
+    await expect(loader.resolve('bad\0workflow')).rejects.toThrow('null bytes');
+  });
+
+  it('allows workflow ids with hyphens, underscores, and dots', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getProjectRoot(), 'valid-id_1.v2', 'Valid dotted workflow');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('valid-id_1.v2');
+
+    expect(workflow.id).toBe('valid-id_1.v2');
+    expect(workflow.source).toBe('project');
+  });
+
   it('resolves project workflows before user and builtin workflows', async () => {
     const registry = new WorkflowRegistry(workspace.dir);
     await writeWorkflow(registry.getUserRoot(), 'mono-spec', 'User override');
@@ -296,6 +392,71 @@ phases:
 
     expect(workflow.source).toBe('user');
     expect(workflow.definition.description).toBe('User override');
+  });
+
+  it('resolves builtin workflows when project and user workflows are absent', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await rm(path.join(registry.getProjectRoot(), 'mono-spec'), { recursive: true, force: true });
+    await rm(path.join(registry.getUserRoot(), 'mono-spec'), { recursive: true, force: true });
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
+
+    expect(workflow.source).toBe('builtin');
+    expect(workflow.definition.description).toBe('Built-in workflow for one feature spec, implementation, tests, and PR prep.');
+  });
+
+  it('loads workflows from direct source directories with correct source labels', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getProjectRoot(), 'project-only', 'Project direct');
+    await writeWorkflow(registry.getUserRoot(), 'user-only', 'User direct');
+
+    const loader = new WorkflowLoader(workspace.dir);
+    const projectWorkflow = await loader.resolveFromDirectory(path.join(registry.getProjectRoot(), 'project-only'));
+    const userWorkflow = await loader.resolveFromDirectory(path.join(registry.getUserRoot(), 'user-only'));
+    const builtinWorkflow = await loader.resolveFromDirectory(path.join(registry.getBuiltinRoot(), 'mono-spec'));
+
+    expect(projectWorkflow.source).toBe('project');
+    expect(projectWorkflow.id).toBe('project-only');
+    expect(userWorkflow.source).toBe('user');
+    expect(userWorkflow.id).toBe('user-only');
+    expect(builtinWorkflow.source).toBe('builtin');
+    expect(builtinWorkflow.id).toBe('mono-spec');
+  });
+
+  it('rejects resolveFromDirectory paths with invalid source-root structure', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const loader = new WorkflowLoader(workspace.dir);
+    await writeWorkflow(path.join(registry.getProjectRoot(), 'parent'), 'nested', 'Nested workflow');
+
+    await expect(
+      loader.resolveFromDirectory(path.join(registry.getProjectRoot(), 'parent', 'nested'))
+    ).rejects.toThrow('direct child');
+    await expect(loader.resolveFromDirectory(`${path.join(registry.getProjectRoot(), 'mono-spec')}\0`)).rejects.toThrow(
+      'null bytes'
+    );
+  });
+
+  it('loads custom workflow directories outside known source roots as user workflows', async () => {
+    const loader = new WorkflowLoader(workspace.dir);
+    await writeWorkflow(workspace.dir, 'outside-workflow', 'Outside workflow');
+
+    const workflow = await loader.resolveFromDirectory(path.join(workspace.dir, 'outside-workflow'));
+
+    expect(workflow.source).toBe('user');
+    expect(workflow.id).toBe('outside-workflow');
+    expect(workflow.definition.description).toBe('Outside workflow');
+  });
+
+  it('rejects resolveFromDirectory when declared id does not match the source directory name', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getProjectRoot(), 'directory-id', 'Mismatched workflow');
+    const workflowFile = path.join(registry.getProjectRoot(), 'directory-id', 'workflow.yaml');
+    const content = await readFile(workflowFile, 'utf8');
+    await writeFile(workflowFile, content.replace('id: directory-id', 'id: declared-id'), 'utf8');
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(path.dirname(workflowFile))).rejects.toThrow(
+      'Workflow id mismatch'
+    );
   });
 
   it('lists effective workflows once, grouped by source priority then id', async () => {

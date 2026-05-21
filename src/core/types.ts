@@ -114,14 +114,17 @@ export interface PhaseDefinition {
   outputs?: string[];
   completion?: {
     validationTemplate?: string;
+    eventType?: string;
   };
   gate?: {
     results: string[];
     nextByResult: Record<string, PhaseId>;
+    eventTypes?: Record<string, string>;
   };
   next?: PhaseId | null;
   results?: string[];
   nextByResult?: Record<string, PhaseId>;
+  eventTypes?: Record<string, string>;
   maxVisits?: number;
 }
 
@@ -274,6 +277,32 @@ export interface CompletionResult {
   snapshotFiles: string[];
   reviewFile?: string;
   evolutionContextSnapshotFile?: string;
+  completionEvent?: CompletionEvent;
+}
+
+export interface CompletionEvent {
+  id: string;
+  sequence: number;
+  taskId: TaskId;
+  phase: PhaseId;
+  phaseTitle: string;
+  completedAt: string;
+  type: string;
+  result?: string;
+  previousPhase: PhaseId | null;
+  nextPhase: PhaseId | null;
+  statusAfterCompletion: TaskStatus;
+  gitHead: string | null;
+  evidenceFiles: string[];
+  snapshotFiles: string[];
+  reviewFile?: string;
+  rollbackSafePointId?: string;
+  markdownFile: string;
+}
+
+export interface CompletionLedger {
+  taskId: TaskId;
+  events: CompletionEvent[];
 }
 
 export interface SetCurrentPhaseResult {

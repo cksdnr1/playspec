@@ -195,6 +195,7 @@ export class YamlTaskStore implements TaskStore {
     await mkdir(path.join(absoluteTaskRoot, 'evidence'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'snapshots'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'rollback'), { recursive: true });
+    await mkdir(path.join(absoluteTaskRoot, 'completions'), { recursive: true });
 
     // Write task.yaml
     await writeTextFile(

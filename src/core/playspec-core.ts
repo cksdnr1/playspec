@@ -7,8 +7,8 @@ import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { VariableResolver } from '#template/variable-resolver.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
+import { CompletionLedgerStore } from '#storage/completion-ledger-store.js';
 import {
-  MissingRequiredVariablesError,
   TaskNotActiveError,
   GitEvidenceCollectionError,
   PhaseNotFoundError,
@@ -34,6 +34,7 @@ import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
 import { EvolutionContextReader } from '#evolution/context-reader.js';
 import { DEFAULT_PROMPT_CONTEXT_MODE, writePromptArtifactMetadata } from '#core/prompt-metadata.js';
+import { assertRequiredVariables } from '#core/required-variables.js';
 import type {
   PhaseDefinition,
   TaskRecord,
@@ -47,6 +48,7 @@ import type {
   RollbackPlanResult,
   RollbackExecutionResult,
   RollbackSafePoint,
+  CompletionEvent,
   SetCurrentPhaseResult,
   PromptRenderOptions,
   PromptContextMode,
@@ -71,6 +73,7 @@ export class PlaySpecCore {
   private readonly stateDesyncDetector: StateDesyncDetector;
   private readonly rollbackManager: RollbackManager;
   private readonly evolutionContextReader: EvolutionContextReader;
+  private readonly completionLedgerStore: CompletionLedgerStore;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -84,6 +87,7 @@ export class PlaySpecCore {
     this.stateDesyncDetector = new StateDesyncDetector(this.gitState);
     this.rollbackManager = new RollbackManager(workspaceRoot, taskStore, this.gitState);
     this.evolutionContextReader = new EvolutionContextReader(workspaceRoot);
+    this.completionLedgerStore = new CompletionLedgerStore(workspaceRoot);
   }
 
   async renderNextPrompt(taskId: string, options: PromptRenderOptions = {}): Promise<string> {
@@ -258,6 +262,7 @@ export class PlaySpecCore {
       definition,
       options.result
     );
+    this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
 
     // Render prompt snapshot only after routing validation passes
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
@@ -286,6 +291,21 @@ export class PlaySpecCore {
         currentGitHead,
         snapshotFiles
       );
+      const statusAfterCompletion = nextPhase === null ? 'completed' : 'active';
+      const completionEvent = await this.writeCompletionEvent({
+        task,
+        definition,
+        phaseId,
+        completedAt,
+        result,
+        nextPhase,
+        statusAfterCompletion,
+        currentGitHead,
+        evidenceFiles,
+        snapshotFiles,
+        reviewFile,
+        rollbackSafePoint,
+      });
       const updatedTask = await this.taskStore.completePhase(
         taskId,
         {
@@ -320,8 +340,19 @@ export class PlaySpecCore {
         snapshotFiles,
         reviewFile,
         evolutionContextSnapshotFile,
+        completionEvent,
       };
     });
+  }
+
+  async listCompletionEvents(taskId: string): Promise<CompletionEvent[]> {
+    await this.taskStore.getTask(taskId);
+    return this.completionLedgerStore.listEvents(taskId);
+  }
+
+  async readCompletionMarkdown(taskId: string, completionId: string): Promise<string> {
+    await this.taskStore.getTask(taskId);
+    return (await this.completionLedgerStore.readMarkdown(taskId, completionId)).markdown;
   }
 
   private resolveRoutedCompletion(
@@ -521,32 +552,6 @@ export class PlaySpecCore {
     }));
   }
 
-  private assertRequiredVariables(
-    workflowId: string,
-    phaseId: string,
-    definition: PhaseDefinition,
-    variables: Record<string, string>
-  ): void {
-    const requiredVariables = [
-      ...Object.entries(definition.variables ?? {})
-        .filter(([, declaration]) => declaration.required === true)
-        .map(([name]) => name),
-      ...(definition.requiredVariables ?? []),
-    ];
-    const missingVariables = requiredVariables.filter((name) => {
-      const value = variables[name];
-      return value === undefined || value === '';
-    });
-
-    if (missingVariables.length > 0) {
-      throw new MissingRequiredVariablesError(
-        workflowId,
-        phaseId,
-        missingVariables
-      );
-    }
-  }
-
   private async renderResolvedPhase(
     task: TaskRecord,
     workflow: ResolvedWorkflow,
@@ -555,14 +560,7 @@ export class PlaySpecCore {
     options: PromptRenderOptions = {}
   ): Promise<string> {
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
-    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
-    this.assertRequiredVariables(workflow.id, phaseId, {
-      ...definition,
-      variables: {
-        ...(workflow.definition.variables ?? {}),
-        ...(definition.variables ?? {}),
-      },
-    }, variables);
+    const variables = this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition);
     const basePrompt = this.appendLinkedTaskContext(
       await this.templateRenderer.render(definition.template, variables, workflow.templateDir),
       task
@@ -573,6 +571,34 @@ export class PlaySpecCore {
     }
     const context = await this.evolutionContextReader.collect(task);
     return `${prompt.trimEnd()}\n\n${this.evolutionContextReader.formatPromptSection(context)}\n`;
+  }
+
+  private assertNextPhaseRequiredVariables(
+    task: TaskRecord,
+    workflow: ResolvedWorkflow,
+    nextPhase: string | null
+  ): void {
+    if (nextPhase === null) {
+      return;
+    }
+
+    const nextDefinition = workflow.definition.phases[nextPhase];
+    if (!nextDefinition) {
+      throw new PhaseNotFoundError(nextPhase, workflow.id);
+    }
+
+    this.resolveAndAssertRequiredVariables(task, workflow, nextPhase, nextDefinition);
+  }
+
+  private resolveAndAssertRequiredVariables(
+    task: TaskRecord,
+    workflow: ResolvedWorkflow,
+    phaseId: string,
+    definition: PhaseDefinition
+  ): Record<string, string> {
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
+    assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+    return variables;
   }
 
   private async appendContextModeSection(
@@ -685,6 +711,130 @@ export class PlaySpecCore {
       taskSnapshotFile: snapshotFiles[0],
       promptSnapshotFile: snapshotFiles[1],
     };
+  }
+
+  private async writeCompletionEvent(input: {
+    task: TaskRecord;
+    definition: PhaseDefinition;
+    phaseId: string;
+    completedAt: string;
+    result: string | undefined;
+    nextPhase: string | null;
+    statusAfterCompletion: 'active' | 'completed';
+    currentGitHead: string | null;
+    evidenceFiles: string[];
+    snapshotFiles: string[];
+    reviewFile?: string;
+    rollbackSafePoint: RollbackSafePoint;
+  }): Promise<CompletionEvent> {
+    const existing = await this.completionLedgerStore.listEvents(input.task.id);
+    const sequence = existing.length + 1;
+    const id = String(sequence).padStart(4, '0');
+    const eventType = this.resolveCompletionEventType(input.definition, input.phaseId, input.result);
+    const markdownFile = path.join(
+      'completions',
+      `${id}-${safeFilePart(input.phaseId)}${input.result ? `-${safeFilePart(eventType)}` : ''}.md`
+    );
+    const event: CompletionEvent = {
+      id,
+      sequence,
+      taskId: input.task.id,
+      phase: input.phaseId,
+      phaseTitle: input.definition.title,
+      completedAt: input.completedAt,
+      type: eventType,
+      previousPhase: input.phaseId,
+      nextPhase: input.nextPhase,
+      statusAfterCompletion: input.statusAfterCompletion,
+      gitHead: input.currentGitHead,
+      evidenceFiles: input.evidenceFiles,
+      snapshotFiles: input.snapshotFiles,
+      rollbackSafePointId: input.rollbackSafePoint.id,
+      markdownFile,
+      ...(input.result !== undefined ? { result: input.result } : {}),
+      ...(input.reviewFile !== undefined ? { reviewFile: input.reviewFile } : {}),
+    };
+    const markdown = this.renderCompletionMarkdown(input.task, event);
+    return this.completionLedgerStore.appendEvent(input.task, event, markdown);
+  }
+
+  private resolveCompletionEventType(
+    definition: PhaseDefinition,
+    phaseId: string,
+    result: string | undefined
+  ): string {
+    if (result !== undefined && definition.gate?.eventTypes?.[result]) {
+      return definition.gate.eventTypes[result];
+    }
+    if (result !== undefined && definition.eventTypes?.[result]) {
+      return definition.eventTypes[result];
+    }
+    if (definition.completion?.eventType) {
+      return definition.completion.eventType;
+    }
+    if (result !== undefined) {
+      return result;
+    }
+    if (phaseId.includes('patch')) {
+      return 'patch_completed';
+    }
+    if (phaseId.includes('draft')) {
+      return 'draft_completed';
+    }
+    if (phaseId.includes('plan_create') || phaseId.includes('implementation_plan_create')) {
+      return 'plan_created';
+    }
+    if (phaseId.includes('implementation')) {
+      return 'implementation_completed';
+    }
+    if (phaseId.includes('test')) {
+      return 'tests_completed';
+    }
+    if (phaseId.includes('refactor')) {
+      return 'refactor_completed';
+    }
+    if (phaseId.includes('pr')) {
+      return 'pr_prepared';
+    }
+    return 'phase_completed';
+  }
+
+  private renderCompletionMarkdown(task: TaskRecord, event: CompletionEvent): string {
+    const displayPath = (taskRootRelativePath: string) =>
+      path.join(task.paths.taskRoot, taskRootRelativePath);
+    const evidence = event.evidenceFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
+    const snapshots = event.snapshotFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
+    const review = event.reviewFile ? `- ${displayPath(event.reviewFile)}` : '- none';
+    return `# Completion ${event.id}: ${event.phase}
+
+- Task: ${event.taskId}
+- Phase: ${event.phase}
+- Title: ${event.phaseTitle}
+- Completed at: ${event.completedAt}
+- Type: ${event.type}
+- Result: ${event.result ?? 'none'}
+- Previous phase: ${event.previousPhase ?? 'none'}
+- Next phase: ${event.nextPhase ?? 'none'}
+- Status after completion: ${event.statusAfterCompletion}
+- Git HEAD: ${event.gitHead ?? 'null'}
+- Rollback safe point: ${event.rollbackSafePointId ?? 'none'}
+
+## Evidence
+
+${evidence}
+
+## Snapshots
+
+${snapshots}
+
+## Review
+
+${review}
+
+## Rollback Notes
+
+Use the rollback safe point above for state rollback context. This markdown is an audit/evidence artifact and should not itself mutate task state.
+`;
   }
 
   private getAbsoluteTaskRoot(task: TaskRecord): string {
@@ -885,4 +1035,11 @@ function summarizeContextContent(content: string): string {
     return firstParagraph;
   }
   return `${firstParagraph.slice(0, CONTEXT_SUMMARY_MAX_LENGTH - 3)}...`;
+}
+
+function safeFilePart(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'completion';
 }

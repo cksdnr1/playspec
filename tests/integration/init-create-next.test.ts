@@ -150,6 +150,29 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
   });
 
+  it('repairs a partial project workflow directory during default workflow installation', async () => {
+    const workflowDir = path.join(workspace.dir, '.playspec', 'workflows', 'mono-spec');
+    await mkdir(workflowDir, { recursive: true });
+
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await expect(access(path.join(workflowDir, 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(workflowDir, 'templates', 'tech_spec_draft.md'))).resolves.not.toThrow();
+  });
+
+  it('repairs a partial user workflow directory during default workflow installation', async () => {
+    const workflowDir = path.join(workspace.dir, 'user-workflows', 'mono-spec');
+    await mkdir(workflowDir, { recursive: true });
+
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'user' });
+
+    await expect(access(path.join(workflowDir, 'workflow.yaml'))).resolves.not.toThrow();
+    await expect(access(path.join(workflowDir, 'templates', 'tech_spec_draft.md'))).resolves.not.toThrow();
+    await expect(access(path.join(workspace.dir, '.playspec', 'workflows'))).rejects.toThrow();
+  });
+
   it('can skip default workflow installation', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default', { workflowInstall: 'skip' });
@@ -192,6 +215,33 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
 
+    await expect(readFile(workflowFile, 'utf8')).resolves.toBe(customWorkflow);
+  });
+
+  it('preserves existing config, HEAD, sessions, and workflows when init reruns', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const playspecRoot = path.join(workspace.dir, '.playspec');
+    const configFile = path.join(playspecRoot, 'config.yaml');
+    const headFile = getHeadPath(workspace.dir);
+    const sessionFile = path.join(playspecRoot, 'sessions', 'cli.default.yaml');
+    const workflowFile = path.join(playspecRoot, 'workflows', 'mono-spec', 'workflow.yaml');
+    const customConfig = 'version: 1\ncustom: preserved\n';
+    const customHead = 'existing_head_task\n';
+    const customSession = 'id: cli.default\ncustom: preserved\n';
+    const customWorkflow = 'id: mono-spec\nmode: linear\nphaseOrder: []\nphases: {}\n';
+
+    await writeFile(configFile, customConfig, 'utf8');
+    await writeFile(headFile, customHead, 'utf8');
+    await writeFile(sessionFile, customSession, 'utf8');
+    await writeFile(workflowFile, customWorkflow, 'utf8');
+
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await expect(readFile(configFile, 'utf8')).resolves.toBe(customConfig);
+    await expect(readFile(headFile, 'utf8')).resolves.toBe(customHead);
+    await expect(readFile(sessionFile, 'utf8')).resolves.toBe(customSession);
     await expect(readFile(workflowFile, 'utf8')).resolves.toBe(customWorkflow);
   });
 });
@@ -879,6 +929,52 @@ describe('init → create → next (end-to-end)', () => {
         source: planningTaskId,
       },
     ]);
+  });
+
+  it('rejects unknown phase-execution workflow before creating task state or changing HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const planningTaskId = slugify('Compatible Planning');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: planningTaskId,
+      title: 'Compatible Planning',
+      workflow: 'total-plan',
+    });
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_total_spec.md`),
+      '# Total Spec\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', planningTaskId, `${planningTaskId}_phase_plan.md`),
+      '# Phase Plan\n'
+    );
+    await store.updateTask(planningTaskId, { status: 'completed', currentPhase: null });
+    await store.createTask({
+      id: 'existing_head_task',
+      title: 'Existing Head Task',
+      workflow: 'mono-spec',
+    });
+    await writeTextFile(getHeadPath(workspace.dir), 'existing_head_task\n');
+
+    const createResult = await runCli([
+      'create',
+      'Compatible Planning',
+      '--workflow',
+      'definitely-missing',
+      '--phase',
+      '2',
+      '--from',
+      planningTaskId,
+    ]);
+
+    await expect(access(path.join(workspace.dir, '.playspec', 'tasks', 'active', 'compatible_planning_phase_2_execution'))).rejects.toThrow();
+    expect(await readFile(getHeadPath(workspace.dir), 'utf8')).toBe('existing_head_task\n');
+    expect(createResult.exitCode).toBe(1);
+    expect(createResult.stderr).toContain('Workflow file not found: definitely-missing');
+    expect(createResult.stderr).toContain('list');
+    expect(createResult.stderr).toContain('install');
   });
 
   it('fails when a workflow phase requires a missing variable', async () => {

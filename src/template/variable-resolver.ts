@@ -110,7 +110,10 @@ function resolveDeclaredDefaults(
   declarations: Record<string, VariableDeclaration>,
   taskVariables: Record<string, string>
 ): Record<string, string> {
-  const resolved: Record<string, string> = { ...engineVariables };
+  const resolved: Record<string, string> = {
+    ...engineVariables,
+    ...taskVariables,
+  };
   const resolving = new Set<string>();
   const knownVariables = new Set([
     ...Object.keys(engineVariables),

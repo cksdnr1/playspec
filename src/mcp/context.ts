@@ -1,21 +1,31 @@
-import { McpTaskContextRequiredError, McpSessionContextEmptyError } from './errors.js';
+import {
+  McpTaskContextRequiredError,
+  McpSessionContextEmptyError,
+  McpSessionNotFoundError,
+} from './errors.js';
 import type { McpSessionStore } from './session-store.js';
+import { assertValidMcpSessionId, assertValidMcpTaskId } from './validation.js';
 
 export async function resolveMcpTaskId(
-  input: { taskId?: string; sessionId?: string },
+  input: { taskId?: unknown; sessionId?: unknown },
   sessionStore: McpSessionStore
 ): Promise<string> {
-  if (input.taskId) {
+  if (input.taskId !== undefined) {
+    assertValidMcpTaskId(input.taskId);
     return input.taskId;
   }
 
-  if (input.sessionId) {
-    const session = await sessionStore.loadSession(input.sessionId);
-    if (!session || session.currentTaskId === null) {
-      throw new McpSessionContextEmptyError(input.sessionId);
-    }
-    return session.currentTaskId;
+  if (input.sessionId === undefined || input.sessionId === '') {
+    throw new McpTaskContextRequiredError();
   }
 
-  throw new McpTaskContextRequiredError();
+  assertValidMcpSessionId(input.sessionId);
+  const session = await sessionStore.loadSession(input.sessionId);
+  if (!session) {
+    throw new McpSessionNotFoundError(input.sessionId);
+  }
+  if (session.currentTaskId === null) {
+    throw new McpSessionContextEmptyError(input.sessionId);
+  }
+  return session.currentTaskId;
 }

@@ -14,7 +14,13 @@ import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
-import { McpTaskContextRequiredError, McpSessionContextEmptyError } from '#mcp/errors.js';
+import {
+  McpInvalidSessionIdError,
+  McpInvalidTaskIdError,
+  McpTaskContextRequiredError,
+  McpSessionContextEmptyError,
+  McpSessionNotFoundError,
+} from '#mcp/errors.js';
 import { buildMcpServer } from '#mcp/server.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
 import type { EvolutionProposal } from '#evolution/types.js';
@@ -71,9 +77,9 @@ function makeProposal(id: string, taskId: string): EvolutionProposal {
   };
 }
 
-function getRegisteredToolHandler(toolName: string) {
+function getRegisteredToolHandler(toolName: string, serverWorkspaceRoot = workspace.dir) {
   const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
-  buildMcpServer(workspace.dir);
+  buildMcpServer(serverWorkspaceRoot);
   const call = toolSpy.mock.calls.find((entry) => entry[0] === toolName);
   toolSpy.mockRestore();
   if (!call) throw new Error(`Tool not registered: ${toolName}`);
@@ -129,6 +135,22 @@ describe('McpSessionStore', () => {
     const loaded = await sessionStore.loadSession('mcp.codex');
     expect(loaded?.currentTaskId).toBe(taskId2);
   });
+
+  it('rejects unsafe sessionId when binding a session', async () => {
+    const { taskId } = await initWorkspaceWithTask('Feature X');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(
+      sessionStore.setSessionTask('../mcp.codex', taskId, 'codex')
+    ).rejects.toBeInstanceOf(McpInvalidSessionIdError);
+  });
+
+  it('rejects unsafe taskId when binding a session', async () => {
+    await initWorkspaceWithTask('Feature X');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(
+      sessionStore.setSessionTask('mcp.codex', 'feature:x', 'codex')
+    ).rejects.toBeInstanceOf(McpInvalidTaskIdError);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -139,9 +161,12 @@ describe('resolveMcpTaskId', () => {
   it('throws McpTaskContextRequiredError when neither taskId nor sessionId is provided', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
-    await expect(resolveMcpTaskId({}, sessionStore)).rejects.toBeInstanceOf(
-      McpTaskContextRequiredError
-    );
+    const error = await resolveMcpTaskId({}, sessionStore).catch((e) => e);
+
+    expect(error).toBeInstanceOf(McpTaskContextRequiredError);
+    expect(error.hint).toContain('taskId');
+    expect(error.hint).toContain('sessionId');
+    expect(error.hint).toContain('playspec_use_session_task');
   });
 
   it('does not fall back to HEAD when no context is provided', async () => {
@@ -162,6 +187,75 @@ describe('resolveMcpTaskId', () => {
     expect(resolved).toBe(taskId);
   });
 
+  it('rejects empty string sessionId as context required', async () => {
+    await initWorkspaceWithTask('Test');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ sessionId: '' }, sessionStore)).rejects.toBeInstanceOf(
+      McpTaskContextRequiredError
+    );
+  });
+
+  it('prioritizes valid taskId over empty-string sessionId', async () => {
+    const { taskId } = await initWorkspaceWithTask('Test');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const resolved = await resolveMcpTaskId({ taskId, sessionId: '' }, sessionStore);
+    expect(resolved).toBe(taskId);
+  });
+
+  it.each([
+    ['slash path separator', '../feature_a'],
+    ['backslash path separator', '..\\feature_a'],
+    ['colon', 'feature:a'],
+    ['null byte', 'feature_a\0suffix'],
+    ['control character', 'feature_a\nsuffix'],
+    ['over 256 characters', 'a'.repeat(257)],
+  ])('rejects direct taskId with %s', async (_reason, taskId) => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ taskId }, sessionStore)).rejects.toBeInstanceOf(
+      McpInvalidTaskIdError
+    );
+  });
+
+  it('documents direct taskId validation rules in the error hint', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId(
+      { taskId: '../feature_a' },
+      sessionStore
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(McpInvalidTaskIdError);
+    expect(error.hint).toContain('256 characters or fewer');
+    expect(error.hint).toContain('colons');
+    expect(error.hint).toContain('path separators');
+    expect(error.hint).toContain('null bytes');
+    expect(error.hint).toContain('control characters');
+  });
+
+  it.each([
+    ['slash path separator', '../mcp.codex'],
+    ['backslash path separator', '..\\mcp.codex'],
+    ['colon', 'mcp:codex'],
+    ['non-string', null],
+  ])('rejects malformed sessionId with %s', async (_reason, sessionId) => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(resolveMcpTaskId({ sessionId }, sessionStore)).rejects.toBeInstanceOf(
+      McpInvalidSessionIdError
+    );
+  });
+
+  it('documents context identifier validation rules in the required-context hint', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId({ sessionId: '' }, sessionStore).catch((e) => e);
+    expect(error).toBeInstanceOf(McpTaskContextRequiredError);
+    expect(error.hint).toContain('non-empty taskId or sessionId');
+    expect(error.hint).toContain('256 characters or fewer');
+    expect(error.hint).toContain('colons');
+    expect(error.hint).toContain('path separators');
+  });
+
   it('throws McpSessionContextEmptyError when session has null currentTaskId', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
@@ -176,12 +270,23 @@ describe('resolveMcpTaskId', () => {
     ).rejects.toBeInstanceOf(McpSessionContextEmptyError);
   });
 
-  it('throws McpSessionContextEmptyError when session does not exist', async () => {
+  it('throws McpSessionNotFoundError when session file does not exist', async () => {
     await initWorkspaceWithTask('Feature A');
     const sessionStore = new McpSessionStore(workspace.dir);
     await expect(
-      resolveMcpTaskId({ sessionId: 'mcp.missing' }, sessionStore)
-    ).rejects.toBeInstanceOf(McpSessionContextEmptyError);
+      resolveMcpTaskId({ sessionId: 'nonexistent.session' }, sessionStore)
+    ).rejects.toBeInstanceOf(McpSessionNotFoundError);
+  });
+
+  it('uses a create-session hint when session file does not exist', async () => {
+    await initWorkspaceWithTask('Feature A');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    const error = await resolveMcpTaskId(
+      { sessionId: 'nonexistent.session' },
+      sessionStore
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(McpSessionNotFoundError);
+    expect(error.hint).toContain('create and bind the session');
   });
 
   it('resolves taskId from session when sessionId is provided', async () => {
@@ -212,6 +317,90 @@ describe('resolveMcpTaskId', () => {
 describe('buildMcpServer', () => {
   it('instantiates McpServer without throwing', () => {
     expect(() => buildMcpServer(workspace.dir)).not.toThrow();
+  });
+
+  it('retrieves a same-workspace task with diagnostics', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Same Workspace Lookup');
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['id']).toBe(taskId);
+    expect(body['diagnostics']).toMatchObject({
+      serverWorkspaceRoot: workspace.dir,
+      workspaceRoot: workspace.dir,
+      playspecRoot: path.join(workspace.dir, '.playspec'),
+      headTaskId: taskId,
+      cache: {
+        enabled: false,
+        status: 'not used; task state is read from disk per request',
+      },
+    });
+  });
+
+  it('retrieves an explicit workspace task when the server workspace differs', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const { taskId } = await initWorkspaceWithTask('MCP Explicit Workspace Lookup');
+      const handler = getRegisteredToolHandler('playspec_get_task', serverWorkspace.dir);
+
+      const result = await handler({ taskId, workspaceRoot: workspace.dir });
+      const body = parseToolJson(result);
+
+      expect(result.isError).toBeUndefined();
+      expect(body['id']).toBe(taskId);
+      expect(body['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+        taskSearchPaths: {
+          active: path.join(workspace.dir, '.playspec', 'tasks', 'active'),
+          completed: path.join(workspace.dir, '.playspec', 'tasks', 'active'),
+          archived: path.join(workspace.dir, '.playspec', 'tasks', 'archived'),
+        },
+      });
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
+  it('lists explicit workspace tasks with diagnostics when the server workspace differs', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const { taskId } = await initWorkspaceWithTask('MCP Explicit Workspace List');
+      const handler = getRegisteredToolHandler('playspec_list_tasks', serverWorkspace.dir);
+
+      const result = await handler({ workspaceRoot: workspace.dir });
+      const body = parseToolJson(result);
+
+      expect(result.isError).toBeUndefined();
+      expect(body['active']).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: taskId }),
+      ]));
+      expect(body['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+        playspecRoot: path.join(workspace.dir, '.playspec'),
+      });
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
+  it('includes workspace diagnostics when explicit task lookup misses', async () => {
+    await initWorkspaceWithTask('MCP Missing Lookup Diagnostics');
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId: 'missing_task' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Task not found: missing_task');
+    expect(result.content[0].text).toContain(`effective workspace root: ${workspace.dir}`);
+    expect(result.content[0].text).toContain(
+      `task search paths.active: ${path.join(workspace.dir, '.playspec', 'tasks', 'active')}`
+    );
+    expect(result.content[0].text).toContain('cache: not used; task state is read from disk per request');
   });
 
   it('does not register archive lookup tools in Phase 5', () => {
@@ -353,6 +542,7 @@ describe('buildMcpServer', () => {
     expect(unlinked.isError).toBeUndefined();
     expect(parseToolJson(unlinked)['changed']).toBe(true);
     expect((await store.getTask(taskId)).links).toBeUndefined();
+    expect(missingContext.content[0].text).toContain('playspec_use_session_task');
   });
 
   it('shows and edits project workflows through MCP', async () => {
