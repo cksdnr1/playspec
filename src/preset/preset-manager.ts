@@ -8,6 +8,21 @@ import type { WorkflowInstallDestination } from '#core/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export function assertSafePresetName(presetName: string): void {
+  if (presetName.includes('\0')) {
+    throw new Error(`Preset name must not contain null bytes: ${presetName}`);
+  }
+  if (path.isAbsolute(presetName) || path.win32.isAbsolute(presetName)) {
+    throw new Error(`Preset name must be relative: ${presetName}`);
+  }
+  if (presetName === '.' || presetName === '..') {
+    throw new Error(`Preset name must identify a preset asset directory: ${presetName}`);
+  }
+  if (presetName.includes('/') || presetName.includes('\\')) {
+    throw new Error(`Preset name must not contain path separators: ${presetName}`);
+  }
+}
+
 export interface InitWorkspaceOptions {
   workflowInstall?: WorkflowInstallDestination;
 }
@@ -18,6 +33,7 @@ export class PresetManager {
    * Safe to call on an already-initialized workspace.
    */
   async initWorkspace(workspaceRoot: string, presetName: string, options: InitWorkspaceOptions = {}): Promise<void> {
+    assertSafePresetName(presetName);
     const presetAssetsDir = path.join(__dirname, 'assets', presetName);
     const playspecRoot = getPlayspecRoot(workspaceRoot);
     const workflowInstall = options.workflowInstall ?? 'project';

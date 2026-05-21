@@ -181,6 +181,23 @@ describe('PresetManager.initWorkspace — structure verification', () => {
     await expect(access(path.join(workspace.dir, 'user-workflows'))).rejects.toThrow();
   });
 
+  it.each([
+    ['slash traversal', '../default', 'path separators'],
+    ['backslash traversal', '..\\default', 'path separators'],
+    ['posix absolute path', '/tmp/default', 'relative'],
+    ['windows absolute path', 'C:\\default', 'relative'],
+    ['slash separator', 'bad/name', 'path separators'],
+    ['backslash separator', 'bad\\name', 'path separators'],
+    ['null byte', 'bad\0name', 'null bytes'],
+    ['single dot', '.', 'preset asset directory'],
+    ['double dot', '..', 'preset asset directory'],
+  ])('rejects unsafe preset name before workspace mutation: %s', async (_label, presetName, expectedMessage) => {
+    const manager = new PresetManager();
+
+    await expect(manager.initWorkspace(workspace.dir, presetName)).rejects.toThrow(expectedMessage);
+    await expect(access(path.join(workspace.dir, '.playspec'))).rejects.toThrow();
+  });
+
   it('gitignore keeps project workflows committable while ignoring runtime state', async () => {
     const gitignore = await readFile(path.join(REPO_ROOT, '.gitignore'), 'utf8');
     await writeFile(path.join(workspace.dir, '.gitignore'), gitignore, 'utf8');
