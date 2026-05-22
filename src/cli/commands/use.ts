@@ -1,5 +1,5 @@
 import type { TaskSummary } from '#core/types.js';
-import { PlaySpecError, TaskNotFoundError } from '#core/errors.js';
+import { PlaySpecError, TaskNotActiveError, TaskNotFoundError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
@@ -52,6 +52,10 @@ async function setHeadToTask(workspaceRoot: string, store: TaskStore, taskId: st
       await throwUseSuggestionError(store, taskId, err);
     }
     throw err;
+  }
+
+  if (task.status !== 'active') {
+    throw new TaskNotActiveError(taskId, task.status);
   }
 
   await writeTextFile(getHeadPath(workspaceRoot), taskId + '\n');
