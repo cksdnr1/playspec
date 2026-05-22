@@ -1283,6 +1283,23 @@ phases:
     expect(after.updatedAt).toBe(before.updatedAt);
   });
 
+  it('rejects explicit use <taskId> for completed tasks without changing HEAD', async () => {
+    const activeTaskId = await createActiveTask('Use Completed Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Use Completed Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['use', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
+  });
+
   it('suggests the matching task ID when use receives a title', async () => {
     await createActiveTask('Use Suggestion Existing Task');
     const suggestedTaskId = await createAdditionalActiveTask('Use Suggestion Target Task');
