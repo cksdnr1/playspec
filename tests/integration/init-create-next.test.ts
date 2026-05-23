@@ -1092,4 +1092,44 @@ phases:
       MissingRequiredVariablesError
     );
   });
+
+  it('reports a missing required variable referenced indirectly by a default', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  PROJECT_KEY:
+    required: true
+  OUTPUT_FILE:
+    default: "docs/{{PROJECT_KEY}}/out.md"
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n\nOutput: {{OUTPUT_FILE}}\n'
+    );
+
+    const taskId = slugify('Indirect Missing Variable Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Indirect Missing Variable Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(
+      MissingRequiredVariablesError
+    );
+  });
 });

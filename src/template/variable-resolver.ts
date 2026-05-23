@@ -139,8 +139,6 @@ function resolveDeclaredDefaults(
 
     resolving.add(name);
     const value = renderDefault(
-      workflowId,
-      name,
       declaration.default,
       (dependency) => {
         if (!knownVariables.has(dependency)) {
@@ -164,18 +162,12 @@ function resolveDeclaredDefaults(
 }
 
 function renderDefault(
-  workflowId: string,
-  variableName: string,
   template: string,
   lookup: (name: string) => string
 ): string {
   return template.replace(DEFAULT_PLACEHOLDER_REGEX, (_token, body: string) => {
     const dependency = body.trim().split(/\s+/)[0] ?? body.trim();
-    const value = lookup(dependency);
-    if (value === '') {
-      throw new UnknownVariableDefaultError(workflowId, variableName, dependency);
-    }
-    return value;
+    return lookup(dependency);
   });
 }
 

@@ -414,6 +414,26 @@ describe('VariableResolver', () => {
     );
   });
 
+  it('does not report declared but unset required default dependencies as unknown', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'missing-required-default-dependency',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        PROJECT_KEY: { required: true },
+        OUTPUT_FILE: { default: 'docs/{{PROJECT_KEY}}/out.md' },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.OUTPUT_FILE).toBe('docs//out.md');
+    expect(vars.PROJECT_KEY).toBeUndefined();
+  });
+
   it('throws a clear error for circular default references', () => {
     const workflow: WorkflowDefinition = {
       id: 'cycle-default',
