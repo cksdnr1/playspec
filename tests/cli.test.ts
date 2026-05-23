@@ -1328,7 +1328,7 @@ phases:
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
   });
 
-  it('rejects explicit prompt --task for completed tasks', async () => {
+  it('rejects explicit prompt --task for completed tasks before printing prompts', async () => {
     await createActiveTask('Prompt Completed Guard Active Task');
     const completedTaskId = await createAdditionalActiveTask('Prompt Completed Guard Done Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
@@ -1337,11 +1337,29 @@ phases:
       currentPhase: null,
     });
 
-    const result = await runCli(['prompt', '--task', completedTaskId, '--no-copy'], workspace.dir);
+    const result = await runCli(['prompt', '--task', completedTaskId, '--print-only', '--quiet'], workspace.dir);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
     expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects explicit prompt --task for completed tasks before writing --out artifacts', async () => {
+    await createActiveTask('Prompt Completed Out Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Prompt Completed Out Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+    const outputPath = path.join(workspace.dir, 'completed-prompt.md');
+
+    const result = await runCli(['prompt', '--task', completedTaskId, '--out', outputPath], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    await expect(access(outputPath)).rejects.toThrow();
   });
 
   it('rejects explicit next --task for completed tasks', async () => {
@@ -1357,7 +1375,7 @@ phases:
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Warning: `playspec next` is deprecated.');
-    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
     expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
   });
 
