@@ -3,7 +3,7 @@ import path from 'node:path';
 import * as readline from 'node:readline';
 import { tmpdir } from 'node:os';
 import { execa } from 'execa';
-import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, SelfTaskLinkError } from '#core/errors.js';
+import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, SelfTaskLinkError, PlanningTaskNotCompletedError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
@@ -92,10 +92,15 @@ export async function runCreate(
   const store = new YamlTaskStore(workspaceRoot);
 
   let planningTaskId: string;
+  let planningTask: TaskRecord | undefined;
   const isInteractive = process.stdout.isTTY === true;
 
   if (options.from) {
     planningTaskId = options.from;
+    planningTask = await store.getTask(planningTaskId);
+    if (planningTask.status !== 'completed') {
+      throw new PlanningTaskNotCompletedError(planningTask.id, planningTask.status);
+    }
   } else {
     const completedTasks = await store.listCompletedTasks();
     const candidates = completedTasks.filter(
@@ -120,7 +125,7 @@ export async function runCreate(
     }
   }
 
-  const planningTask = await store.getTask(planningTaskId);
+  planningTask ??= await store.getTask(planningTaskId);
   const planningArtifacts = await resolvePlanningArtifacts(workspaceRoot, planningTask);
   const totalSpecRelPath = planningArtifacts.totalSpec;
   const phasePlanRelPath = planningArtifacts.phasePlan;

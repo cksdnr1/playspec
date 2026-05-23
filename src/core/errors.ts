@@ -206,6 +206,16 @@ export class TaskNotCompletedError extends PlaySpecError {
   }
 }
 
+export class PlanningTaskNotCompletedError extends PlaySpecError {
+  constructor(taskId: string, status: string) {
+    super(
+      `Planning task "${taskId}" is not completed (status: ${status}).`,
+      'Phase-execution creation requires a completed planning task. Complete the planning task first, then rerun with --from <TASK_ID>.'
+    );
+    this.name = 'PlanningTaskNotCompletedError';
+  }
+}
+
 export class ArchivedTaskAlreadyExistsError extends PlaySpecError {
   constructor(taskId: string) {
     super(
