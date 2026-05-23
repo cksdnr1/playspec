@@ -104,9 +104,9 @@ export class PlaySpecCore {
       throw new AbsoluteContextPathError(contextPath);
     }
     const normalizedPath = path.normalize(contextPath);
-    const resolved = path.resolve(this.workspaceRoot, normalizedPath);
-    if (!resolved.startsWith(path.resolve(this.workspaceRoot) + path.sep) &&
-        resolved !== path.resolve(this.workspaceRoot)) {
+    const workspaceRoot = path.resolve(this.workspaceRoot);
+    const resolved = path.resolve(workspaceRoot, normalizedPath);
+    if (!this.isWithinWorkspace(resolved, workspaceRoot)) {
       throw new ContextPathEscapesWorkspaceError(contextPath);
     }
     try {
@@ -909,12 +909,13 @@ Use the rollback safe point above for state rollback context. This markdown is a
 
   private async assertContextRefsExist(task: TaskRecord): Promise<void> {
     if (!task.contextRefs || task.contextRefs.length === 0) return;
+    const workspaceRoot = path.resolve(this.workspaceRoot);
     for (const ref of task.contextRefs) {
       if (path.isAbsolute(ref.path)) {
         throw new MissingContextRefError(ref.path);
       }
-      const resolved = path.resolve(this.workspaceRoot, ref.path);
-      if (!resolved.startsWith(path.resolve(this.workspaceRoot))) {
+      const resolved = path.resolve(workspaceRoot, ref.path);
+      if (!this.isWithinWorkspace(resolved, workspaceRoot)) {
         throw new MissingContextRefError(ref.path);
       }
       try {
@@ -923,6 +924,10 @@ Use the rollback safe point above for state rollback context. This markdown is a
         throw new MissingContextRefError(ref.path);
       }
     }
+  }
+
+  private isWithinWorkspace(resolvedPath: string, resolvedWorkspaceRoot: string): boolean {
+    return resolvedPath === resolvedWorkspaceRoot || resolvedPath.startsWith(resolvedWorkspaceRoot + path.sep);
   }
 
   private async writeSnapshots(
