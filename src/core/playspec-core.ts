@@ -265,6 +265,7 @@ export class PlaySpecCore {
       options.result
     );
     this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
+    const completionArtifactSuffix = this.resolveCompletionArtifactSuffix(visitCount);
 
     // Render prompt snapshot only after routing validation passes
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
@@ -278,9 +279,10 @@ export class PlaySpecCore {
         phaseId,
         promptSnapshot,
         'completion',
-        contextMode
+        contextMode,
+        completionArtifactSuffix
       );
-      const evidenceFiles = await this.writeEvidence(task, phaseId, '');
+      const evidenceFiles = await this.writeEvidence(task, phaseId, completionArtifactSuffix);
       const reviewFile = options.withReview
         ? await this.writeReview(task, phaseId, validationTemplate)
         : undefined;
@@ -715,6 +717,13 @@ export class PlaySpecCore {
     };
   }
 
+  private resolveCompletionArtifactSuffix(visitCount: number | undefined): string {
+    if (visitCount === undefined || visitCount === 1) {
+      return '';
+    }
+    return `_visit${visitCount}`;
+  }
+
   private async writeCompletionEvent(input: {
     task: TaskRecord;
     definition: PhaseDefinition;
@@ -932,11 +941,12 @@ Use the rollback safe point above for state rollback context. This markdown is a
     phaseId: string,
     prompt: string,
     mode: 'completion' | 'manual',
-    contextMode: PromptContextMode = DEFAULT_PROMPT_CONTEXT_MODE
+    contextMode: PromptContextMode = DEFAULT_PROMPT_CONTEXT_MODE,
+    completionSuffix = ''
   ): Promise<string[]> {
     const taskSnapshotFile =
       mode === 'completion'
-        ? `snapshots/phase${phaseId}_before_complete.yaml`
+        ? `snapshots/phase${phaseId}${completionSuffix}_before_complete.yaml`
         : `snapshots/phase${phaseId}_manual_task.yaml`;
 
     await writeTextFileAtomic(
@@ -948,7 +958,7 @@ Use the rollback safe point above for state rollback context. This markdown is a
       return [taskSnapshotFile];
     }
 
-    const promptSnapshotFile = `snapshots/phase${phaseId}_prompt.md`;
+    const promptSnapshotFile = `snapshots/phase${phaseId}${completionSuffix}_prompt.md`;
     const promptSnapshotPath = path.join(this.getAbsoluteTaskRoot(task), promptSnapshotFile);
     await writeTextFileAtomic(promptSnapshotPath, prompt);
     await writePromptArtifactMetadata({

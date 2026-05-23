@@ -371,9 +371,20 @@ phases:
     it('appends repeated completed entries with incrementing visitCount', async () => {
       const { store, taskId } = await initRoutedWorkspace();
       const core = new PlaySpecCore(workspace.dir, store);
+      const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
 
       // First visit: validation -> spec_patch
       await core.completePhase(taskId, { result: 'needs_patch' });
+      const firstVisitTask = await store.getTask(taskId);
+      const firstValidationEntry = firstVisitTask.phaseHistory.find((e) => e.phase === 'validation');
+      const firstVisitFiles = [
+        ...(firstValidationEntry?.snapshotFiles ?? []),
+        ...(firstValidationEntry?.evidenceFiles ?? []),
+      ];
+      const firstVisitContents = await Promise.all(
+        firstVisitFiles.map(async (file) => readFile(path.join(taskRoot, file), 'utf-8'))
+      );
+
       // Move back to validation manually (simulating routing loop)
       await store.updateTask(taskId, { currentPhase: 'validation' });
 
@@ -387,6 +398,42 @@ phases:
       expect(validationEntries[0]?.result).toBe('needs_patch');
       expect(validationEntries[1]?.visitCount).toBe(2);
       expect(validationEntries[1]?.result).toBe('approved');
+      expect(validationEntries[0]?.snapshotFiles).toEqual([
+        'snapshots/phasevalidation_before_complete.yaml',
+        'snapshots/phasevalidation_prompt.md',
+      ]);
+      expect(validationEntries[1]?.snapshotFiles).toEqual([
+        'snapshots/phasevalidation_visit2_before_complete.yaml',
+        'snapshots/phasevalidation_visit2_prompt.md',
+      ]);
+      expect(validationEntries[0]?.evidenceFiles).toEqual([
+        'evidence/phasevalidation_git_status.txt',
+        'evidence/phasevalidation_git_diff_stat.txt',
+        'evidence/phasevalidation_changed_files.txt',
+      ]);
+      expect(validationEntries[1]?.evidenceFiles).toEqual([
+        'evidence/phasevalidation_visit2_git_status.txt',
+        'evidence/phasevalidation_visit2_git_diff_stat.txt',
+        'evidence/phasevalidation_visit2_changed_files.txt',
+      ]);
+      expect(validationEntries[0]?.snapshotFiles).not.toEqual(validationEntries[1]?.snapshotFiles);
+      expect(validationEntries[0]?.evidenceFiles).not.toEqual(validationEntries[1]?.evidenceFiles);
+      expect(task.rollback?.lastSafePoint).toMatchObject({
+        phase: 'validation',
+        taskSnapshotFile: 'snapshots/phasevalidation_visit2_before_complete.yaml',
+        promptSnapshotFile: 'snapshots/phasevalidation_visit2_prompt.md',
+      });
+
+      const allVisitFiles = validationEntries.flatMap((entry) => [
+        ...(entry.snapshotFiles ?? []),
+        ...(entry.evidenceFiles ?? []),
+      ]);
+      await Promise.all(
+        allVisitFiles.map(async (file) => expect(access(path.join(taskRoot, file))).resolves.not.toThrow())
+      );
+      await expect(
+        Promise.all(firstVisitFiles.map(async (file) => readFile(path.join(taskRoot, file), 'utf-8')))
+      ).resolves.toEqual(firstVisitContents);
     });
 
     it('throws LoopGuardError when maxVisits is exceeded', async () => {
