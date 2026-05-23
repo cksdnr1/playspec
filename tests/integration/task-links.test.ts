@@ -165,6 +165,53 @@ describe('lightweight task links', () => {
     expect(yaml['links']).toBeUndefined();
   });
 
+  it('rejects explicit link and unlink mutations from completed source tasks without changing links', async () => {
+    await initWorkspace();
+    await runCli(['create', 'Issue 157 Parent', '--workflow', 'multi-spec']);
+    await runCli(['create', 'Issue 157 Child', '--workflow', 'multi-spec']);
+    await runCli(['link', 'issue_157_child', 'issue_157_parent', '--as', 'parent']);
+
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask('issue_157_child', { status: 'completed' });
+    const beforeLinks = (await readTaskYaml('issue_157_child'))['links'];
+
+    const link = await runCli(['link', 'issue_157_child', 'issue_157_parent', '--as', 'related']);
+    const afterFailedLink = (await readTaskYaml('issue_157_child'))['links'];
+    const unlink = await runCli(['unlink', 'issue_157_child', 'issue_157_parent']);
+    const afterFailedUnlink = (await readTaskYaml('issue_157_child'))['links'];
+
+    expect(link.exitCode).not.toBe(0);
+    expect(link.stderr).toContain('Task "issue_157_child" is not active');
+    expect(unlink.exitCode).not.toBe(0);
+    expect(unlink.stderr).toContain('Task "issue_157_child" is not active');
+    expect(afterFailedLink).toEqual(beforeLinks);
+    expect(afterFailedUnlink).toEqual(beforeLinks);
+  });
+
+  it('rejects current-task shorthand link and unlink when HEAD source is completed without changing links', async () => {
+    await initWorkspace();
+    await runCli(['create', 'Issue 157 Head Parent', '--workflow', 'multi-spec']);
+    await runCli(['create', 'Issue 157 Head Child', '--workflow', 'multi-spec']);
+    await runCli(['use', 'issue_157_head_child']);
+    await runCli(['link', 'issue_157_head_child', 'issue_157_head_parent', '--as', 'parent']);
+
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask('issue_157_head_child', { status: 'completed' });
+    const beforeLinks = (await readTaskYaml('issue_157_head_child'))['links'];
+
+    const link = await runCli(['link', '--to', 'issue_157_head_parent', '--as', 'related']);
+    const afterFailedLink = (await readTaskYaml('issue_157_head_child'))['links'];
+    const unlink = await runCli(['unlink', '--to', 'issue_157_head_parent']);
+    const afterFailedUnlink = (await readTaskYaml('issue_157_head_child'))['links'];
+
+    expect(link.exitCode).not.toBe(0);
+    expect(link.stderr).toContain('Task "issue_157_head_child" is not active');
+    expect(unlink.exitCode).not.toBe(0);
+    expect(unlink.stderr).toContain('Task "issue_157_head_child" is not active');
+    expect(afterFailedLink).toEqual(beforeLinks);
+    expect(afterFailedUnlink).toEqual(beforeLinks);
+  });
+
   it('rejects self-links and ambiguous prefixes', async () => {
     await initWorkspace();
     await runCli(['create', 'Issue 84 Parent', '--workflow', 'multi-spec']);

@@ -142,6 +142,7 @@ export class PlaySpecCore {
     }
 
     const source = await this.taskStore.getTask(sourceTaskId);
+    this.assertTaskIsActive(source);
     await this.taskStore.getTask(targetTaskId);
 
     const links = source.links ?? [];
@@ -184,6 +185,7 @@ export class PlaySpecCore {
     }
 
     const source = await this.taskStore.getTask(sourceTaskId);
+    this.assertTaskIsActive(source);
     await this.taskStore.getTask(targetTaskId);
 
     const links = source.links ?? [];
