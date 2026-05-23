@@ -92,6 +92,7 @@ export class PlaySpecCore {
 
   async renderNextPrompt(taskId: string, options: PromptRenderOptions = {}): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.resolve(task.workflow);
     this.validateCurrentPhase(task, workflow.definition);
@@ -216,6 +217,7 @@ export class PlaySpecCore {
     options: PromptRenderOptions = {}
   ): Promise<string> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     await this.assertContextRefsExist(task);
     const workflow = await this.workflowLoader.resolve(task.workflow);
     const { definition } = this.phaseResolver.resolveExplicitPhase(phaseId, workflow.definition);

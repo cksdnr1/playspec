@@ -1300,6 +1300,39 @@ phases:
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
   });
 
+  it('rejects explicit prompt --task for completed tasks', async () => {
+    await createActiveTask('Prompt Completed Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Prompt Completed Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['prompt', '--task', completedTaskId, '--no-copy'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects explicit next --task for completed tasks', async () => {
+    await createActiveTask('Next Completed Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Next Completed Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['next', '--task', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Warning: `playspec next` is deprecated.');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
   it('suggests the matching task ID when use receives a title', async () => {
     await createActiveTask('Use Suggestion Existing Task');
     const suggestedTaskId = await createAdditionalActiveTask('Use Suggestion Target Task');
@@ -3069,6 +3102,22 @@ phases:
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(`Task "${taskId}" is not active`);
+  });
+
+  it('rejects explicit phase rendering for completed tasks via the CLI', async () => {
+    await createActiveTask('Phase Completed Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Phase Completed Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['phase', '1', '--task', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
   });
 
   // ui_ux_update_260427

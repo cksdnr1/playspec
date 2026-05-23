@@ -9,12 +9,13 @@ import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
-import { MissingRequiredVariablesError } from '#core/errors.js';
+import { MissingRequiredVariablesError, TaskNotActiveError } from '#core/errors.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
 import { EvolutionHumanEditStore } from '#evolution/human-edit-store.js';
+import type { TaskStore } from '#storage/task-store.js';
 import type { EvolutionProposal, HumanEditObservation } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -311,6 +312,56 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toContain('My Task');
     // PHASE_NUMBER should be resolved to 3
     expect(prompt).toMatch(/Phase 3/);
+  });
+
+  it('core prompt render helpers reject completed tasks', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Completed Render Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Completed Render Task',
+      workflow: 'multi-spec',
+    });
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(TaskNotActiveError);
+    await expect(core.renderExplicitPhasePrompt(taskId, '1')).rejects.toThrow(TaskNotActiveError);
+  });
+
+  it('core prompt render helpers reject archived task records', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Archived Render Task');
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.createTask({
+      id: taskId,
+      title: 'Archived Render Task',
+      workflow: 'multi-spec',
+    });
+    const archivedStore = {
+      getTask: async () => ({
+        ...task,
+        status: 'archived' as const,
+        paths: {
+          ...task.paths,
+          taskRoot: path.join('.playspec', 'tasks', 'archived', taskId),
+        },
+      }),
+    } as TaskStore;
+
+    const core = new PlaySpecCore(workspace.dir, archivedStore);
+
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(TaskNotActiveError);
+    await expect(core.renderExplicitPhasePrompt(taskId, '1')).rejects.toThrow(TaskNotActiveError);
   });
 
   it('renderNextPrompt refuses if a stored contextRef path is missing', async () => {
