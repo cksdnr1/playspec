@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -384,6 +384,39 @@ describe('init → create → next (end-to-end)', () => {
     await expect(core.renderNextPrompt(taskId)).rejects.toThrow(MissingContextRefError);
   });
 
+  it('renderNextPrompt refuses a sibling contextRef path that shares the workspace path prefix', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const siblingDir = `${workspace.dir}-sibling`;
+    const siblingContextPath = path.join(siblingDir, 'context.md');
+    await mkdir(siblingDir, { recursive: true });
+    await writeTextFile(siblingContextPath, '# Escaping Context\n');
+
+    try {
+      const taskId = slugify('Sibling Context Escape Task');
+      const store = new YamlTaskStore(workspace.dir);
+      await store.createTask({
+        id: taskId,
+        title: 'Sibling Context Escape Task',
+        workflow: 'multi-spec',
+        contextRefs: [
+          {
+            path: path.join('..', path.basename(siblingDir), 'context.md'),
+            role: 'planning-context',
+            source: 'manual_yaml',
+          },
+        ],
+      });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const { MissingContextRefError } = await import('#core/errors.js');
+      await expect(core.renderNextPrompt(taskId)).rejects.toThrow(MissingContextRefError);
+    } finally {
+      await rm(siblingDir, { recursive: true, force: true });
+    }
+  });
+
   it('renders compact, strict, and full context modes with explicit context refs', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
@@ -687,6 +720,67 @@ describe('init → create → next (end-to-end)', () => {
     await expect(
       access(path.join(workspace.dir, '.playspec', 'tasks', 'archived', taskId, 'task.yaml'))
     ).resolves.toBeUndefined();
+  });
+
+  it('clears HEAD when closing the selected completed task from the CLI', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Selected Done Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Selected Done Task',
+      workflow: 'mono-spec',
+    });
+    await store.updateTask(taskId, { status: 'completed' });
+    await writeFile(getHeadPath(workspace.dir), taskId, 'utf-8');
+
+    const result = await runCli(['close', '--task', taskId]);
+    const currentTask = await runCli(['current-task']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Closed task "${taskId}" into archive storage.`);
+    expect(result.stdout).toContain('HEAD cleared because the selected task was closed.');
+    expect(result.stdout).toContain('Select another active task with `playspec use <TASK_ID>`.');
+    await expect(readFile(getHeadPath(workspace.dir), 'utf-8')).resolves.toBe('');
+    expect(currentTask.exitCode).not.toBe(0);
+    expect(currentTask.stderr).toContain('No active task set.');
+    expect(currentTask.stderr).toContain(
+      'Create a task with `playspec create` or switch to one with `playspec use <TASK_ID>`.'
+    );
+    expect(currentTask.stderr).not.toContain(`Task not found: ${taskId}`);
+  });
+
+  it('preserves HEAD when closing a different completed task from the CLI', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const selectedTaskId = slugify('Still Selected Task');
+    const closedTaskId = slugify('Other Done Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: selectedTaskId,
+      title: 'Still Selected Task',
+      workflow: 'mono-spec',
+    });
+    await store.createTask({
+      id: closedTaskId,
+      title: 'Other Done Task',
+      workflow: 'mono-spec',
+    });
+    await store.updateTask(closedTaskId, { status: 'completed' });
+    await writeFile(getHeadPath(workspace.dir), selectedTaskId, 'utf-8');
+
+    const result = await runCli(['close', '--task', closedTaskId]);
+    const currentTask = await runCli(['current-task']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Closed task "${closedTaskId}" into archive storage.`);
+    expect(result.stdout).not.toContain('HEAD cleared because the selected task was closed.');
+    await expect(readFile(getHeadPath(workspace.dir), 'utf-8')).resolves.toBe(selectedTaskId);
+    expect(currentTask.exitCode).toBe(0);
+    expect(currentTask.stdout).toContain(`Task ID:      ${selectedTaskId}`);
   });
 
   it('lists and shows archived tasks without mixing them into active lists', async () => {
@@ -1131,5 +1225,47 @@ phases:
     await expect(core.renderNextPrompt(taskId)).rejects.toThrow(
       MissingRequiredVariablesError
     );
+  });
+
+  it('renders a required workflow variable default when the task variable is empty', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  CUSTOM_REQUIRED:
+    required: true
+    default: resolved-default
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n\nCustom: {{CUSTOM_REQUIRED}}\n'
+    );
+
+    const taskId = slugify('Defaulted Required Variable Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Defaulted Required Variable Task',
+      workflow: 'multi-spec',
+      variables: {
+        CUSTOM_REQUIRED: '',
+      },
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Custom: resolved-default');
   });
 });

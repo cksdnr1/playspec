@@ -91,13 +91,17 @@ export class VariableResolver {
       workflow?.id ?? task.workflow,
       engineVariables,
       declarations,
-      task.variables
+      task.variables,
+      getDemandedVariableNames(workflow, definition)
+    );
+    const nonEmptyTaskVariables = Object.fromEntries(
+      Object.entries(task.variables).filter(([, value]) => value !== '')
     );
 
     return {
       ...engineVariables,
       ...resolvedDefaults,
-      ...task.variables,
+      ...nonEmptyTaskVariables,
     };
   }
 }
@@ -108,7 +112,8 @@ function resolveDeclaredDefaults(
   workflowId: string,
   engineVariables: Record<string, string>,
   declarations: Record<string, VariableDeclaration>,
-  taskVariables: Record<string, string>
+  taskVariables: Record<string, string>,
+  demandedVariables: Set<string>
 ): Record<string, string> {
   const resolved: Record<string, string> = {
     ...engineVariables,
@@ -121,7 +126,7 @@ function resolveDeclaredDefaults(
     ...Object.keys(taskVariables),
   ]);
 
-  const resolveOne = (name: string, chain: string[]): string | undefined => {
+  const resolveOne = (name: string, chain: string[], demanded: boolean): string | undefined => {
     if (name in resolved && resolved[name] !== '') {
       return resolved[name];
     }
@@ -138,27 +143,63 @@ function resolveDeclaredDefaults(
     }
 
     resolving.add(name);
-    const value = renderDefault(
-      declaration.default,
-      (dependency) => {
-        if (!knownVariables.has(dependency)) {
-          throw new UnknownVariableDefaultError(workflowId, name, dependency);
+    let value: string;
+    try {
+      value = renderDefault(
+        declaration.default,
+        (dependency) => {
+          if (!knownVariables.has(dependency)) {
+            throw new UnknownVariableDefaultError(workflowId, name, dependency);
+          }
+          return resolveOne(dependency, [...chain, name], demanded) ?? '';
         }
-        return resolveOne(dependency, [...chain, name]) ?? '';
+      );
+    } catch (error) {
+      if (!demanded && error instanceof UnknownVariableDefaultError) {
+        return undefined;
       }
-    );
-    resolving.delete(name);
+      throw error;
+    } finally {
+      resolving.delete(name);
+    }
     resolved[name] = value;
     return value;
   };
 
   for (const name of Object.keys(declarations)) {
-    resolveOne(name, []);
+    resolveOne(name, [], demandedVariables.has(name));
   }
 
   return Object.fromEntries(
     Object.entries(resolved).filter(([name]) => !(name in engineVariables) || resolved[name] !== '')
   );
+}
+
+function getDemandedVariableNames(
+  workflow?: WorkflowDefinition,
+  definition?: PhaseDefinition
+): Set<string> {
+  const demanded = new Set<string>();
+
+  for (const [name, declaration] of Object.entries(workflow?.variables ?? {})) {
+    if (declaration.required === true) {
+      demanded.add(name);
+    }
+  }
+
+  for (const name of Object.keys(definition?.variables ?? {})) {
+    demanded.add(name);
+  }
+
+  for (const name of definition?.requiredVariables ?? []) {
+    demanded.add(name);
+  }
+
+  for (const name of definition?.outputs ?? []) {
+    demanded.add(name);
+  }
+
+  return demanded;
 }
 
 function renderDefault(
