@@ -165,6 +165,83 @@ describe('lightweight task links', () => {
     expect(yaml['links']).toBeUndefined();
   });
 
+  it('rejects explicit link and unlink mutations when the source task is completed', async () => {
+    await initWorkspace();
+    await runCli(['create', 'Issue 84 Parent', '--workflow', 'multi-spec']);
+    await runCli(['create', 'Issue 84 Child', '--workflow', 'multi-spec']);
+
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask('issue_84_child', { status: 'completed' });
+
+    const beforeLink = await readTaskYaml('issue_84_child');
+    const link = await runCli(['link', 'issue_84_child', 'issue_84_parent', '--as', 'parent']);
+    const afterLink = await readTaskYaml('issue_84_child');
+
+    expect(link.exitCode).not.toBe(0);
+    expect(link.stderr).toContain('Task "issue_84_child" is not active (status: completed).');
+    expect(afterLink).toEqual(beforeLink);
+
+    await store.updateTask('issue_84_child', {
+      status: 'active',
+      links: [
+        {
+          type: 'parent',
+          targetTaskId: 'issue_84_parent',
+          createdAt: '2026-05-23T00:00:00.000Z',
+          createdBy: 'cli',
+        },
+      ],
+    });
+    await store.updateTask('issue_84_child', { status: 'completed' });
+
+    const beforeUnlink = await readTaskYaml('issue_84_child');
+    const unlink = await runCli(['unlink', 'issue_84_child', 'issue_84_parent']);
+    const afterUnlink = await readTaskYaml('issue_84_child');
+
+    expect(unlink.exitCode).not.toBe(0);
+    expect(unlink.stderr).toContain('Task "issue_84_child" is not active (status: completed).');
+    expect(afterUnlink).toEqual(beforeUnlink);
+  });
+
+  it('rejects current-task shorthand link and unlink mutations when HEAD is completed', async () => {
+    await initWorkspace();
+    await runCli(['create', 'Issue 84 Parent', '--workflow', 'multi-spec']);
+    await runCli(['create', 'Issue 84 Child', '--workflow', 'multi-spec']);
+    await runCli(['use', 'issue_84_child']);
+
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask('issue_84_child', { status: 'completed' });
+
+    const beforeLink = await readTaskYaml('issue_84_child');
+    const link = await runCli(['link', '--to', 'issue_84_parent', '--as', 'parent']);
+    const afterLink = await readTaskYaml('issue_84_child');
+
+    expect(link.exitCode).not.toBe(0);
+    expect(link.stderr).toContain('Task "issue_84_child" is not active (status: completed).');
+    expect(afterLink).toEqual(beforeLink);
+
+    await store.updateTask('issue_84_child', {
+      status: 'active',
+      links: [
+        {
+          type: 'parent',
+          targetTaskId: 'issue_84_parent',
+          createdAt: '2026-05-23T00:00:00.000Z',
+          createdBy: 'cli',
+        },
+      ],
+    });
+    await store.updateTask('issue_84_child', { status: 'completed' });
+
+    const beforeUnlink = await readTaskYaml('issue_84_child');
+    const unlink = await runCli(['unlink', '--to', 'issue_84_parent']);
+    const afterUnlink = await readTaskYaml('issue_84_child');
+
+    expect(unlink.exitCode).not.toBe(0);
+    expect(unlink.stderr).toContain('Task "issue_84_child" is not active (status: completed).');
+    expect(afterUnlink).toEqual(beforeUnlink);
+  });
+
   it('rejects self-links and ambiguous prefixes', async () => {
     await initWorkspace();
     await runCli(['create', 'Issue 84 Parent', '--workflow', 'multi-spec']);
