@@ -53,7 +53,7 @@ export async function runCreate(
     throw new WorkspaceNotInitializedError(workspaceRoot);
   }
 
-  await validateWorkflowExists(workspaceRoot, workflow);
+  const resolvedWorkflow = await validateWorkflowExists(workspaceRoot, workflow);
 
   if (!options.phase) {
     if (options.from && options.fromFile) {
@@ -79,10 +79,14 @@ export async function runCreate(
   if (options.parent || options.after) {
     throw new Error('--parent and --after are only supported for normal task creation, not --phase execution tasks.');
   }
-  const variables = parseTaskVariables(options.var);
+  const explicitVariables = parseTaskVariables(options.var);
 
   // Phase-execution flow
   const phaseNumber = options.phase;
+  const phaseExists = resolvedWorkflow.definition.phases[phaseNumber] !== undefined;
+  if (workflow === 'phase-execution' || phaseExists) {
+    new PhaseResolver().resolveExplicitPhase(phaseNumber, resolvedWorkflow.definition);
+  }
   const finalTitle = normalizeExecutionTitle(title, phaseNumber);
   const taskId = slugify(finalTitle);
   const store = new YamlTaskStore(workspaceRoot);
@@ -141,6 +145,14 @@ export async function runCreate(
   ];
 
   const target: TaskTarget = { phaseNumber };
+  const planningDerivedVariables: Record<string, string> = {};
+  if (resolvedWorkflow.definition.variables?.['FEATURE_SLUG'] !== undefined) {
+    planningDerivedVariables['FEATURE_SLUG'] = planningTask.variables['FEATURE_SLUG'] ?? planningTask.id;
+  }
+  const variables = {
+    ...planningDerivedVariables,
+    ...explicitVariables,
+  };
 
   console.log(`\nAuto-linked context from "${planningTask.title}" (planning task):`);
   for (const ref of contextRefs) {
@@ -155,7 +167,15 @@ export async function runCreate(
     }
   }
 
-  const task = await store.createTask({ id: taskId, title: finalTitle, workflow, target, contextRefs, variables });
+  const task = await store.createTask({
+    id: taskId,
+    title: finalTitle,
+    workflow,
+    ...(phaseExists ? { currentPhase: phaseNumber } : {}),
+    target,
+    contextRefs,
+    variables,
+  });
   await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
 
   console.log(`\nCreated task "${task.id}" (${finalTitle})`);
@@ -166,8 +186,8 @@ export async function runCreate(
   console.log(`HEAD set to: ${task.id}`);
 }
 
-async function validateWorkflowExists(workspaceRoot: string, workflow: string): Promise<void> {
-  await new WorkflowLoader(workspaceRoot).resolve(workflow);
+async function validateWorkflowExists(workspaceRoot: string, workflow: string): Promise<ResolvedWorkflow> {
+  return new WorkflowLoader(workspaceRoot).resolve(workflow);
 }
 
 async function resolvePlanningArtifacts(

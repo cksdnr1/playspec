@@ -934,6 +934,8 @@ describe('init → create → next (end-to-end)', () => {
     expect(createResult.exitCode).toBe(0);
 
     const executionTask = await store.getTask(slugify('Compatible Planning Phase 2 Execution'));
+    expect(executionTask.currentPhase).toBe('2');
+    expect(executionTask.target).toEqual({ phaseNumber: '2' });
     expect(executionTask.contextRefs).toEqual([
       {
         path: 'docs/features/compatible_planning/compatible_planning_total_spec.md',
@@ -946,6 +948,14 @@ describe('init → create → next (end-to-end)', () => {
         source: planningTaskId,
       },
     ]);
+
+    const promptResult = await runCli(['prompt', '--no-copy']);
+    expect(promptResult.exitCode).toBe(0);
+    expect(promptResult.stdout).toContain('Resolved phase: 2. Phase 2 — Implementation');
+    expect(promptResult.stdout).toContain('Execute Phase 2 for compatible_planning.');
+    expect(promptResult.stdout).toContain('**Feature:** compatible_planning');
+    expect(promptResult.stdout).toContain('**Phase spec:** docs/compatible_planning/compatible_planning_phase2_implementation_spec.md');
+    expect(promptResult.stdout).toContain('**Phase handoff:** docs/compatible_planning/compatible_planning_phase2_handoff.md');
   });
 
   it('rejects unknown phase-execution workflow before creating task state or changing HEAD', async () => {

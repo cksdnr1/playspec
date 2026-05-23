@@ -90,6 +90,7 @@ export interface CreateTaskInput {
   id: TaskId;
   title: string;
   workflow: WorkflowId;
+  currentPhase?: PhaseId | null;
   variables?: Record<string, string>;
   target?: TaskTarget;
   contextRefs?: TaskContextRef[];
