@@ -41,4 +41,4 @@
 
 - PR notes written in `docs/features/report_missing_known_default_dependencies_as_missing_required_variables/pr.md`.
 - Reusable agent guidance update: not needed; this change does not introduce a new recurring workflow or repository rule.
-- PR link: to be added after draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/169
