@@ -48,7 +48,7 @@
 
 - Draft PR notes written to `docs/features/issue_161_prompt_task_active_guard/pr.md`.
 - Reusable agent guidance: not documented. This change does not introduce a new repeatable agent workflow; it applies an existing lifecycle rule to two command entry points.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/176
 
 ## Remaining Risks
 
