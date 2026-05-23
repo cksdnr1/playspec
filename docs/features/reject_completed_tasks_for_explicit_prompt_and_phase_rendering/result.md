@@ -37,3 +37,9 @@
 - Compared the working diff against `origin/master`.
 - `git diff --check` passed.
 - No safe local refactor was applied. The production change is already the smallest shared-boundary edit: two calls to the existing `assertTaskIsActive()` helper.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/164
+- Branch: `agent/issue-145-render-active-guard`
+- Reusable agent guidance: not needed for this narrow lifecycle guard.
