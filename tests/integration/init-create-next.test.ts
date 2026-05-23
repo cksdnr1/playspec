@@ -417,6 +417,39 @@ describe('init → create → next (end-to-end)', () => {
     }
   });
 
+  it('renderExplicitPhasePrompt refuses a sibling contextRef path that shares the workspace path prefix', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const siblingDir = `${workspace.dir}-sibling`;
+    const siblingContextPath = path.join(siblingDir, 'explicit-context.md');
+    await mkdir(siblingDir, { recursive: true });
+    await writeTextFile(siblingContextPath, '# Escaping Explicit Context\n');
+
+    try {
+      const taskId = slugify('Explicit Sibling Context Escape Task');
+      const store = new YamlTaskStore(workspace.dir);
+      await store.createTask({
+        id: taskId,
+        title: 'Explicit Sibling Context Escape Task',
+        workflow: 'multi-spec',
+        contextRefs: [
+          {
+            path: path.join('..', path.basename(siblingDir), 'explicit-context.md'),
+            role: 'planning-context',
+            source: 'manual_yaml',
+          },
+        ],
+      });
+
+      const core = new PlaySpecCore(workspace.dir, store);
+      const { MissingContextRefError } = await import('#core/errors.js');
+      await expect(core.renderExplicitPhasePrompt(taskId, '1')).rejects.toThrow(MissingContextRefError);
+    } finally {
+      await rm(siblingDir, { recursive: true, force: true });
+    }
+  });
+
   it('renders compact, strict, and full context modes with explicit context refs', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
