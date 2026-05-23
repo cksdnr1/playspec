@@ -424,6 +424,37 @@ describe('VariableResolver', () => {
     expect(vars.CREATED_ISSUES_FILE).toBe('tmp/custom/created.md');
   });
 
+  it('does not fail an active phase for an unused workflow default with an unavailable dependency', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'unused-future-default',
+      mode: 'linear',
+      phaseOrder: ['start', 'future'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+        CURRENT_FILE: { default: 'docs/{{FEATURE_SLUG}}/current.md' },
+        FUTURE_FILE: { default: 'docs/{{FUTURE_KEY}}/out.md' },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['FEATURE_SLUG'],
+        },
+        future: {
+          title: 'Future',
+          template: 'future.md',
+          requiredVariables: ['FUTURE_FILE'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.CURRENT_FILE).toBe('docs/feature_name/current.md');
+    expect(vars.FUTURE_FILE).toBeUndefined();
+  });
+
   it('throws a clear error for unknown default references', () => {
     const workflow: WorkflowDefinition = {
       id: 'bad-default',
@@ -433,7 +464,11 @@ describe('VariableResolver', () => {
         BAD_FILE: { default: 'docs/{{UNKNOWN_SLUG}}/spec.md' },
       },
       phases: {
-        start: { title: 'Start', template: 'start.md' },
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['BAD_FILE'],
+        },
       },
     };
 
@@ -452,7 +487,11 @@ describe('VariableResolver', () => {
         B: { default: '{{A}}' },
       },
       phases: {
-        start: { title: 'Start', template: 'start.md' },
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['A'],
+        },
       },
     };
 
