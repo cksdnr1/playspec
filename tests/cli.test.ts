@@ -1766,6 +1766,43 @@ phases:
     });
   });
 
+  it('rejects explicit add-context --task for completed tasks before mutation', async () => {
+    const taskId = await createActiveTask('Add Context Completed Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+    const contextPath = 'docs/add_context_completed_task/notes.md';
+    await writeTextFile(path.join(workspace.dir, contextPath), '# Notes\n');
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const beforeTaskYaml = await readTextFile(taskYamlPath);
+
+    const result = await runCli(['add-context', contextPath, '--task', taskId], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const task = await store.getTask(taskId);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(await readTextFile(taskYamlPath)).toBe(beforeTaskYaml);
+    expect(task.contextRefs ?? []).toHaveLength(0);
+  });
+
+  it('rejects completed add-context --edit before creating a context note', async () => {
+    const taskId = await createActiveTask('Add Context Completed Edit Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+    const sourcesPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'sources');
+
+    const result = await runCli(['add-context', '--edit', '--task', taskId], workspace.dir, {
+      env: { EDITOR: 'true', PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+    const sources = await readdir(sourcesPath).catch(() => []);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(sources.filter((entry) => entry.startsWith('context_note_'))).toHaveLength(0);
+  });
+
   it('creates a mono-spec task from a source file and stores an internal markdown source', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
