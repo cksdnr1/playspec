@@ -638,6 +638,67 @@ describe('init → create → next (end-to-end)', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('clears HEAD when closing the selected completed task from the CLI', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const taskId = slugify('Selected Done Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Selected Done Task',
+      workflow: 'mono-spec',
+    });
+    await store.updateTask(taskId, { status: 'completed' });
+    await writeFile(getHeadPath(workspace.dir), taskId, 'utf-8');
+
+    const result = await runCli(['close', '--task', taskId]);
+    const currentTask = await runCli(['current-task']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Closed task "${taskId}" into archive storage.`);
+    expect(result.stdout).toContain('HEAD cleared because the selected task was closed.');
+    expect(result.stdout).toContain('Select another active task with `playspec use <TASK_ID>`.');
+    await expect(readFile(getHeadPath(workspace.dir), 'utf-8')).resolves.toBe('');
+    expect(currentTask.exitCode).not.toBe(0);
+    expect(currentTask.stderr).toContain('No active task set.');
+    expect(currentTask.stderr).toContain(
+      'Create a task with `playspec create` or switch to one with `playspec use <TASK_ID>`.'
+    );
+    expect(currentTask.stderr).not.toContain(`Task not found: ${taskId}`);
+  });
+
+  it('preserves HEAD when closing a different completed task from the CLI', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const selectedTaskId = slugify('Still Selected Task');
+    const closedTaskId = slugify('Other Done Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: selectedTaskId,
+      title: 'Still Selected Task',
+      workflow: 'mono-spec',
+    });
+    await store.createTask({
+      id: closedTaskId,
+      title: 'Other Done Task',
+      workflow: 'mono-spec',
+    });
+    await store.updateTask(closedTaskId, { status: 'completed' });
+    await writeFile(getHeadPath(workspace.dir), selectedTaskId, 'utf-8');
+
+    const result = await runCli(['close', '--task', closedTaskId]);
+    const currentTask = await runCli(['current-task']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Closed task "${closedTaskId}" into archive storage.`);
+    expect(result.stdout).not.toContain('HEAD cleared because the selected task was closed.');
+    await expect(readFile(getHeadPath(workspace.dir), 'utf-8')).resolves.toBe(selectedTaskId);
+    expect(currentTask.exitCode).toBe(0);
+    expect(currentTask.stdout).toContain(`Task ID:      ${selectedTaskId}`);
+  });
+
   it('lists and shows archived tasks without mixing them into active lists', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
