@@ -251,6 +251,52 @@ async function initGitRepo(): Promise<void> {
   await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
 }
 
+async function createCompletedRollbackTask(title: string): Promise<{
+  taskId: string;
+  taskYamlPath: string;
+  activeSnapshotPath: string;
+  quarantineSnapshotPath: string;
+}> {
+  const taskId = await createActiveTask(title);
+  await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+  await initGitRepo();
+  await runCli(['complete'], workspace.dir);
+  await runCli(['snapshot'], workspace.dir);
+
+  const store = new YamlTaskStore(workspace.dir);
+  await store.updateTask(taskId, { status: 'completed' });
+  const task = await store.getTask(taskId);
+  const safePointId = task.rollback?.lastSafePoint?.id;
+  if (!safePointId) {
+    throw new Error('Expected completed rollback test task to have a safe point');
+  }
+
+  return {
+    taskId,
+    taskYamlPath: path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml'),
+    activeSnapshotPath: path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      taskId,
+      'snapshots',
+      'phase2_manual_task.yaml'
+    ),
+    quarantineSnapshotPath: path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      taskId,
+      'rollback',
+      safePointId,
+      'snapshots',
+      'phase2_manual_task.yaml'
+    ),
+  };
+}
+
 function proposalYaml(id = 'proposal_cli_intake'): string {
   return `id: ${id}
 source:
@@ -2257,6 +2303,54 @@ phases:
     await expect(
       access(path.join(quarantineRoot, task.rollback?.lastSafePoint?.id ?? '', 'snapshots', 'phase2_manual_task.yaml'))
     ).resolves.not.toThrow();
+  });
+
+  it('rejects rollback preview for a completed HEAD task', async () => {
+    const { taskId } = await createCompletedRollbackTask('CLI Completed Rollback Preview Task');
+
+    const result = await runCli(['rollback'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+  });
+
+  it('rejects rollback --state-only for a completed HEAD task without mutating task state or artifacts', async () => {
+    const {
+      taskId,
+      taskYamlPath,
+      activeSnapshotPath,
+      quarantineSnapshotPath,
+    } = await createCompletedRollbackTask('CLI Completed Rollback State Task');
+    const taskYamlBefore = await readTextFile(taskYamlPath);
+
+    const result = await runCli(['rollback', '--state-only'], workspace.dir);
+    const taskYamlAfter = await readTextFile(taskYamlPath);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(taskYamlAfter).toBe(taskYamlBefore);
+    await expect(access(activeSnapshotPath)).resolves.not.toThrow();
+    await expect(access(quarantineSnapshotPath)).rejects.toThrow();
+  });
+
+  it('rejects confirmed git rollback for a completed HEAD task', async () => {
+    const { taskId } = await createCompletedRollbackTask('CLI Completed Rollback Git Task');
+
+    const result = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+  });
+
+  it('rejects rollback preview for an explicit completed task', async () => {
+    const { taskId } = await createCompletedRollbackTask('CLI Explicit Completed Rollback Task');
+    const otherTaskId = await createAdditionalActiveTask('CLI Rollback Still Active Task');
+    await writeTextFile(getHeadPath(workspace.dir), `${otherTaskId}\n`);
+
+    const result = await runCli(['rollback', '--task', taskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
   });
 
   it('blocks confirmed git rollback when tracked source files are dirty', async () => {
