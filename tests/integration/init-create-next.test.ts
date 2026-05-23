@@ -451,6 +451,45 @@ describe('init → create → next (end-to-end)', () => {
     expect(fullPrompt).toContain('Implement context modes.');
   });
 
+  it('renders compact, strict, and full context modes with explicit archived context refs', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const archivedArtifactPath = '.playspec/tasks/archived/done_task/outputs/result.md';
+    await mkdir(path.dirname(path.join(workspace.dir, archivedArtifactPath)), { recursive: true });
+    await writeTextFile(
+      path.join(workspace.dir, archivedArtifactPath),
+      '# Archived Result\n\nReusable archived context.\n'
+    );
+
+    const taskId = slugify('Archived Context Mode Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Archived Context Mode Task',
+      workflow: 'multi-spec',
+      contextRefs: [
+        { path: archivedArtifactPath, role: 'planning-context', source: 'archived_task' },
+      ],
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const compactPrompt = await core.renderNextPrompt(taskId, { contextMode: 'compact' });
+    const strictPrompt = await core.renderNextPrompt(taskId, { contextMode: 'strict' });
+    const fullPrompt = await core.renderNextPrompt(taskId, { contextMode: 'full' });
+
+    expect(compactPrompt).toContain('## Compact Context Summary');
+    expect(compactPrompt).toContain(archivedArtifactPath);
+    expect(compactPrompt).toContain('# Archived Result');
+    expect(compactPrompt).not.toContain('```');
+    expect(strictPrompt).toContain('## Context Files');
+    expect(strictPrompt).toContain(`### ${archivedArtifactPath}`);
+    expect(strictPrompt).toContain('# Archived Result');
+    expect(fullPrompt).toContain('## Context Files');
+    expect(fullPrompt).toContain(`### ${archivedArtifactPath}`);
+    expect(fullPrompt).toContain('Reusable archived context.');
+  });
+
   it('renderNextPrompt succeeds when contextRefs is empty', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
