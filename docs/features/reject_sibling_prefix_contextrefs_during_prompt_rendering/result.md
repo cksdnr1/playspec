@@ -36,3 +36,8 @@ Low. The patch is test-only for runtime behavior. The main behavior change reque
 - Compared the branch diff against `origin/master`.
 - No cleanup was applied. The implementation diff is already limited to one focused integration test plus feature workflow notes.
 - Intentionally skipped production refactoring because `src/core/playspec-core.ts` already has the desired `isWithinWorkspace()` boundary helper.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/177
+- Reusable agent guidance: no new repository guidance is needed.
