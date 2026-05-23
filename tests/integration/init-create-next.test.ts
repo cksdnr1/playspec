@@ -1156,6 +1156,8 @@ describe('init → create → next (end-to-end)', () => {
     await writeTextFile(
       path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
+builtinShadow:
+  accepted: true
 mode: linear
 phaseOrder:
   - "1"
@@ -1194,6 +1196,8 @@ phases:
     await writeTextFile(
       path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
+builtinShadow:
+  accepted: true
 mode: linear
 phaseOrder:
   - "1"
