@@ -59,6 +59,9 @@ const SOURCE_PRIORITY: Record<RelevantFileSource, number> = {
 
 const PATH_VARIABLE_REGEX = /(?:_FILE|_PATH|_DOC)$/;
 const BACKTICK_PATH_REGEX = /`([^`\n]+)`/g;
+const WORKFLOW_PATH_PLACEHOLDER_REGEX = /\{\{\s*([A-Z0-9_]+)\s*\}\}/g;
+const WORKFLOW_PATH_PLACEHOLDER_DETECT_REGEX = /\{\{\s*[A-Z0-9_]+\s*\}\}/;
+const WHOLE_WORKFLOW_PATH_PLACEHOLDER_REGEX = /^\{\{\s*([A-Z0-9_]+)\s*\}\}$/;
 const PLACEHOLDER_VALUES = new Set([
   '(none)',
   '(not provided)',
@@ -282,6 +285,7 @@ function invalidPathReason(value: string): string | null {
   if (PLACEHOLDER_VALUES.has(value.toLowerCase())) return 'placeholder value';
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return 'URLs are not workspace files';
   if (path.isAbsolute(value)) return 'absolute paths are not accepted';
+  if (WORKFLOW_PATH_PLACEHOLDER_DETECT_REGEX.test(value)) return 'unresolved template placeholder';
   if (/[|;&<>$]/.test(value)) return 'shell-looking value';
   if (value.includes('\0')) return 'invalid path bytes';
   return null;
@@ -313,12 +317,15 @@ function resolveWorkflowPathValue(
   variables: Record<string, string>
 ): { value: string; variableName?: string } {
   const trimmed = value.trim();
-  const placeholder = trimmed.match(/^\{\{\s*([A-Z0-9_]+)\s*\}\}$/);
-  const variableName = placeholder?.[1] ?? trimmed;
-  if (variables[variableName]) {
+  const placeholder = trimmed.match(WHOLE_WORKFLOW_PATH_PLACEHOLDER_REGEX);
+  const variableName = placeholder?.[1];
+  if (variableName && variables[variableName]) {
     return { value: variables[variableName], variableName };
   }
-  return { value: trimmed };
+
+  return {
+    value: trimmed.replace(WORKFLOW_PATH_PLACEHOLDER_REGEX, (token, name: string) => variables[name] || token),
+  };
 }
 
 async function listExistingFiles(

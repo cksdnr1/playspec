@@ -134,11 +134,16 @@ export interface WorkflowDefinition {
   name?: string;
   description?: string;
   version?: string | number;
+  builtinShadow?: WorkflowBuiltinShadowAcknowledgement;
   mode: WorkflowMode;
   variables?: Record<string, VariableDeclaration>;
   artifacts?: Record<string, ArtifactDeclaration>;
   phaseOrder: PhaseId[];
   phases: Record<PhaseId, PhaseDefinition>;
+}
+
+export interface WorkflowBuiltinShadowAcknowledgement {
+  accepted?: boolean;
 }
 
 export interface VariableDeclaration {
@@ -161,7 +166,18 @@ export interface ResolvedWorkflow {
   rootDir: string;
   templateDir: string;
   source: WorkflowSource;
+  shadow?: WorkflowBuiltinShadow;
   definition: WorkflowDefinition;
+}
+
+export interface WorkflowBuiltinShadow {
+  effectiveSource: WorkflowSource;
+  shadowSource: Exclude<WorkflowSource, 'builtin'>;
+  shadowRootDir: string;
+  builtinRootDir: string;
+  differsFromBuiltin: boolean;
+  accepted: boolean;
+  usingBuiltinFallback: boolean;
 }
 
 export interface SessionRecord {

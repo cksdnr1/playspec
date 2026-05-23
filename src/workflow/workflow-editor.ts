@@ -162,7 +162,16 @@ export class WorkflowEditor {
   }
 
   private async loadEditableWorkflow(workflowId: string): Promise<LoadedEditableWorkflow> {
-    const resolved = await this.loader.resolve(workflowId);
+    const projectWorkflowRoot = path.join(getProjectWorkflowsRoot(this.workspaceRoot), workflowId);
+    try {
+      await access(path.join(projectWorkflowRoot, 'workflow.yaml'));
+    } catch {
+      throw new Error(
+        `Workflow "${workflowId}" is not installed as a project workflow and is read-only for edit commands. Install or export it into .playspec/workflows first.`
+      );
+    }
+
+    const resolved = await this.loader.resolveFromDirectory(projectWorkflowRoot);
     if (resolved.source !== 'project') {
       throw new Error(
         `Workflow "${workflowId}" is ${resolved.source} and is read-only for edit commands. Install or export it into .playspec/workflows first.`

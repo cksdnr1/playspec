@@ -276,6 +276,8 @@ describe('Phase 2 completion engine', () => {
     await writeTextFile(
       path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
       `id: multi-spec
+builtinShadow:
+  accepted: true
 mode: linear
 variables:
   FEATURE_SLUG:

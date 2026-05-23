@@ -56,13 +56,18 @@ function workflow(template = 'implementation.md'): WorkflowDefinition {
     artifacts: {
       spec: { path: '{{SPEC_FILE}}', kind: 'spec' },
       generated: { path: 'docs/features/{{FEATURE_SLUG}}/generated.md', kind: 'generated' },
+      artifactOnly: { path: 'docs/features/{{FEATURE_SLUG}}/artifact-only.md', kind: 'artifact-only' },
     },
     phases: {
       implementation: {
         title: 'Implementation',
         template,
         requiredVariables: ['SPEC_FILE', 'PLAN_FILE'],
-        outputs: ['RESULT_FILE', 'docs/features/feature_x/generated.md'],
+        outputs: [
+          'RESULT_FILE',
+          'docs/features/feature_x/generated.md',
+          'docs/features/{{FEATURE_SLUG}}/output-only.md',
+        ],
       },
     },
   };
@@ -104,6 +109,8 @@ describe('discoverRelevantFiles', () => {
     expect(candidates).toContainEqual(['docs/features/feature_x/result.md', 'variable', false]);
     expect(candidates).toContainEqual(['docs/features/feature_x/spec.md', 'variable', true]);
     expect(candidates).toContainEqual(['docs/features/feature_x/generated.md', 'workflow', false]);
+    expect(candidates).toContainEqual(['docs/features/feature_x/artifact-only.md', 'workflow', false]);
+    expect(candidates).toContainEqual(['docs/features/feature_x/output-only.md', 'workflow', false]);
     expect(candidates).toContainEqual(['docs/features/feature_x/from_prompt.md', 'rendered-prompt', false]);
     expect(candidates.at(-1)).toEqual(['docs/features/feature_x/notes.md', 'project-doc-root', true]);
   });
@@ -127,6 +134,30 @@ describe('discoverRelevantFiles', () => {
     const duplicate = result.candidates.find((candidate) => candidate.path === 'docs/context.md');
     expect(duplicate?.source).toBe('context-ref');
     expect(result.candidates.filter((candidate) => candidate.path === 'docs/context.md')).toHaveLength(1);
+  });
+
+  it('warns and skips workflow paths with unresolved embedded placeholders', async () => {
+    await writeTemplate('No rendered paths.');
+    const unresolvedWorkflow = workflow();
+    unresolvedWorkflow.artifacts = {
+      unresolved: { path: 'docs/features/{{UNKNOWN_SLUG}}/artifact.md' },
+    };
+    unresolvedWorkflow.phases.implementation.outputs = [
+      'docs/features/{{UNKNOWN_SLUG}}/output.md',
+    ];
+
+    const result = await discoverRelevantFiles({
+      workspaceRoot: workspace.dir,
+      task: task(),
+      workflow: unresolvedWorkflow,
+      templateDir: templateRoot(),
+      phaseId: 'implementation',
+      definition: unresolvedWorkflow.phases.implementation,
+    });
+
+    expect(result.candidates.map((candidate) => candidate.path)).not.toContain('docs/features/{{UNKNOWN_SLUG}}/artifact.md');
+    expect(result.candidates.map((candidate) => candidate.path)).not.toContain('docs/features/{{UNKNOWN_SLUG}}/output.md');
+    expect(result.warnings.map((warning) => warning.message).join('\n')).toContain('unresolved template placeholder');
   });
 
   it('warns and skips invalid paths while preserving valid candidates', async () => {

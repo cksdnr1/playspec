@@ -1,11 +1,11 @@
-import { access } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { WorkflowDefinitionSchema } from './workflow-schema.js';
 import { TemplateNotFoundError } from '#core/errors.js';
-import type { ResolvedWorkflow, WorkflowDefinition } from '#core/types.js';
+import type { ResolvedWorkflow, WorkflowDefinition, WorkflowSource } from '#core/types.js';
 import { readTextFile } from '#utils/fs.js';
-import { assertSafeWorkflowId, WorkflowRegistry } from './workflow-registry.js';
+import { assertSafeWorkflowId, WorkflowLocation, WorkflowRegistry } from './workflow-registry.js';
 
 export class WorkflowLoader {
   private readonly registry: WorkflowRegistry;
@@ -23,20 +23,39 @@ export class WorkflowLoader {
     assertSafeWorkflowId(workflow);
     const location = this.getRegistry().resolve(workflow);
     const resolvedLocation = await location;
-    const content = await readTextFile(resolvedLocation.workflowFile);
-    const definition = WorkflowDefinitionSchema.parse(parseYaml(content) as unknown);
-    if (definition.id !== workflow) {
-      throw new Error(
-        `Workflow id mismatch: requested "${workflow}" but ${resolvedLocation.workflowFile} declares "${definition.id}".`
-      );
+    const selected = await this.loadResolvedLocation(workflow, resolvedLocation);
+    if (resolvedLocation.source === 'builtin') {
+      return selected;
     }
-    await this.validateWorkflowDefinition(definition, resolvedLocation.templateDir);
+
+    const builtinLocation = await this.getBuiltinLocationIfPresent(workflow);
+    if (!builtinLocation) {
+      return selected;
+    }
+
+    const builtin = await this.loadResolvedLocation(workflow, builtinLocation);
+    const differsFromBuiltin = !(await this.workflowAssetsEqual(selected, builtin));
+    const accepted = selected.definition.builtinShadow?.accepted === true;
+    const shadow = {
+      effectiveSource: differsFromBuiltin && !accepted ? 'builtin' as WorkflowSource : selected.source,
+      shadowSource: selected.source as Exclude<WorkflowSource, 'builtin'>,
+      shadowRootDir: selected.rootDir,
+      builtinRootDir: builtin.rootDir,
+      differsFromBuiltin,
+      accepted,
+      usingBuiltinFallback: differsFromBuiltin && !accepted,
+    };
+
+    if (shadow.usingBuiltinFallback) {
+      return {
+        ...builtin,
+        shadow,
+      };
+    }
+
     return {
-      id: definition.id,
-      rootDir: resolvedLocation.rootDir,
-      templateDir: resolvedLocation.templateDir,
-      source: resolvedLocation.source,
-      definition,
+      ...selected,
+      shadow,
     };
   }
 
@@ -61,6 +80,84 @@ export class WorkflowLoader {
 
   private getRegistry(): WorkflowRegistry {
     return this.registry;
+  }
+
+  private async loadResolvedLocation(workflow: string, location: WorkflowLocation): Promise<ResolvedWorkflow> {
+    const content = await readTextFile(location.workflowFile);
+    const definition = WorkflowDefinitionSchema.parse(parseYaml(content) as unknown);
+    if (definition.id !== workflow) {
+      throw new Error(
+        `Workflow id mismatch: requested "${workflow}" but ${location.workflowFile} declares "${definition.id}".`
+      );
+    }
+    await this.validateWorkflowDefinition(definition, location.templateDir);
+    return {
+      id: definition.id,
+      rootDir: location.rootDir,
+      templateDir: location.templateDir,
+      source: location.source,
+      definition,
+    };
+  }
+
+  private async getBuiltinLocationIfPresent(workflow: string): Promise<WorkflowLocation | null> {
+    const rootDir = path.join(this.getRegistry().getBuiltinRoot(), workflow);
+    const workflowFile = path.join(rootDir, 'workflow.yaml');
+    try {
+      await access(workflowFile);
+      return {
+        id: workflow,
+        rootDir,
+        workflowFile,
+        templateDir: path.join(rootDir, 'templates'),
+        source: 'builtin',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async workflowAssetsEqual(left: ResolvedWorkflow, right: ResolvedWorkflow): Promise<boolean> {
+    return (await this.workflowAssetSignature(left)) === (await this.workflowAssetSignature(right));
+  }
+
+  private async workflowAssetSignature(workflow: ResolvedWorkflow): Promise<string> {
+    const normalizedDefinition = {
+      ...workflow.definition,
+      builtinShadow: undefined,
+    };
+    return JSON.stringify({
+      definition: normalizedDefinition,
+      templates: await this.directoryFiles(workflow.templateDir),
+    });
+  }
+
+  private async directoryFiles(rootDir: string): Promise<Record<string, string>> {
+    const files: Record<string, string> = {};
+    await this.collectDirectoryFiles(rootDir, rootDir, files);
+    return Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
+  }
+
+  private async collectDirectoryFiles(rootDir: string, currentDir: string, files: Record<string, string>): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const absolutePath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        await this.collectDirectoryFiles(rootDir, absolutePath, files);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const relativePath = path.relative(rootDir, absolutePath).split(path.sep).join('/');
+      files[relativePath] = await readFile(absolutePath, 'utf8');
+    }
   }
 
   async validateWorkflowDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {

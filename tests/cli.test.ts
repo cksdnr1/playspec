@@ -171,6 +171,8 @@ async function writeCustomRequiredWorkflow(options: {
   await writeTextFile(
     path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
     `id: multi-spec
+builtinShadow:
+  accepted: true
 mode: linear
 ${workflowVariables}phaseOrder:
   - "1"
@@ -217,12 +219,19 @@ phases:
   );
 }
 
-async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
+async function writeWorkflow(
+  root: string,
+  id: string,
+  description: string,
+  options: { acceptedBuiltinShadow?: boolean } = {}
+): Promise<void> {
   await writeTextFile(
     path.join(root, id, 'workflow.yaml'),
     `id: ${id}
 description: ${description}
-mode: linear
+${options.acceptedBuiltinShadow ? `builtinShadow:
+  accepted: true
+` : ''}mode: linear
 phaseOrder:
   - start
 phases:
@@ -1047,7 +1056,9 @@ review:
   it('lists duplicate workflow IDs once using project over user over builtin priority', async () => {
     const userWorkflows = path.join(workspace.dir, 'user-workflows');
     await writeWorkflow(userWorkflows, 'mono-spec', 'User duplicate');
-    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Project duplicate');
+    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Project duplicate', {
+      acceptedBuiltinShadow: true,
+    });
 
     const result = await runCli(['workflow', 'list'], workspace.dir, {
       env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
@@ -1061,8 +1072,25 @@ review:
     expect(monoSpecLines).toEqual(['mono-spec\tproject - Project duplicate']);
     expect(show.exitCode).toBe(0);
     expect(show.stdout).toContain('Source: project');
+    expect(show.stdout).toContain('Shadow differs from builtin: yes');
+    expect(show.stdout).toContain('Shadow accepted: yes');
     expect(show.stdout).toContain('Description: Project duplicate');
     expect(show.stdout).not.toContain(userWorkflows);
+  });
+
+  it('shows stale project workflow shadows and selected built-in fallback', async () => {
+    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Stale project duplicate');
+
+    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir);
+
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('Source: builtin');
+    expect(show.stdout).toContain('Shadow source: project');
+    expect(show.stdout).toContain('Shadow differs from builtin: yes');
+    expect(show.stdout).toContain('Shadow accepted: no');
+    expect(show.stdout).toContain('Selected source: builtin');
+    expect(show.stdout).toContain('using built-in assets');
+    expect(show.stdout).not.toContain('Description: Stale project duplicate');
   });
 
   it('supports init workflow install destinations from the CLI', async () => {
@@ -1300,7 +1328,7 @@ phases:
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
   });
 
-  it('rejects explicit prompt --task for completed tasks', async () => {
+  it('rejects explicit prompt --task for completed tasks before printing prompts', async () => {
     await createActiveTask('Prompt Completed Guard Active Task');
     const completedTaskId = await createAdditionalActiveTask('Prompt Completed Guard Done Task', 'mono-spec');
     const store = new YamlTaskStore(workspace.dir);
@@ -1309,11 +1337,29 @@ phases:
       currentPhase: null,
     });
 
-    const result = await runCli(['prompt', '--task', completedTaskId, '--no-copy'], workspace.dir);
+    const result = await runCli(['prompt', '--task', completedTaskId, '--print-only', '--quiet'], workspace.dir);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
     expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects explicit prompt --task for completed tasks before writing --out artifacts', async () => {
+    await createActiveTask('Prompt Completed Out Guard Active Task');
+    const completedTaskId = await createAdditionalActiveTask('Prompt Completed Out Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+    const outputPath = path.join(workspace.dir, 'completed-prompt.md');
+
+    const result = await runCli(['prompt', '--task', completedTaskId, '--out', outputPath], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    await expect(access(outputPath)).rejects.toThrow();
   });
 
   it('rejects explicit next --task for completed tasks', async () => {
@@ -1329,7 +1375,7 @@ phases:
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Warning: `playspec next` is deprecated.');
-    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
     expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
   });
 
