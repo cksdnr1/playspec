@@ -336,6 +336,34 @@ describe('VariableResolver', () => {
     expect(vars.OUTPUT_DIR).toBe('docs/issues/required-variable-validation');
   });
 
+  it('uses a declaration default when a task variable is an empty string', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'empty-task-var-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        REQUIRED_NAME: {
+          required: true,
+          default: 'workflow-default',
+        },
+      },
+      phases: {
+        start: { title: 'Start', template: 'start.md' },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        REQUIRED_NAME: '',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'start', workflow, workflow.phases.start);
+
+    expect(vars.REQUIRED_NAME).toBe('workflow-default');
+  });
+
   it('resolves issue-scope-create report paths under the task-specific default directory', () => {
     const task: TaskRecord = {
       ...baseTask,
