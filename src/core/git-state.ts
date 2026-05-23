@@ -83,7 +83,9 @@ export function parsePorcelain(output: string): GitStatusEntry[] {
 }
 
 export function statusEntryPathList(entries: GitStatusEntry[]): string {
-  return entries.map((entry) => entry.path).join('\n');
+  return entries
+    .map((entry) => entry.originalPath ? `${entry.originalPath} -> ${entry.path}` : entry.path)
+    .join('\n');
 }
 
 export function parseNameStatus(output: string): GitNameStatusEntry[] {
