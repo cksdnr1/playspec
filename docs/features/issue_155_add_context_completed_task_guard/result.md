@@ -35,3 +35,8 @@ Full suite result: 24 test files passed, 495 tests passed.
 - Compared the local diff against the approved scope.
 - Ran `git diff --check`; no whitespace errors.
 - No refactor applied. The implementation is already limited to the shared core guard, CLI preflight, and focused tests.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/171
+- Reusable agent guidance: no new guidance needed; existing lifecycle mutation guard expectations cover this pattern.
