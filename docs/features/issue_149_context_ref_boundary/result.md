@@ -33,6 +33,10 @@
 - The only refactor is the local `isWithinWorkspace()` helper in `PlaySpecCore`, shared by add-time and render-time context validation.
 - No additional cleanup was applied because the current diff is already narrow and scope-bound.
 
+## Pull Request
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/168
+
 ## Remaining Risks
 
 - Boundary failures still use the existing generic `MissingContextRefError` wording. This preserves existing caller handling and matches the issue acceptance criteria, but the message is not as specific as add-time `ContextPathEscapesWorkspaceError`.
