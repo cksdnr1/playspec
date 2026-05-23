@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
-import { PlaySpecError } from '#core/errors.js';
+import { PlaySpecError, TaskNotActiveError } from '#core/errors.js';
+import type { TaskRecord } from '#core/types.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
 import { isInteractiveCli } from '../cli-utils.js';
@@ -28,6 +29,7 @@ export async function runAddContext(
 
     const resolver = new ActiveTaskResolver(workspaceRoot, store);
     const task = await resolver.resolveTask();
+    assertTaskIsActive(task);
 
     if (edit) {
       // --edit without explicit --task: show task + confirm before opening editor
@@ -48,6 +50,11 @@ export async function runAddContext(
       }
     }
     resolvedTaskId = task.id;
+  }
+
+  if (edit && taskId) {
+    const task = await store.getTask(resolvedTaskId);
+    assertTaskIsActive(task);
   }
 
   let resolvedFilePath: string;
@@ -84,6 +91,12 @@ export async function runAddContext(
     console.log('Context linked.');
   } else {
     console.log('Context already linked.');
+  }
+}
+
+function assertTaskIsActive(task: TaskRecord): void {
+  if (task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
   }
 }
 

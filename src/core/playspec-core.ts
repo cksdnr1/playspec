@@ -117,6 +117,7 @@ export class PlaySpecCore {
     }
 
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     const existing = task.contextRefs ?? [];
     if (existing.some((ref) => path.normalize(ref.path) === normalizedPath)) {
       return false;
