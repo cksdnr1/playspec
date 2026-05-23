@@ -93,11 +93,14 @@ export class VariableResolver {
       declarations,
       task.variables
     );
+    const nonEmptyTaskVariables = Object.fromEntries(
+      Object.entries(task.variables).filter(([, value]) => value !== '')
+    );
 
     return {
       ...engineVariables,
       ...resolvedDefaults,
-      ...task.variables,
+      ...nonEmptyTaskVariables,
     };
   }
 }

@@ -1092,4 +1092,46 @@ phases:
       MissingRequiredVariablesError
     );
   });
+
+  it('renders a required workflow variable default when the task variable is empty', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  CUSTOM_REQUIRED:
+    required: true
+    default: resolved-default
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n\nCustom: {{CUSTOM_REQUIRED}}\n'
+    );
+
+    const taskId = slugify('Defaulted Required Variable Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Defaulted Required Variable Task',
+      workflow: 'multi-spec',
+      variables: {
+        CUSTOM_REQUIRED: '',
+      },
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Custom: resolved-default');
+  });
 });
