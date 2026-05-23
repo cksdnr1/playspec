@@ -40,4 +40,4 @@
 
 - PR notes written to `docs/features/issue_157_completed_source_link_guard/pr.md`.
 - Reusable agent guidance update: not needed. This issue is a narrow lifecycle guard fix and does not reveal a reusable workflow rule beyond existing active-task mutation boundaries.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/173
