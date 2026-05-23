@@ -36,4 +36,4 @@
 ## PR Preparation
 
 - Reusable agent guidance documented: no. This is project behavior covered by code and regression tests.
-- PR link: pending draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/172
