@@ -151,39 +151,60 @@ export async function formatCompactCurrentTaskSummary(
   return lines.join('\n');
 }
 
+async function resolvePathWithExistingRealPrefix(targetPath: string): Promise<string> {
+  const pendingSegments: string[] = [];
+  let currentPath = targetPath;
+
+  while (true) {
+    try {
+      const realPrefix = await realpath(currentPath);
+      return path.join(realPrefix, ...pendingSegments.reverse());
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) {
+        throw error;
+      }
+
+      pendingSegments.push(path.basename(currentPath));
+      currentPath = parentPath;
+    }
+  }
+}
+
 export async function resolveOutputFilePath(workspaceRoot: string, outputPath: string): Promise<string> {
   const workspaceRealPath = await realpath(workspaceRoot);
   const resolvedPath = path.isAbsolute(outputPath)
     ? path.normalize(outputPath)
     : path.resolve(workspaceRealPath, outputPath);
 
-  if (!path.isAbsolute(outputPath)) {
-    const relativePath = path.relative(workspaceRealPath, resolvedPath);
-    if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
-      throw new PlaySpecError(
-        `Output path escapes workspace: ${outputPath}`,
-        'Use a workspace-relative path that stays inside the workspace.'
-      );
-    }
+  const realBoundaryPath = await resolvePathWithExistingRealPrefix(resolvedPath);
+  const relativePath = path.relative(workspaceRealPath, realBoundaryPath);
+  if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    throw new PlaySpecError(
+      `Output path escapes workspace: ${outputPath}`,
+      'Choose an output path inside the workspace or use a workspace-relative path.'
+    );
   }
 
-  const parentDir = path.dirname(resolvedPath);
+  const parentDir = path.dirname(realBoundaryPath);
   await mkdir(parentDir, { recursive: true });
 
-  if (!path.isAbsolute(outputPath)) {
-    const realParent = await realpath(parentDir);
-    const parentRelativePath = path.relative(workspaceRealPath, realParent);
-    if (
-      parentRelativePath === '..' ||
-      parentRelativePath.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(parentRelativePath)
-    ) {
-      throw new PlaySpecError(
-        `Output path escapes workspace through a symlink: ${outputPath}`,
-        'Choose an output path whose parent directory resolves inside the workspace.'
-      );
-    }
+  const realParent = await realpath(parentDir);
+  const parentRelativePath = path.relative(workspaceRealPath, realParent);
+  if (
+    parentRelativePath === '..' ||
+    parentRelativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(parentRelativePath)
+  ) {
+    throw new PlaySpecError(
+      `Output path escapes workspace through a symlink: ${outputPath}`,
+      'Choose an output path inside the workspace or use a workspace-relative path.'
+    );
   }
 
-  return resolvedPath;
+  return realBoundaryPath;
 }

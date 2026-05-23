@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { access, readdir, writeFile } from 'node:fs/promises';
+import { access, readdir, rm, writeFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import { execa } from 'execa';
 import path from 'node:path';
@@ -2378,6 +2378,22 @@ phases:
     expect(written).toContain('Global Rules');
   });
 
+  it('rejects next --out absolute paths outside the workspace before writing artifacts', async () => {
+    await createActiveTask('Next Absolute Outside Task');
+    const outsideDir = path.join(path.dirname(workspace.dir), `${path.basename(workspace.dir)}-outside-next`);
+    const outputPath = path.join(outsideDir, 'prompt.md');
+
+    await rm(outsideDir, { recursive: true, force: true });
+    const result = await runCli(['next', '--out', outputPath], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec next` is deprecated.');
+    expect(result.stderr).toContain('Output path escapes workspace');
+    expect(result.stderr).toContain('Choose an output path inside the workspace or use a workspace-relative path.');
+    await expect(access(outputPath)).rejects.toThrow();
+    await expect(access(`${outputPath}.meta.yaml`)).rejects.toThrow();
+  });
+
   it('writes copy fallback file and does not dump prompt when clipboard fails', async () => {
     const taskId = await createActiveTask('Next Copy Fallback Task');
 
@@ -3261,6 +3277,44 @@ phases:
     expect(result.stdout).toContain('Resolved phase:');
     expect(written).toContain('Global Rules');
     expect(result.stdout).not.toContain('Global Rules');
+  });
+
+  it('prompt --out writes absolute paths inside the workspace with workspace-relative metadata', async () => {
+    await createActiveTask('Prompt Absolute Inside Task');
+    const outputPath = path.join(workspace.dir, 'tmp', 'prompt-absolute.md');
+
+    const result = await runCli(['prompt', '--out', outputPath], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+    const written = await readTextFile(outputPath);
+    const metadata = parseYaml(await readTextFile(`${outputPath}.meta.yaml`)) as {
+      promptArtifactPath: string;
+      generationSource: string;
+    };
+
+    expect(result.exitCode).toBe(0);
+    expect(written).toContain('Global Rules');
+    expect(metadata.generationSource).toBe('prompt');
+    expect(metadata.promptArtifactPath).toBe(path.join('tmp', 'prompt-absolute.md'));
+    expect(metadata.promptArtifactPath).not.toBe('..');
+    expect(metadata.promptArtifactPath.startsWith(`..${path.sep}`)).toBe(false);
+  });
+
+  it('rejects prompt --out absolute paths outside the workspace before writing artifacts', async () => {
+    await createActiveTask('Prompt Absolute Outside Task');
+    const outsideDir = path.join(path.dirname(workspace.dir), `${path.basename(workspace.dir)}-outside-prompt`);
+    const outputPath = path.join(outsideDir, 'prompt.md');
+
+    await rm(outsideDir, { recursive: true, force: true });
+    const result = await runCli(['prompt', '--out', outputPath], workspace.dir, {
+      env: { PLAY_SPEC_DISABLE_CLIPBOARD: '1' },
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Output path escapes workspace');
+    expect(result.stderr).toContain('Choose an output path inside the workspace or use a workspace-relative path.');
+    await expect(access(outputPath)).rejects.toThrow();
+    await expect(access(`${outputPath}.meta.yaml`)).rejects.toThrow();
   });
 
   it('next shows deprecation warning on stderr', async () => {
