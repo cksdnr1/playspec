@@ -21,6 +21,11 @@
 - `pnpm test`
 - `pnpm build`
 
+## Pull request
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/174
+- Branch: `agent/issue-158-embedded-workflow-paths`
+
 ## Focused tests changed
 
 - Added coverage for an artifact path that is only discoverable after embedded `{{FEATURE_SLUG}}` interpolation.
