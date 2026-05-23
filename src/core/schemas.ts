@@ -168,6 +168,9 @@ export const WorkflowDefinitionSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   version: z.union([z.string(), z.number()]).optional(),
+  builtinShadow: z.object({
+    accepted: z.boolean().optional(),
+  }).optional(),
   mode: z.enum(['linear']),
   variables: z.record(VariableDeclarationSchema).optional(),
   artifacts: z.record(ArtifactDeclarationSchema).optional(),

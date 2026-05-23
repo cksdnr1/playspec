@@ -20,6 +20,20 @@ export async function runWorkflowShow(workspaceRoot: string, workflowId: string)
   const workflow = await new WorkflowLoader(workspaceRoot).resolve(workflowId);
   console.log(`Workflow: ${workflow.id}`);
   console.log(`Source: ${workflow.source}`);
+  if (workflow.shadow) {
+    console.log(`Shadow source: ${workflow.shadow.shadowSource}`);
+    console.log(`Shadow differs from builtin: ${workflow.shadow.differsFromBuiltin ? 'yes' : 'no'}`);
+    console.log(`Shadow accepted: ${workflow.shadow.accepted ? 'yes' : 'no'}`);
+    if (workflow.shadow.usingBuiltinFallback) {
+      console.log(`Selected source: builtin`);
+      console.log(
+        `Warning: ${workflow.shadow.shadowSource} workflow override differs from the built-in workflow and is not accepted; using built-in assets.`
+      );
+    } else if (workflow.shadow.differsFromBuiltin) {
+      console.log(`Selected source: ${workflow.shadow.effectiveSource}`);
+      console.log(`Warning: ${workflow.shadow.shadowSource} workflow override differs from the built-in workflow and is explicitly accepted.`);
+    }
+  }
   if (workflow.definition.name) console.log(`Name: ${workflow.definition.name}`);
   if (workflow.definition.description) console.log(`Description: ${workflow.definition.description}`);
   console.log('Phases:');

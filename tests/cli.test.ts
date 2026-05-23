@@ -171,6 +171,8 @@ async function writeCustomRequiredWorkflow(options: {
   await writeTextFile(
     path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
     `id: multi-spec
+builtinShadow:
+  accepted: true
 mode: linear
 ${workflowVariables}phaseOrder:
   - "1"
@@ -217,12 +219,19 @@ phases:
   );
 }
 
-async function writeWorkflow(root: string, id: string, description: string): Promise<void> {
+async function writeWorkflow(
+  root: string,
+  id: string,
+  description: string,
+  options: { acceptedBuiltinShadow?: boolean } = {}
+): Promise<void> {
   await writeTextFile(
     path.join(root, id, 'workflow.yaml'),
     `id: ${id}
 description: ${description}
-mode: linear
+${options.acceptedBuiltinShadow ? `builtinShadow:
+  accepted: true
+` : ''}mode: linear
 phaseOrder:
   - start
 phases:
@@ -1047,7 +1056,9 @@ review:
   it('lists duplicate workflow IDs once using project over user over builtin priority', async () => {
     const userWorkflows = path.join(workspace.dir, 'user-workflows');
     await writeWorkflow(userWorkflows, 'mono-spec', 'User duplicate');
-    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Project duplicate');
+    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Project duplicate', {
+      acceptedBuiltinShadow: true,
+    });
 
     const result = await runCli(['workflow', 'list'], workspace.dir, {
       env: { ...process.env, PLAY_SPEC_USER_WORKFLOWS: userWorkflows },
@@ -1061,8 +1072,25 @@ review:
     expect(monoSpecLines).toEqual(['mono-spec\tproject - Project duplicate']);
     expect(show.exitCode).toBe(0);
     expect(show.stdout).toContain('Source: project');
+    expect(show.stdout).toContain('Shadow differs from builtin: yes');
+    expect(show.stdout).toContain('Shadow accepted: yes');
     expect(show.stdout).toContain('Description: Project duplicate');
     expect(show.stdout).not.toContain(userWorkflows);
+  });
+
+  it('shows stale project workflow shadows and selected built-in fallback', async () => {
+    await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Stale project duplicate');
+
+    const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir);
+
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain('Source: builtin');
+    expect(show.stdout).toContain('Shadow source: project');
+    expect(show.stdout).toContain('Shadow differs from builtin: yes');
+    expect(show.stdout).toContain('Shadow accepted: no');
+    expect(show.stdout).toContain('Selected source: builtin');
+    expect(show.stdout).toContain('using built-in assets');
+    expect(show.stdout).not.toContain('Description: Stale project duplicate');
   });
 
   it('supports init workflow install destinations from the CLI', async () => {
