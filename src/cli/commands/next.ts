@@ -28,7 +28,7 @@ export async function runNext(
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
-  if (!taskIdOption && task.status !== 'active') {
+  if (task.status !== 'active') {
     throw new TaskNotActiveError(task.id, task.status);
   }
 
