@@ -163,7 +163,7 @@ export class YamlTaskStore implements TaskStore {
       workflow: input.workflow,
       status: 'active',
       workflowMode: 'linear',
-      currentPhase: null,
+      currentPhase: input.currentPhase ?? null,
       createdAt: now,
       updatedAt: now,
       paths: {
