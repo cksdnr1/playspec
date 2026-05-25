@@ -7,7 +7,7 @@ import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningConte
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
-import { VariableResolver } from '#template/variable-resolver.js';
+import { mergeVariableDeclarations, VariableResolver } from '#template/variable-resolver.js';
 import { assertRequiredVariables } from '#core/required-variables.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
@@ -446,8 +446,9 @@ async function assertInitialPhaseRequiredVariables(
   const task = createTaskPreview(input);
   const { phaseId, definition } = new PhaseResolver().resolveCurrentPhase(task, workflow.definition);
   const variables = new VariableResolver().resolve(task, phaseId, workflow.definition, definition);
+  const declarations = mergeVariableDeclarations(workflow.definition.variables, definition.variables);
 
-  assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+  assertRequiredVariables(workflow.id, phaseId, definition, declarations, variables);
 }
 
 function createTaskPreview(input: {

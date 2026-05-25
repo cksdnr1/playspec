@@ -4,7 +4,7 @@ import { parse as parseYaml } from 'yaml';
 import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
-import { VariableResolver } from '#template/variable-resolver.js';
+import { mergeVariableDeclarations, VariableResolver } from '#template/variable-resolver.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { CompletionLedgerStore } from '#storage/completion-ledger-store.js';
@@ -608,7 +608,8 @@ export class PlaySpecCore {
     definition: PhaseDefinition
   ): Record<string, string> {
     const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
-    assertRequiredVariables(workflow.id, phaseId, definition, workflow.definition.variables, variables);
+    const declarations = mergeVariableDeclarations(workflow.definition.variables, definition.variables);
+    assertRequiredVariables(workflow.id, phaseId, definition, declarations, variables);
     return variables;
   }
 

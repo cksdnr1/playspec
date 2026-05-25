@@ -5,14 +5,11 @@ export function assertRequiredVariables(
   workflowId: string,
   phaseId: string,
   definition: PhaseDefinition,
-  workflowVariables: Record<string, VariableDeclaration> | undefined,
+  declarations: Record<string, VariableDeclaration> | undefined,
   variables: Record<string, string>
 ): void {
   const requiredVariables = [
-    ...Object.entries(workflowVariables ?? {})
-      .filter(([, declaration]) => declaration.required === true)
-      .map(([name]) => name),
-    ...Object.entries(definition.variables ?? {})
+    ...Object.entries(declarations ?? {})
       .filter(([, declaration]) => declaration.required === true)
       .map(([name]) => name),
     ...(definition.requiredVariables ?? []),

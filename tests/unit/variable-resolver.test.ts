@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VariableResolver } from '#template/variable-resolver.js';
+import { mergeVariableDeclarations, VariableResolver } from '#template/variable-resolver.js';
 import {
   CircularVariableDefaultError,
   UnknownVariableDefaultError,
@@ -334,6 +334,45 @@ describe('VariableResolver', () => {
     const vars = resolver.resolve(task, 'start', workflow, workflow.phases.start);
 
     expect(vars.OUTPUT_DIR).toBe('docs/issues/required-variable-validation');
+  });
+
+  it('merges same-name workflow and phase declaration metadata per field', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'phase-default-override',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        PROJECT_KEY: {
+          required: true,
+          default: 'workflow-default',
+          description: 'Workflow-level project key',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          variables: {
+            PROJECT_KEY: {
+              default: 'phase-default',
+            },
+          },
+        },
+      },
+    };
+
+    const declarations = mergeVariableDeclarations(
+      workflow.variables,
+      workflow.phases.start.variables
+    );
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(declarations.PROJECT_KEY).toEqual({
+      required: true,
+      default: 'phase-default',
+      description: 'Workflow-level project key',
+    });
+    expect(vars.PROJECT_KEY).toBe('phase-default');
   });
 
   it('uses a declaration default when a task variable is an empty string', () => {
