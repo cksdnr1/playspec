@@ -358,6 +358,15 @@ describe('Phase 2 completion engine', () => {
   it('captures validation feedback and records thread references during completion', async () => {
     const { store, taskId } = await initWorkspaceWithFeedbackTask();
     const core = new PlaySpecCore(workspace.dir, store);
+    const targetTemplatePath = path.join(
+      workspace.dir,
+      '.playspec',
+      'workflows',
+      'feedback-flow',
+      'templates',
+      'target.md'
+    );
+    const templateBefore = await readFile(targetTemplatePath, 'utf-8');
 
     const result = await core.completePhase(taskId, { result: 'approved' });
 
@@ -386,6 +395,8 @@ describe('Phase 2 completion engine', () => {
     expect(markdown).toContain('## Feedback');
     expect(markdown).toContain('- Status: captured');
     expect(markdown).toContain('- Feedback result: negative');
+    expect(await readFile(targetTemplatePath, 'utf-8')).toBe(templateBefore);
+    await expect(access(path.join(workspace.dir, '.playspec', 'evolution', 'proposals'))).rejects.toThrow();
   });
 
   it('updates the same feedback thread path for repeated completions with the same dedupe key', async () => {
