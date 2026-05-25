@@ -432,6 +432,57 @@ describe('CLI placeholder', () => {
     expect(result.stdout).toContain('No source documents found.');
   });
 
+  it('rejects migrate --plan task mutations for completed tasks before changing task YAML', async () => {
+    const taskId = await createActiveTask('Migrate Completed Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planPath = path.join(workspace.dir, 'completed-migration-plan.yaml');
+    await writeTextFile(
+      planPath,
+      `id: migration_completed_guard
+createdAt: 2026-05-25T00:00:00.000Z
+mode: dry-run
+sourceRoot: docs
+targetTaskId: ${taskId}
+sourceFiles:
+  - docs/total_spec.md
+targetFiles:
+  - .playspec/tasks/active/${taskId}/task.yaml
+actions:
+  - actionId: action_001
+    type: add_context_ref
+    targetPath: .playspec/tasks/active/${taskId}/task.yaml
+    sourcePaths:
+      - docs/total_spec.md
+    reason: Add total spec as context
+    evidence: External plan proposes a task context mutation
+    riskLevel: medium
+    preview: "+ contextRefs"
+    backupRequired: true
+    requiresReview: false
+    contextRef:
+      path: docs/total_spec.md
+      role: planning-context
+      source: migration_completed_guard
+statePromotions: []
+riskLevel: medium
+requiresReview: false
+summary: 1 action proposed
+warnings: []
+`
+    );
+
+    const result = await runCli(['migrate', '--task', taskId, '--plan', planPath, '--mode', 'auto'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+  });
+
   it('registers the Phase 7 harness command surface', async () => {
     const result = await runCli(['harness', '--help'], workspace.dir);
     const output = result.stdout + result.stderr;
