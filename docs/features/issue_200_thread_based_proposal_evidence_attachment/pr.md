@@ -2,6 +2,8 @@
 
 Fixes #200
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/209
+
 ## Summary
 
 - Added explicit feedback-thread evidence attachment through `appendFeedbackThreadEvidence(workspaceRoot, { proposalId, threadId })`.

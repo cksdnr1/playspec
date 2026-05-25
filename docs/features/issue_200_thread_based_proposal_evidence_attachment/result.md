@@ -49,5 +49,5 @@
 
 - Duplicate explicit thread attachments append duplicate evidence refs by design for this first implementation.
 - Thread-specific meaning is carried by command/tool names and evidence note text while the proposal evidence source remains the existing `append-evidence` schema value.
-- PR link: pending creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/209
 - Reusable agent guidance: no AGENTS.md update needed; existing evolution safety rules already cover no auto-apply, explicit mutation boundaries, and non-destructive workflow.
