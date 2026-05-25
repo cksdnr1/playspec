@@ -19,6 +19,8 @@ export type FeedbackPathKind =
   | 'workflow_relative'
   | 'user_home_relative'
   | 'package_relative';
+export type ValidationFeedbackExtractionMethod = 'machine_readable_block' | 'markdown_fallback';
+export type ValidationFeedbackPromptTargetType = 'workflow_prompt_template';
 
 export interface EvolutionArtifactReference {
   path: string;
@@ -276,6 +278,46 @@ export interface FeedbackCauseClassification {
   selected: FeedbackCauseCategory;
   confidence: FeedbackConfidence;
   summary?: string;
+}
+
+export interface ValidationFeedbackPromptEvolution {
+  targetType: ValidationFeedbackPromptTargetType;
+  guidance?: string;
+}
+
+export interface ValidationFeedbackThresholdResult {
+  threshold: number;
+}
+
+export interface ValidationFeedbackExtractionInput {
+  task: import('#core/types.js').TaskRecord;
+  workflow: import('#core/types.js').ResolvedWorkflow;
+  feedbackConfig: import('#core/types.js').PhaseFeedbackConfig;
+  phaseId: string;
+  artifactContent: string;
+  artifactPath?: string;
+  completionResult?: FeedbackApprovalResult;
+  createdAt?: string;
+}
+
+export interface ValidationFeedbackExtraction {
+  method: ValidationFeedbackExtractionMethod;
+  confidence: FeedbackConfidence;
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  score?: number;
+  approval: ValidationFeedbackThresholdResult & { result: FeedbackApprovalResult };
+  feedback: ValidationFeedbackThresholdResult & { result: FeedbackSignalResult };
+  causeClassification: FeedbackCauseClassification;
+  promptEvolution: ValidationFeedbackPromptEvolution;
+  workflowSource: FeedbackWorkflowSource;
+  targetPromptTemplate: FeedbackTargetPromptTemplate;
+  targetWritable: boolean;
+  targetPath: string;
+  summary: string;
+  rawObservationRef?: string;
+  dedupeFieldValues?: Record<string, string>;
 }
 
 export interface FeedbackThreadEvent {
