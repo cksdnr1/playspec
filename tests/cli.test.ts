@@ -1730,6 +1730,21 @@ phases:
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${firstTaskId}\n`);
   });
 
+  it('rejects specs --task for completed tasks before printing relevant file paths', async () => {
+    const taskId = await createActiveTask('Specs Explicit Completed Task', 'mono-spec');
+    const specPath = `docs/features/${taskId}/spec.md`;
+    await writeTextFile(path.join(workspace.dir, specPath), '# Completed Spec\n');
+    await new YamlTaskStore(workspace.dir).updateTask(taskId, { status: 'completed' });
+
+    const result = await runCli(['specs', '--task', taskId, '--path-only'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active`);
+    expect(result.stdout).not.toContain(specPath);
+  });
+
   it('reports missing specs paths on stderr while keeping --path-only stdout script-safe', async () => {
     const taskId = await createActiveTask('Specs Missing Task', 'mono-spec');
     const specPath = `docs/features/${taskId}/spec.md`;
