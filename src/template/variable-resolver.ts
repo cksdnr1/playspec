@@ -83,16 +83,13 @@ export class VariableResolver {
       PROJECT_DOC_ROOT: projectDocRoot,
     };
 
-    const declarations = {
-      ...(workflow?.variables ?? {}),
-      ...(definition?.variables ?? {}),
-    };
+    const declarations = mergeVariableDeclarations(workflow?.variables, definition?.variables);
     const resolvedDefaults = resolveDeclaredDefaults(
       workflow?.id ?? task.workflow,
       engineVariables,
       declarations,
       task.variables,
-      getDemandedVariableNames(workflow, definition)
+      getDemandedVariableNames(declarations, definition)
     );
     const nonEmptyTaskVariables = Object.fromEntries(
       Object.entries(task.variables).filter(([, value]) => value !== '')
@@ -175,13 +172,29 @@ function resolveDeclaredDefaults(
   );
 }
 
+export function mergeVariableDeclarations(
+  workflowVariables?: Record<string, VariableDeclaration>,
+  phaseVariables?: Record<string, VariableDeclaration>
+): Record<string, VariableDeclaration> {
+  const declarations: Record<string, VariableDeclaration> = { ...(workflowVariables ?? {}) };
+
+  for (const [name, declaration] of Object.entries(phaseVariables ?? {})) {
+    declarations[name] = {
+      ...(declarations[name] ?? {}),
+      ...declaration,
+    };
+  }
+
+  return declarations;
+}
+
 function getDemandedVariableNames(
-  workflow?: WorkflowDefinition,
+  declarations: Record<string, VariableDeclaration>,
   definition?: PhaseDefinition
 ): Set<string> {
   const demanded = new Set<string>();
 
-  for (const [name, declaration] of Object.entries(workflow?.variables ?? {})) {
+  for (const [name, declaration] of Object.entries(declarations)) {
     if (declaration.required === true) {
       demanded.add(name);
     }

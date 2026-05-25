@@ -1270,6 +1270,137 @@ phases:
     );
   });
 
+  it('preserves workflow required metadata when a phase declaration only changes description', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+builtinShadow:
+  accepted: true
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  PROJECT_KEY:
+    required: true
+    description: "Workflow project key"
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+    variables:
+      PROJECT_KEY:
+        description: "Phase-specific label"
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n'
+    );
+
+    const taskId = slugify('Phase Description Required Metadata Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Phase Description Required Metadata Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await expect(core.renderNextPrompt(taskId)).rejects.toThrow(
+      MissingRequiredVariablesError
+    );
+  });
+
+  it('lets a phase declaration override a workflow default without restating required metadata', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+builtinShadow:
+  accepted: true
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  PROJECT_KEY:
+    required: true
+    default: workflow-default
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+    variables:
+      PROJECT_KEY:
+        default: phase-default
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n\nProject: {{PROJECT_KEY}}\n'
+    );
+
+    const taskId = slugify('Phase Default Override Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Phase Default Override Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Project: phase-default');
+  });
+
+  it('allows an explicit phase required false declaration to relax workflow required metadata', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+builtinShadow:
+  accepted: true
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  PROJECT_KEY:
+    required: true
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+    variables:
+      PROJECT_KEY:
+        required: false
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      '# {{TASK_TITLE}}\n'
+    );
+
+    const taskId = slugify('Phase Explicit Optional Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Phase Explicit Optional Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('# Phase Explicit Optional Task');
+  });
+
   it('renders a required workflow variable default when the task variable is empty', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
