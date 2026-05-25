@@ -83,16 +83,17 @@ export class VariableResolver {
       PROJECT_DOC_ROOT: projectDocRoot,
     };
 
+    const taskVariables = filterReservedEngineVariables(task.variables);
     const declarations = mergeVariableDeclarations(workflow?.variables, definition?.variables);
     const resolvedDefaults = resolveDeclaredDefaults(
       workflow?.id ?? task.workflow,
       engineVariables,
       declarations,
-      task.variables,
+      taskVariables,
       getDemandedVariableNames(declarations, definition)
     );
     const nonEmptyTaskVariables = Object.fromEntries(
-      Object.entries(task.variables).filter(([, value]) => value !== '')
+      Object.entries(taskVariables).filter(([, value]) => value !== '')
     );
 
     return {
@@ -101,6 +102,24 @@ export class VariableResolver {
       ...nonEmptyTaskVariables,
     };
   }
+}
+
+const RESERVED_ENGINE_VARIABLES = new Set([
+  'TASK_ID',
+  'TASK_TITLE',
+  'WORKFLOW_TYPE',
+  'PHASE_NUMBER',
+  'STEP_NUMBER',
+  'STEP_ID',
+  'STEP_TITLE',
+]);
+
+function filterReservedEngineVariables(
+  taskVariables: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(taskVariables).filter(([name]) => !RESERVED_ENGINE_VARIABLES.has(name))
+  );
 }
 
 const DEFAULT_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
