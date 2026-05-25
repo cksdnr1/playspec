@@ -152,6 +152,53 @@ For each:
 - Minimum remaining spec work:
 - Must not carry unresolved:
 
+9. PlaySpec feedback signal
+Include this machine-readable block exactly once after the readiness sections. Keep approval threshold and feedback threshold separate: approval remains 95, feedback signal threshold is 90.
+
+Default target rule:
+- For `artifact_quality_issue`, `authoring_prompt_gap`, or `workflow_policy_gap`, target the authoring prompt by using `evolutionTargetPhaseId: tech_spec_draft` and `target.path: tech_spec_draft.md`.
+- For a validator prompt gap, use `cause.category: validation_prompt_gap`, `evolutionTargetPhaseId: tech_spec_validate`, and `target.path: tech_spec_validate.md`.
+
+```playspecFeedback
+sourcePhaseId: tech_spec_validate
+evaluatedArtifactPhaseId: tech_spec_draft
+evolutionTargetPhaseId: tech_spec_draft
+score: X
+approval:
+  threshold: 95
+  result: approved | needs_revision
+feedback:
+  threshold: 90
+  result: positive | negative
+cause:
+  category: artifact_quality_issue | authoring_prompt_gap | validation_prompt_gap | workflow_policy_gap | extractor_or_parser_error
+  confidence: low | medium | high
+  summary: One concise sentence naming the cause.
+promptEvolution:
+  targetType: workflow_prompt_template
+  guidance: One concise prompt improvement recommendation.
+workflowSource:
+  kind: bundled_preset
+  root: src/preset/assets/workflows/mono-spec
+  rootPathKind: package_relative
+  packageName: playspec
+  presetId: default
+  version: 1
+target:
+  path: tech_spec_draft.md
+  pathKind: workflow_relative
+  writable: false
+targetWritable: false
+targetPath: src/preset/assets/workflows/mono-spec/templates/tech_spec_draft.md
+summary: One concise feedback summary.
+dedupeFieldValues:
+  targetType: workflow_prompt_template
+  targetGuidanceSection: section-name
+  causeCategory: selected-cause-category
+  suspectedCause: concise-cause-key
+  suggestedChangeFingerprint: concise-change-key
+```
+
 Approval/gate handling:
 - This validation step has an approval gate.
 - If the technical spec readiness score is `>= 95/100`, no blockers remain, and the spec is implementation-ready without requiring the code agent to make architecture, storage, API, mutation-boundary, reset/clear, or test-strategy decisions:

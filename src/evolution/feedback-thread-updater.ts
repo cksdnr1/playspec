@@ -31,16 +31,20 @@ export class FeedbackThreadUpdater {
 
   async update(input: FeedbackThreadUpdateInput): Promise<FeedbackThreadUpdateResult> {
     const now = input.createdAt ?? new Date().toISOString();
+    const feedbackConfig = {
+      ...input.feedbackConfig,
+      ...(input.evolutionTargetPhaseId ? { evolutionTargetPhaseId: input.evolutionTargetPhaseId } : {}),
+    };
     const promptSnapshot = await this.snapshotHasher.hashTargetPrompt(
       input.task,
       input.workflow,
-      input.feedbackConfig.evolutionTargetPhaseId,
+      feedbackConfig.evolutionTargetPhaseId,
       new Date(now)
     );
-    const dedupeKey = buildDedupeKey(input);
+    const dedupeKey = buildDedupeKey(input, feedbackConfig.evolutionTargetPhaseId);
     const dedupeKeyHash = hashCanonical(dedupeKey);
     const existing = (await this.store.listThreads()).find((thread) => thread.dedupeKeyHash === dedupeKeyHash);
-    const resolution = this.sourceResolver.resolve(input.workflow, input.feedbackConfig);
+    const resolution = this.sourceResolver.resolve(input.workflow, feedbackConfig);
     const event: FeedbackThreadEvent = {
       eventId: buildEventId(now, input.task.id, input.phaseId),
       taskId: input.task.id,
@@ -74,7 +78,7 @@ export class FeedbackThreadUpdater {
   }
 }
 
-function buildDedupeKey(input: FeedbackThreadUpdateInput): FeedbackDedupeKey {
+function buildDedupeKey(input: FeedbackThreadUpdateInput, evolutionTargetPhaseId: string): FeedbackDedupeKey {
   const fields: Record<string, string> = {};
   for (const field of [...input.feedbackConfig.dedupe.fields].sort()) {
     fields[field] = input.dedupeFieldValues?.[field] ?? input.task.variables[field] ?? '';
@@ -86,7 +90,7 @@ function buildDedupeKey(input: FeedbackThreadUpdateInput): FeedbackDedupeKey {
     feedbackKind: input.feedbackConfig.kind,
     sourcePhaseId: input.feedbackConfig.sourcePhaseId,
     evaluatedArtifactPhaseId: input.feedbackConfig.evaluatedArtifactPhaseId,
-    evolutionTargetPhaseId: input.feedbackConfig.evolutionTargetPhaseId,
+    evolutionTargetPhaseId,
     causeCategory: input.causeClassification.selected,
     fields,
   };
@@ -108,7 +112,7 @@ function createThread(
     dedupeKeyHash,
     sourcePhaseId: input.feedbackConfig.sourcePhaseId,
     evaluatedArtifactPhaseId: input.feedbackConfig.evaluatedArtifactPhaseId,
-    evolutionTargetPhaseId: input.feedbackConfig.evolutionTargetPhaseId,
+    evolutionTargetPhaseId: dedupeKey.evolutionTargetPhaseId,
     workflowSource: resolution.workflowSource,
     targetPromptTemplate: resolution.targetPromptTemplate,
     targetWritable: resolution.targetWritable,

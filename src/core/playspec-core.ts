@@ -808,6 +808,7 @@ export class PlaySpecCore {
           task: input.task,
           workflow: input.workflow,
           feedbackConfig,
+          evolutionTargetPhaseId: extraction.evolutionTargetPhaseId,
           phaseId: input.phaseId,
           approvalResult: extraction.approval.result,
           feedbackResult: extraction.feedback.result,
