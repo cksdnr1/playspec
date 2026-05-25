@@ -43,4 +43,5 @@ Commands run:
 ## PR Preparation
 
 - Draft PR notes written to `docs/features/issue_215_target_branch_workflow_default/pr.md`.
+- Draft PR created: https://github.com/cksdnr1/playspec/pull/216
 - Reusable agent guidance update: not needed. Existing repository guidance covers the relevant boundaries and this change adds no new recurring workflow rule.
