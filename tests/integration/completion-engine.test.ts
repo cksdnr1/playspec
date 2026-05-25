@@ -70,6 +70,9 @@ async function initWorkspaceWithFeedbackTask(
     onFailure?: 'fail_completion' | 'warn_and_continue' | 'record_failure';
     includeBlock?: boolean;
     nextPhase?: string;
+    causeCategory?: 'artifact_quality_issue' | 'authoring_prompt_gap' | 'validation_prompt_gap' | 'workflow_policy_gap' | 'extractor_or_parser_error';
+    evolutionTargetPhaseId?: string;
+    targetPath?: string;
   } = {}
 ) {
   const manager = new PresetManager();
@@ -81,20 +84,34 @@ async function initWorkspaceWithFeedbackTask(
   const onFailure = options.onFailure ?? 'fail_completion';
   const includeBlock = options.includeBlock ?? true;
   const nextPhase = options.nextPhase ?? 'target';
+  const causeCategory = options.causeCategory ?? 'authoring_prompt_gap';
+  const evolutionTargetPhaseId = options.evolutionTargetPhaseId ?? 'target';
+  const targetPath = options.targetPath ?? 'target.md';
   const feedbackBlock = includeBlock
     ? `
 \`\`\`playspecFeedback
 sourcePhaseId: validate
 evaluatedArtifactPhaseId: draft
-evolutionTargetPhaseId: target
+evolutionTargetPhaseId: ${evolutionTargetPhaseId}
 score: ${score}
 cause:
-  category: authoring_prompt_gap
+  category: ${causeCategory}
   confidence: medium
   summary: Validation found prompt guidance gaps.
 summary: Validation should improve prompt guidance.
 dedupeFieldValues:
   artifactRole: prompt_snapshot
+  targetType: workflow_prompt_template
+  targetGuidanceSection: validate
+  causeCategory: ${causeCategory}
+  suspectedCause: prompt-guidance
+  suggestedChangeFingerprint: tighten-guidance
+target:
+  path: ${targetPath}
+  pathKind: workflow_relative
+  writable: true
+targetPath: ${targetPath}
+targetWritable: true
 \`\`\`
 `
     : '';
@@ -409,6 +426,95 @@ describe('Phase 2 completion engine', () => {
       feedbackResult: 'negative',
       score: 72,
     });
+  });
+
+  it('records positive feedback for score 91 while needs_revision routing still applies', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_positive_revision_task', {
+      score: 91,
+      feedbackThreshold: 90,
+      approvalThreshold: 95,
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+    expect(result.nextPhase).toBe('draft');
+    expect(result.feedback).toMatchObject({
+      status: 'captured',
+      approvalResult: 'needs_revision',
+      feedbackResult: 'positive',
+      score: 91,
+    });
+    const updatedTask = await store.getTask(taskId);
+    expect(updatedTask.currentPhase).toBe('draft');
+  });
+
+  it('records negative feedback for score 89', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_negative_task', {
+      score: 89,
+      feedbackThreshold: 90,
+      approvalThreshold: 95,
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'needs_revision' });
+
+    expect(result.feedback).toMatchObject({
+      status: 'captured',
+      approvalResult: 'needs_revision',
+      feedbackResult: 'negative',
+      score: 89,
+    });
+  });
+
+  it('targets the configured authoring prompt by default', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_authoring_target_task', {
+      score: 91,
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved' });
+    if (result.feedback?.status !== 'captured') {
+      throw new Error('Expected captured feedback');
+    }
+
+    const thread = parseYaml(await readFile(path.join(workspace.dir, result.feedback.threadPath), 'utf-8')) as {
+      evolutionTargetPhaseId: string;
+      targetPromptTemplate: { path: string };
+      targetPath: string;
+    };
+    expect(thread.evolutionTargetPhaseId).toBe('target');
+    expect(thread.targetPromptTemplate.path).toBe('templates/target.md');
+    expect(thread.targetPath).toBe('.playspec/workflows/feedback-flow/templates/target.md');
+  });
+
+  it('allows validation prompt gaps to target the validation prompt instead', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_validation_target_task', {
+      score: 89,
+      causeCategory: 'validation_prompt_gap',
+      evolutionTargetPhaseId: 'validate',
+      targetPath: 'validate.md',
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'needs_revision' });
+    if (result.feedback?.status !== 'captured') {
+      throw new Error('Expected captured feedback');
+    }
+
+    const thread = parseYaml(await readFile(path.join(workspace.dir, result.feedback.threadPath), 'utf-8')) as {
+      evolutionTargetPhaseId: string;
+      targetPromptTemplate: { path: string };
+      targetPath: string;
+      dedupeKey: { evolutionTargetPhaseId: string; causeCategory: string };
+    };
+    expect(thread.evolutionTargetPhaseId).toBe('validate');
+    expect(thread.dedupeKey).toMatchObject({
+      evolutionTargetPhaseId: 'validate',
+      causeCategory: 'validation_prompt_gap',
+    });
+    expect(thread.targetPromptTemplate.path).toBe('templates/validate.md');
+    expect(thread.targetPath).toBe('.playspec/workflows/feedback-flow/templates/validate.md');
   });
 
   it('fails required feedback capture before ledger and phase mutation when policy is fail_completion', async () => {

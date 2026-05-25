@@ -385,6 +385,7 @@ export interface FeedbackThreadUpdateInput {
   task: import('#core/types.js').TaskRecord;
   workflow: import('#core/types.js').ResolvedWorkflow;
   feedbackConfig: import('#core/types.js').PhaseFeedbackConfig;
+  evolutionTargetPhaseId?: string;
   phaseId: string;
   approvalResult: FeedbackApprovalResult;
   feedbackResult: FeedbackSignalResult;

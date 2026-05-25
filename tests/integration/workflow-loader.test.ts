@@ -324,6 +324,51 @@ phases:
       approved: 'implementation_plan_create',
       needs_revision: 'tech_spec_patch',
     });
+    expect(workflow.phases['tech_spec_validate']?.feedback).toMatchObject({
+      enabled: true,
+      kind: 'prompt_evolution_signal',
+      feedbackThreshold: 90,
+      thresholdMode: 'greater_or_equal',
+      required: true,
+      sourcePhaseId: 'tech_spec_validate',
+      evaluatedArtifactPhaseId: 'tech_spec_draft',
+      evolutionTargetPhaseId: 'tech_spec_draft',
+      scoreSource: {
+        artifactRole: 'prompt_snapshot',
+        preferredBlock: 'playspecFeedback',
+        markdownFallback: true,
+      },
+      approval: {
+        threshold: 95,
+        resultSource: 'completion_result',
+      },
+      workflowSource: {
+        kind: 'bundled_preset',
+        root: 'src/preset/assets/workflows/mono-spec',
+        rootPathKind: 'package_relative',
+      },
+      targetPromptTemplate: {
+        path: 'tech_spec_draft.md',
+        pathKind: 'workflow_relative',
+        writable: false,
+      },
+      compactHistoryPolicy: {
+        maxEntries: 20,
+        keepFirst: true,
+        keepLatest: 10,
+        summarizeOverflow: true,
+      },
+      proposalReadinessPolicy: {
+        mode: 'manual_only_initial',
+        minRunCount: 3,
+        minNegativeCount: 2,
+        minConfidence: 'medium',
+        requireHumanReviewBeforeProposal: true,
+      },
+    });
+    expect(workflow.phases['tech_spec_validate']?.feedback?.causeClassification.allowed).toEqual(
+      expect.arrayContaining(['authoring_prompt_gap', 'validation_prompt_gap'])
+    );
     expect(workflow.phases['implementation_plan_patch']?.stepTitle).toBe('구현 계획서 업데이트');
     expect(workflow.phases['implementation_plan_patch']?.gate).toBeUndefined();
     expect(workflow.phases['implementation_plan_patch']?.next).toBe('implementation_plan_validate');
@@ -331,6 +376,40 @@ phases:
       approved: 'implementation',
       needs_revision: 'implementation_plan_patch',
     });
+    expect(workflow.phases['implementation_plan_validate']?.feedback).toMatchObject({
+      enabled: true,
+      kind: 'prompt_evolution_signal',
+      feedbackThreshold: 90,
+      sourcePhaseId: 'implementation_plan_validate',
+      evaluatedArtifactPhaseId: 'implementation_plan_create',
+      evolutionTargetPhaseId: 'implementation_plan_create',
+      approval: {
+        threshold: 95,
+        resultSource: 'completion_result',
+      },
+      evolution: {
+        mode: 'thread_only',
+        storageMode: 'thread_with_compact_history',
+        targetFiles: ['implementation_plan_create.md'],
+      },
+      workflowSource: {
+        kind: 'bundled_preset',
+        root: 'src/preset/assets/workflows/mono-spec',
+        rootPathKind: 'package_relative',
+      },
+      targetPromptTemplate: {
+        path: 'implementation_plan_create.md',
+        pathKind: 'workflow_relative',
+        writable: false,
+      },
+    });
+    expect(workflow.phases['implementation_plan_validate']?.feedback?.dedupe.fields).toEqual([
+      'targetType',
+      'targetGuidanceSection',
+      'causeCategory',
+      'suspectedCause',
+      'suggestedChangeFingerprint',
+    ]);
     expect(workflow.phases['safe_refactor']?.requiredVariables).toContain('TARGET_BRANCH');
     expect(workflow.phases['pr_prepare']?.requiredVariables).toContain('TARGET_BRANCH');
 

@@ -57,11 +57,7 @@ export class ValidationFeedbackExtractor {
       parsed.evaluatedArtifactPhaseId,
       input.feedbackConfig.evaluatedArtifactPhaseId
     );
-    assertConfiguredPhase(
-      'evolutionTargetPhaseId',
-      parsed.evolutionTargetPhaseId,
-      input.feedbackConfig.evolutionTargetPhaseId
-    );
+    const evolutionTargetPhaseId = resolveEvolutionTargetPhaseId(input, parsed);
 
     const resolution = this.sourceResolver.resolve(input.workflow, input.feedbackConfig);
     const feedbackThreshold = parsed.feedback?.threshold ?? input.feedbackConfig.feedbackThreshold;
@@ -76,7 +72,7 @@ export class ValidationFeedbackExtractor {
         confidence: parsed.cause.confidence,
         sourcePhaseId: parsed.sourcePhaseId ?? input.feedbackConfig.sourcePhaseId,
         evaluatedArtifactPhaseId: parsed.evaluatedArtifactPhaseId ?? input.feedbackConfig.evaluatedArtifactPhaseId,
-        evolutionTargetPhaseId: parsed.evolutionTargetPhaseId ?? input.feedbackConfig.evolutionTargetPhaseId,
+        evolutionTargetPhaseId,
         score: parsed.score,
         approval: {
           threshold: approvalThreshold,
@@ -228,6 +224,33 @@ function assertConfiguredPhase(
       `playspecFeedback.${field} "${observed}" does not match configured phase "${configured}".`
     );
   }
+}
+
+function resolveEvolutionTargetPhaseId(
+  input: ValidationFeedbackExtractionInput,
+  parsed: {
+    evolutionTargetPhaseId?: string;
+    cause: { category: FeedbackCauseCategory };
+  }
+): string {
+  const observed = parsed.evolutionTargetPhaseId;
+  const configured = input.feedbackConfig.evolutionTargetPhaseId;
+  if (observed === undefined || observed === configured) {
+    return observed ?? configured;
+  }
+
+  if (parsed.cause.category === 'validation_prompt_gap' && observed === input.phaseId) {
+    if (!input.workflow.definition.phases[observed]) {
+      throw new ValidationFeedbackExtractionError(
+        `playspecFeedback.evolutionTargetPhaseId "${observed}" does not reference a workflow phase.`
+      );
+    }
+    return observed;
+  }
+
+  throw new ValidationFeedbackExtractionError(
+    `playspecFeedback.evolutionTargetPhaseId "${observed}" does not match configured phase "${configured}".`
+  );
 }
 
 function feedbackResultFromScore(score: number, threshold: number): FeedbackSignalResult {
