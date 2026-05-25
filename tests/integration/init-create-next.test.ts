@@ -977,6 +977,12 @@ describe('init → create → next (end-to-end)', () => {
     expect(prPrompt).toContain('TARGET_BRANCH=`origin/master`');
     expect(prPrompt).toContain('Current branch diff compared against `origin/master`');
     expect(prPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
+    expect(prPrompt).toContain('Do not write a summary-only PR body.');
+    expect(prPrompt).toContain('Why this PR: what triggered the work');
+    expect(prPrompt).toContain('Problem: the specific broken, missing, confusing, or risky behavior');
+    expect(prPrompt).toContain('How it was fixed: code-anchored bullets naming the main files/functions');
+    expect(prPrompt).toContain('Validation: exact commands run and their pass/fail result');
+    expect(prPrompt).toContain('Risks / follow-ups: unresolved risks, intentional non-goals');
     expect(prPrompt).toContain('Update `docs/features/migration_bug_fix/result.md`');
   });
 
