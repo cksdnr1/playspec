@@ -234,16 +234,19 @@ export class PlaySpecCore {
 
   async planRollback(taskId: string): Promise<RollbackPlanResult> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     return this.rollbackManager.plan(task);
   }
 
   async rollbackStateOnly(taskId: string): Promise<RollbackExecutionResult> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     return this.rollbackManager.rollbackStateOnly(task);
   }
 
   async executeGitRollback(taskId: string): Promise<RollbackExecutionResult> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     return this.rollbackManager.executeGitRollback(task);
   }
 
