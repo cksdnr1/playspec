@@ -36,6 +36,7 @@ import { runClose } from './commands/close.js';
 import { runArchiveList, runArchiveShow } from './commands/archive.js';
 import {
   runEvolutionAppendEvidence,
+  runEvolutionAppendThreadEvidence,
   runEvolutionApply,
   runEvolutionDiff,
   runEvolutionGenerate,
@@ -817,6 +818,17 @@ evolutionCommand
   .action(async (proposalId: string, opts: { file: string; note: string }) => {
     try {
       await runEvolutionAppendEvidence(process.cwd(), proposalId, opts.file, opts.note);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+evolutionCommand
+  .command('append-thread-evidence <proposalId> <threadId>')
+  .description('Append feedback thread evidence to an existing pending/refining evolution proposal')
+  .action(async (proposalId: string, threadId: string) => {
+    try {
+      await runEvolutionAppendThreadEvidence(process.cwd(), proposalId, threadId);
     } catch (err) {
       handleError(err);
     }

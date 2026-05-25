@@ -402,6 +402,22 @@ export interface FeedbackThreadUpdateResult {
   created: boolean;
 }
 
+export interface AppendFeedbackThreadEvidenceInput {
+  proposalId: string;
+  threadId: string;
+}
+
+export interface AppendFeedbackThreadEvidenceResult {
+  proposal: EvolutionProposal;
+  proposalPath: string;
+  validationPath: string;
+  revisionPath: string;
+  threadId: string;
+  threadPath: string;
+  evidencePath: string;
+  evidenceNote: string;
+}
+
 export type EvolutionContextGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';
 
 export interface EvolutionProposalPromptSummary {

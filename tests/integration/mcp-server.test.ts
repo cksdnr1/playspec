@@ -23,8 +23,9 @@ import {
   McpSessionNotFoundError,
 } from '#mcp/errors.js';
 import { buildMcpServer } from '#mcp/server.js';
+import { EvolutionFeedbackThreadStore } from '#evolution/feedback-thread-store.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
-import type { EvolutionProposal } from '#evolution/types.js';
+import type { EvolutionProposal, FeedbackThread } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MCP_PATH = path.resolve(TESTS_DIR, '../../src/mcp/index.ts');
@@ -185,6 +186,92 @@ function makeProposal(id: string, taskId: string): EvolutionProposal {
     ],
     rationale: 'MCP context proposal.',
     review: { status: 'unreviewed' },
+  };
+}
+
+function makeFeedbackThread(id = 'feedback_thread_mcp'): FeedbackThread {
+  return {
+    id,
+    createdAt: '2026-05-25T00:00:00.000Z',
+    updatedAt: '2026-05-25T00:00:01.000Z',
+    dedupeKey: {
+      version: 1,
+      workflowId: 'mono-spec',
+      feedbackKind: 'prompt_evolution_signal',
+      sourcePhaseId: 'tech_spec_validate',
+      evaluatedArtifactPhaseId: 'tech_spec_draft',
+      evolutionTargetPhaseId: 'tech_spec_draft',
+      causeCategory: 'authoring_prompt_gap',
+      fields: {
+        artifactRole: 'spec',
+      },
+    },
+    dedupeKeyHash: 'e'.repeat(64),
+    sourcePhaseId: 'tech_spec_validate',
+    evaluatedArtifactPhaseId: 'tech_spec_draft',
+    evolutionTargetPhaseId: 'tech_spec_draft',
+    workflowSource: {
+      kind: 'project_local',
+      root: '.playspec/workflows/mono-spec',
+      rootPathKind: 'workspace_relative',
+    },
+    targetPromptTemplate: {
+      path: 'tech_spec_draft.md',
+      pathKind: 'workflow_relative',
+      writable: true,
+    },
+    targetWritable: true,
+    targetPath: '.playspec/workflows/mono-spec/templates/tech_spec_draft.md',
+    compactHistoryPolicy: {
+      maxEntries: 3,
+      keepFirst: true,
+      keepLatest: 2,
+      summarizeOverflow: true,
+    },
+    proposalReadinessPolicy: {
+      mode: 'manual_only_initial',
+      minRunCount: 2,
+      minNegativeCount: 1,
+      minConfidence: 'medium',
+      requireHumanReviewBeforeProposal: true,
+    },
+    mutationStrategy: 'manual_review_only',
+    trend: {
+      totalEvents: 1,
+      positiveCount: 0,
+      negativeCount: 1,
+      neutralCount: 0,
+      parseFailureCount: 0,
+      direction: 'declining',
+      confidence: 'medium',
+      readinessState: 'ready_for_review',
+      lastEventAt: '2026-05-25T00:00:01.000Z',
+    },
+    events: [
+      {
+        eventId: 'event_mcp_1',
+        taskId: 'task_mcp',
+        phaseId: 'tech_spec_validate',
+        createdAt: '2026-05-25T00:00:01.000Z',
+        approvalResult: 'needs_revision',
+        feedbackResult: 'negative',
+        score: 72,
+        causeClassification: {
+          selected: 'authoring_prompt_gap',
+          confidence: 'medium',
+        },
+        summary: 'MCP validation feedback summary.',
+        promptSnapshot: {
+          algorithm: 'sha256',
+          hash: 'f'.repeat(64),
+          renderedByteLength: 120,
+          targetPhaseId: 'tech_spec_draft',
+          templatePath: 'tech_spec_draft.md',
+          templatePathKind: 'workflow_relative',
+          createdAt: '2026-05-25T00:00:01.000Z',
+        },
+      },
+    ],
   };
 }
 
@@ -570,6 +657,7 @@ describe('buildMcpServer', () => {
         'playspec_store_evolution_proposal',
         'playspec_update_evolution_proposal',
         'playspec_append_evolution_evidence',
+        'playspec_append_evolution_thread_evidence',
         'playspec_skip_evolution_proposal',
         'playspec_diff_evolution_proposal',
         'playspec_apply_evolution_proposal',
@@ -588,6 +676,10 @@ describe('buildMcpServer', () => {
         'playspec_workflow_reorder_phase',
         'playspec_workflow_set_template',
       ]));
+      const threadEvidenceCall = toolSpy.mock.calls.find(
+        (call) => call[0] === 'playspec_append_evolution_thread_evidence'
+      );
+      expect(Object.keys(threadEvidenceCall?.[2] as Record<string, unknown>)).toEqual(['proposalId', 'threadId']);
     } finally {
       toolSpy.mockRestore();
     }
@@ -643,6 +735,25 @@ describe('buildMcpServer', () => {
     expect(body['taskId']).toBe(taskId);
     expect(body['invokedBy']).toBe('mcp');
     expect((body['proposal'] as EvolutionProposal).id).toBe('mcp_generated_proposal');
+  });
+
+  it('appends feedback thread evidence through MCP with explicit proposal and thread IDs', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Thread Evidence');
+    await new EvolutionProposalStore(workspace.dir).saveProposal(makeProposal('mcp_thread_proposal', taskId));
+    await new EvolutionFeedbackThreadStore(workspace.dir).saveThread(makeFeedbackThread());
+
+    const handler = getRegisteredToolHandler('playspec_append_evolution_thread_evidence');
+    const result = await handler({
+      proposalId: 'mcp_thread_proposal',
+      threadId: 'feedback_thread_mcp',
+    });
+
+    expect(result.isError).toBeUndefined();
+    const body = parseToolJson(result);
+    expect((body['proposal'] as EvolutionProposal).revision).toBe(2);
+    expect(body['threadId']).toBe('feedback_thread_mcp');
+    expect(body['evidencePath']).toBe('.playspec/evolution/feedback/threads/feedback_thread_mcp.yaml');
+    expect(String(body['evidenceNote'])).toContain('MCP validation feedback summary.');
   });
 
   it('links and unlinks tasks through MCP without HEAD fallback', async () => {

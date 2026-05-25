@@ -347,6 +347,79 @@ review:
 `;
 }
 
+function feedbackThreadYaml(id = 'feedback_thread_cli'): string {
+  return `id: ${id}
+createdAt: 2026-05-25T00:00:00.000Z
+updatedAt: 2026-05-25T00:00:01.000Z
+dedupeKey:
+  version: 1
+  workflowId: mono-spec
+  feedbackKind: prompt_evolution_signal
+  sourcePhaseId: tech_spec_validate
+  evaluatedArtifactPhaseId: tech_spec_draft
+  evolutionTargetPhaseId: tech_spec_draft
+  causeCategory: authoring_prompt_gap
+  fields:
+    artifactRole: spec
+dedupeKeyHash: ${'c'.repeat(64)}
+sourcePhaseId: tech_spec_validate
+evaluatedArtifactPhaseId: tech_spec_draft
+evolutionTargetPhaseId: tech_spec_draft
+workflowSource:
+  kind: project_local
+  root: .playspec/workflows/mono-spec
+  rootPathKind: workspace_relative
+targetPromptTemplate:
+  path: tech_spec_draft.md
+  pathKind: workflow_relative
+  writable: true
+targetWritable: true
+targetPath: .playspec/workflows/mono-spec/templates/tech_spec_draft.md
+compactHistoryPolicy:
+  maxEntries: 3
+  keepFirst: true
+  keepLatest: 2
+  summarizeOverflow: true
+proposalReadinessPolicy:
+  mode: manual_only_initial
+  minRunCount: 2
+  minNegativeCount: 1
+  minConfidence: medium
+  requireHumanReviewBeforeProposal: true
+mutationStrategy: manual_review_only
+trend:
+  totalEvents: 1
+  positiveCount: 0
+  negativeCount: 1
+  neutralCount: 0
+  parseFailureCount: 0
+  direction: declining
+  confidence: medium
+  readinessState: ready_for_review
+  lastEventAt: 2026-05-25T00:00:01.000Z
+events:
+  - eventId: event_cli_1
+    taskId: task_cli
+    phaseId: tech_spec_validate
+    createdAt: 2026-05-25T00:00:01.000Z
+    approvalResult: needs_revision
+    feedbackResult: negative
+    score: 72
+    causeClassification:
+      selected: authoring_prompt_gap
+      confidence: medium
+    summary: CLI validation feedback summary.
+    promptSnapshot:
+      algorithm: sha256
+      hash: ${'d'.repeat(64)}
+      renderedByteLength: 120
+      targetPhaseId: tech_spec_draft
+      templatePath: tech_spec_draft.md
+      templatePathKind: workflow_relative
+      createdAt: 2026-05-25T00:00:01.000Z
+`;
+}
+
 describe('CLI placeholder', () => {
   it('formats prompt copy success with PRIMARY status when known', () => {
     expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: true })).toEqual([
@@ -479,6 +552,7 @@ describe('CLI placeholder', () => {
     expect(output).toContain('show');
     expect(output).toContain('update');
     expect(output).toContain('append-evidence');
+    expect(output).toContain('append-thread-evidence');
     expect(output).toContain('skip');
     expect(output).toContain('diff');
     expect(output).toContain('apply');
@@ -850,6 +924,53 @@ describe('CLI placeholder', () => {
     ))).resolves.toBeUndefined();
     expect(shown.stdout).toContain('Evidence:     1');
     expect(shown.stdout).toContain('docs/evidence/review.md | append-evidence | Review evidence added.');
+  });
+
+  it('appends feedback thread evidence to an explicit proposal from the CLI', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const threadPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'feedback',
+      'threads',
+      'feedback_thread_cli.yaml'
+    );
+    await writeTextFile(proposalPath, proposalYaml('proposal_cli_thread'));
+    await writeTextFile(threadPath, feedbackThreadYaml());
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const appended = await runCli([
+      'evolution',
+      'append-thread-evidence',
+      'proposal_cli_thread',
+      'feedback_thread_cli',
+    ], workspace.dir);
+
+    expect(appended.exitCode).toBe(0);
+    expect(appended.stdout).toContain('Thread evidence appended: proposal_cli_thread');
+    expect(appended.stdout).toContain('Revision: 2');
+    expect(appended.stdout).toContain('Thread ID: feedback_thread_cli');
+    expect(appended.stdout).toContain('Evidence file: .playspec/evolution/feedback/threads/feedback_thread_cli.yaml');
+    expect(appended.stdout).toContain('Feedback thread feedback_thread_cli for tech_spec_validate -> tech_spec_draft.');
+
+    const storedProposal = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_thread',
+      'proposal.yaml'
+    ))) as {
+      evidenceRefs: { path: string; note: string; source: string }[];
+    };
+    expect(storedProposal.evidenceRefs).toEqual([
+      expect.objectContaining({
+        path: '.playspec/evolution/feedback/threads/feedback_thread_cli.yaml',
+        source: 'append-evidence',
+      }),
+    ]);
+    expect(storedProposal.evidenceRefs[0]?.note).toContain('CLI validation feedback summary.');
   });
 
   it('rejects CLI update and evidence append for skipped proposals', async () => {
