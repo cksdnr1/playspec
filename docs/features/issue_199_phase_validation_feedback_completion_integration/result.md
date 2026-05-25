@@ -36,6 +36,7 @@
 
 ## Notes
 
+- Draft PR: https://github.com/cksdnr1/playspec/pull/208
 - Feedback extraction selects the artifact by `scoreSource.artifactRole`. The implementation supports review artifacts and prompt snapshot artifacts; tests use `prompt_snapshot` because completion prompt snapshots are always produced by the shared core path.
 - Existing workflows without feedback config continue to omit feedback metadata.
 - This branch is stacked on the #198 dependency branch and its prior feedback stack unless those changes merge before PR creation.
