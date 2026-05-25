@@ -366,6 +366,9 @@ phases:
         requireHumanReviewBeforeProposal: true,
       },
     });
+    expect(workflow.phases['tech_spec_validate']?.feedback?.approval.threshold).not.toBe(
+      workflow.phases['tech_spec_validate']?.feedback?.feedbackThreshold
+    );
     expect(workflow.phases['tech_spec_validate']?.feedback?.causeClassification.allowed).toEqual(
       expect.arrayContaining(['authoring_prompt_gap', 'validation_prompt_gap'])
     );
@@ -403,6 +406,9 @@ phases:
         writable: false,
       },
     });
+    expect(workflow.phases['implementation_plan_validate']?.feedback?.approval.threshold).not.toBe(
+      workflow.phases['implementation_plan_validate']?.feedback?.feedbackThreshold
+    );
     expect(workflow.phases['implementation_plan_validate']?.feedback?.dedupe.fields).toEqual([
       'targetType',
       'targetGuidanceSection',

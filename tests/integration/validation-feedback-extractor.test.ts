@@ -170,6 +170,32 @@ dedupeFieldValues:
 `;
 }
 
+function thresholdOnlyArtifact(score = 91): string {
+  return `Review notes.
+
+\`\`\`playspecFeedback
+sourcePhaseId: tech_spec_validate
+evaluatedArtifactPhaseId: tech_spec_draft
+evolutionTargetPhaseId: tech_spec_draft
+score: ${score}
+approval:
+  threshold: 95
+feedback:
+  threshold: 90
+cause:
+  category: authoring_prompt_gap
+  confidence: medium
+  summary: Draft prompt needs clearer validation feedback guidance.
+promptEvolution:
+  targetType: workflow_prompt_template
+  guidance: Require machine-readable feedback in validation prompts.
+summary: Thresholds are separate.
+dedupeFieldValues:
+  artifactRole: spec
+\`\`\`
+`;
+}
+
 describe('ValidationFeedbackExtractor', () => {
   it('extracts stable feedback metadata from playspecFeedback', async () => {
     const workflow = await writeProjectWorkflow();
@@ -236,6 +262,26 @@ describe('ValidationFeedbackExtractor', () => {
     expect(result.sourcePhaseId).toBe('tech_spec_validate');
     expect(result.evaluatedArtifactPhaseId).toBe('tech_spec_draft');
     expect(result.evolutionTargetPhaseId).toBe('tech_spec_draft');
+  });
+
+  it('keeps approval threshold and feedback threshold independent when deriving results', async () => {
+    const workflow = await writeProjectWorkflow();
+    const result = new ValidationFeedbackExtractor(workspace.dir).extract({
+      task: makeTask(),
+      workflow,
+      feedbackConfig: makeConfig({
+        feedbackThreshold: 90,
+        approval: {
+          threshold: 95,
+          resultSource: 'completion_result',
+        },
+      }),
+      phaseId: 'tech_spec_validate',
+      artifactContent: thresholdOnlyArtifact(91),
+    });
+
+    expect(result.approval).toEqual({ threshold: 95, result: 'needs_revision' });
+    expect(result.feedback).toEqual({ threshold: 90, result: 'positive' });
   });
 
   it('resolves target type, workflow source metadata, and target writability from config', async () => {

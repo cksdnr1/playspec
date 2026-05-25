@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { access, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import {
@@ -278,5 +279,12 @@ describe('EvolutionFeedbackThreadStore', () => {
 
     expect(observationPath).toBe(expectedPath);
     await expect(access(observationPath)).resolves.toBeUndefined();
+    expect(parseYaml(await readFile(observationPath, 'utf8'))).toMatchObject({
+      id: observation.id,
+      threadId: observation.threadId,
+      taskId: observation.taskId,
+      phaseId: observation.phaseId,
+      raw: observation.raw,
+    });
   });
 });
