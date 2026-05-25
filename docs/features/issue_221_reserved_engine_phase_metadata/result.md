@@ -55,4 +55,4 @@ After the implementation, both tests pass.
 
 - Draft PR body written to `docs/features/issue_221_reserved_engine_phase_metadata/pr.md`.
 - Reusable agent guidance update: not needed. The issue is a narrow resolver precedence rule with direct regression coverage.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/222
