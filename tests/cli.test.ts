@@ -3147,6 +3147,69 @@ phases:
     ]);
   });
 
+  it('rejects --phase --from when the planning task is not completed before creating a task or changing HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: 'existing_head_task',
+      title: 'Existing Head Task',
+      workflow: 'mono-spec',
+    });
+    await writeTextFile(getHeadPath(workspace.dir), 'existing_head_task\n');
+
+    const planningTask = await store.createTask({
+      id: 'active_planning_task',
+      title: 'Active Planning Task',
+      workflow: 'total-plan',
+    });
+    await store.saveTask({
+      ...planningTask,
+      phaseHistory: [
+        {
+          phase: 'phase_plan_create',
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'active_planning_task', 'active_planning_task_total_spec.md'),
+      '# Total spec\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'active_planning_task', 'active_planning_task_phase_plan.md'),
+      '# Phase plan\n'
+    );
+
+    const result = await runCli([
+      'create',
+      'Active Planning Task',
+      '--workflow',
+      'issue-scope-create',
+      '--phase',
+      '1',
+      '--from',
+      'active_planning_task',
+    ], workspace.dir);
+    const taskPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'active_planning_task_phase_1_execution',
+      'task.yaml'
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Planning task "active_planning_task" is not completed (status: active).');
+    expect(result.stderr).toContain('Phase-execution creation requires a completed planning task.');
+    await expect(access(taskPath)).rejects.toThrow();
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('existing_head_task\n');
+  });
+
   it('rejects malformed workflow variables', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
