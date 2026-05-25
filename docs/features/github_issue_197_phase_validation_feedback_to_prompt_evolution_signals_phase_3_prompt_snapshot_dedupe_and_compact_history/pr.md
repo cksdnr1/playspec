@@ -2,6 +2,8 @@
 
 Fixes #197
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/206
+
 ## Summary
 
 - Added Phase 3 feedback evolution library entry points for rendered prompt snapshot hashing, workflow source resolution, and semantic feedback thread updates.

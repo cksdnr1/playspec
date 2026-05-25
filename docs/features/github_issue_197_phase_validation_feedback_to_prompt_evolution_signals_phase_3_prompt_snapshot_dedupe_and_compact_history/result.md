@@ -33,6 +33,12 @@
 - `pnpm test`
   - Passed: 27 files / 535 tests.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/206
+- Branch: `agent/issue-197-prompt-snapshot-dedupe`
+- Base: `agent/issue-196-feedback-thread-store`
+
 ## Remaining Risks
 
 - Phase 3 exposes library entry points only. Completion-time automatic capture is still deferred because the issue excludes proposal generation and prompt mutation and the accepted plan did not add CLI/MCP write paths.
