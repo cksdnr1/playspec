@@ -1261,6 +1261,48 @@ phases:
     );
   });
 
+  it('renders a required TARGET_BRANCH from a workflow declaration default', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+builtinShadow:
+  accepted: true
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  TARGET_BRANCH:
+    default: origin/main
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+    requiredVariables:
+      - TARGET_BRANCH
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      'Target: {{TARGET_BRANCH}}\n'
+    );
+
+    const taskId = slugify('Target Branch Default Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Target Branch Default Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Target: origin/main');
+  });
+
   it('reports a missing required variable referenced indirectly by a default', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

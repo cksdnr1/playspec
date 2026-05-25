@@ -173,6 +173,60 @@ describe('VariableResolver', () => {
     expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/pr.md');
   });
 
+  it('uses workflow TARGET_BRANCH defaults before the resolver fallback', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'custom-target-branch',
+      mode: 'linear',
+      phaseOrder: ['review'],
+      variables: {
+        TARGET_BRANCH: { default: 'origin/main' },
+      },
+      phases: {
+        review: {
+          title: 'Review',
+          template: 'review.md',
+          requiredVariables: ['TARGET_BRANCH'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'review', workflow, workflow.phases.review);
+
+    expect(vars.TARGET_BRANCH).toBe('origin/main');
+  });
+
+  it('keeps explicit non-empty task TARGET_BRANCH above declaration defaults', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'task-target-branch',
+      mode: 'linear',
+      phaseOrder: ['review'],
+      variables: {
+        TARGET_BRANCH: { default: 'origin/main' },
+      },
+      phases: {
+        review: {
+          title: 'Review',
+          template: 'review.md',
+          requiredVariables: ['TARGET_BRANCH'],
+          variables: {
+            TARGET_BRANCH: { default: 'upstream/trunk' },
+          },
+        },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        TARGET_BRANCH: 'fork/release',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'review', workflow, workflow.phases.review);
+
+    expect(vars.TARGET_BRANCH).toBe('fork/release');
+  });
+
   it('resolves non-mono path variables from workflow declarations', () => {
     const vars = resolver.resolve(baseTask, '3', multiWorkflow, multiWorkflow.phases['3']);
     expect(vars.PHASE_SPEC_FILE).toBe('docs/feature_name/feature_name_phase3_implementation_spec.md');
