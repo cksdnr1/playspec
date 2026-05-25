@@ -39,3 +39,5 @@ Fixes #198
 - This PR targets the #197 dependency branch because #198 builds on feedback thread/source-resolution services from #197.
 - The extractor is additive library functionality. Automatic completion-time feedback thread update wiring is not included in this phase.
 - Reusable agent guidance: not needed; this issue is a narrow evolution extractor implementation and does not change general repo workflow rules.
+
+Draft PR: https://github.com/cksdnr1/playspec/pull/207

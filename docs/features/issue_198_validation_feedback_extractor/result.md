@@ -34,6 +34,7 @@
 - This phase adds the extractor library and tests. Broader automatic completion-time thread update wiring remains outside this narrow implementation unless explicitly requested.
 - Reusable agent guidance: not needed; this issue is a narrow evolution extractor implementation and does not change general repository workflow rules.
 - PR target note: this branch is based on `origin/agent/issue-197-prompt-snapshot-dedupe` because #198 depends on #197.
+- Draft PR: https://github.com/cksdnr1/playspec/pull/207
 
 ## Safe Refactor Review
 
