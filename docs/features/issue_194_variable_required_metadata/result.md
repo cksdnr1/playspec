@@ -61,3 +61,9 @@
   - CLI create initial required-variable validation
 - Searched for stale workflow/phase variable spread patterns in `src` and `tests`; none remained for this behavior.
 - No additional refactor was applied because the implementation diff is already minimal and scoped to the planned files.
+
+## PR Notes
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/203
+- Branch: `agent/issue-194-preserve-variable-required`
+- Reusable agent guidance: not needed; this is a localized runtime/test fix.
