@@ -6,6 +6,8 @@
 - Added focused regression assertions for raw audit observations, threshold separation, mono-spec preset feedback config, and completion feedback non-mutation/no-proposal behavior.
 - Preserved Phase 8 scope: no runtime behavior changes were intentionally introduced.
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/211
+
 ## Changed Files
 
 - `README.md`
