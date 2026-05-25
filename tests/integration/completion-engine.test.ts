@@ -202,6 +202,33 @@ describe('Phase 2 completion engine', () => {
     expect(task.phaseHistory).toEqual([]);
   });
 
+  it('preserves original and destination paths for renamed files in changed-files evidence', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await writeTextFile(path.join(workspace.dir, 'src', 'old-name.ts'), 'export const renamed = true;\n');
+    await execa('git', ['add', 'src/old-name.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'add tracked file for evidence rename'], { cwd: workspace.dir });
+    await execa('git', ['mv', 'src/old-name.ts', 'src/new-name.ts'], { cwd: workspace.dir });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.collectEvidence(taskId);
+
+    const changedFiles = await readFile(
+      path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        taskId,
+        'evidence',
+        'phase1_manual_changed_files.txt'
+      ),
+      'utf-8'
+    );
+
+    expect(changedFiles.split('\n')).toContain('src/old-name.ts -> src/new-name.ts');
+    expect(changedFiles.split('\n')).not.toContain('src/new-name.ts');
+  });
+
   it('marks the task completed on the final workflow phase', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     await store.updateTask(taskId, { currentPhase: '5' });
