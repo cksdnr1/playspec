@@ -2,6 +2,23 @@ export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped' | 'appl
 export type EvolutionRiskLevel = 'low' | 'medium' | 'high';
 export type EvolutionReviewStatus = 'unreviewed' | 'needs_review' | 'reviewed';
 export type HumanEditObservationStatus = 'recorded' | 'ignored' | 'superseded';
+export type FeedbackApprovalResult = 'approved' | 'needs_revision' | 'failed' | 'skipped';
+export type FeedbackSignalResult = 'positive' | 'negative' | 'neutral' | 'parse_failed';
+export type FeedbackCauseCategory =
+  | 'artifact_quality_issue'
+  | 'authoring_prompt_gap'
+  | 'validation_prompt_gap'
+  | 'workflow_policy_gap'
+  | 'extractor_or_parser_error';
+export type FeedbackConfidence = 'low' | 'medium' | 'high';
+export type FeedbackTrendDirection = 'improving' | 'declining' | 'stable' | 'unknown';
+export type FeedbackProposalReadinessState = 'not_ready' | 'ready_for_review' | 'proposal_candidate';
+export type FeedbackMutationStrategy = 'manual_review_only';
+export type FeedbackPathKind =
+  | 'workspace_relative'
+  | 'workflow_relative'
+  | 'user_home_relative'
+  | 'package_relative';
 
 export interface EvolutionArtifactReference {
   path: string;
@@ -191,6 +208,99 @@ export interface HumanEditObservation {
   beforeRef?: string;
   afterRef?: string;
   statusReason?: string;
+}
+
+export interface FeedbackWorkflowSource {
+  kind: 'project_local' | 'user_global' | 'bundled_preset' | 'external';
+  root: string;
+  rootPathKind: FeedbackPathKind;
+  packageName?: string;
+  presetId?: string;
+  version?: string | number;
+}
+
+export interface FeedbackTargetPromptTemplate {
+  path: string;
+  pathKind: FeedbackPathKind;
+  writable: boolean;
+}
+
+export interface FeedbackCompactHistoryPolicy {
+  maxEntries: number;
+  keepFirst: boolean;
+  keepLatest: number;
+  summarizeOverflow: boolean;
+}
+
+export interface FeedbackProposalReadinessPolicy {
+  mode: 'manual_only_initial';
+  minRunCount: number;
+  minNegativeCount: number;
+  minConfidence: FeedbackConfidence;
+  requireHumanReviewBeforeProposal: boolean;
+}
+
+export interface FeedbackCauseClassification {
+  selected: FeedbackCauseCategory;
+  confidence: FeedbackConfidence;
+  summary?: string;
+}
+
+export interface FeedbackThreadEvent {
+  eventId: string;
+  taskId: string;
+  phaseId: string;
+  createdAt: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  score?: number;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  rawObservationRef?: string;
+}
+
+export interface FeedbackTrendState {
+  totalEvents: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  parseFailureCount: number;
+  direction: FeedbackTrendDirection;
+  confidence: FeedbackConfidence;
+  readinessState: FeedbackProposalReadinessState;
+  lastEventAt?: string;
+}
+
+export interface FeedbackThread {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  workflowSource: FeedbackWorkflowSource;
+  targetPromptTemplate: FeedbackTargetPromptTemplate;
+  targetWritable: boolean;
+  targetPath: string;
+  compactHistoryPolicy: FeedbackCompactHistoryPolicy;
+  proposalReadinessPolicy: FeedbackProposalReadinessPolicy;
+  mutationStrategy: FeedbackMutationStrategy;
+  trend: FeedbackTrendState;
+  events: FeedbackThreadEvent[];
+}
+
+export interface FeedbackRawObservationEvent {
+  id: string;
+  threadId: string;
+  taskId: string;
+  phaseId: string;
+  createdAt: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  score?: number;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  raw?: unknown;
 }
 
 export type EvolutionContextGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';

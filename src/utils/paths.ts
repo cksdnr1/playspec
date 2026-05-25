@@ -84,6 +84,35 @@ export function getEvolutionHumanEditPath(workspaceRoot: string, editId: string)
   return path.join(getEvolutionHumanEditsRoot(workspaceRoot), `${editId}.yaml`);
 }
 
+export function getEvolutionFeedbackRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionRoot(workspaceRoot), 'feedback');
+}
+
+export function getEvolutionFeedbackThreadsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionFeedbackRoot(workspaceRoot), 'threads');
+}
+
+export function getEvolutionFeedbackThreadPath(workspaceRoot: string, threadId: string): string {
+  return path.join(getEvolutionFeedbackThreadsRoot(workspaceRoot), `${threadId}.yaml`);
+}
+
+export function getEvolutionFeedbackObservationsRoot(workspaceRoot: string): string {
+  return path.join(getEvolutionFeedbackRoot(workspaceRoot), 'observations');
+}
+
+export function getEvolutionFeedbackTaskObservationsRoot(workspaceRoot: string, taskId: string): string {
+  return path.join(getEvolutionFeedbackObservationsRoot(workspaceRoot), taskId);
+}
+
+export function getEvolutionFeedbackObservationPath(
+  workspaceRoot: string,
+  taskId: string,
+  phaseId: string,
+  timestamp: string
+): string {
+  return path.join(getEvolutionFeedbackTaskObservationsRoot(workspaceRoot, taskId), `${phaseId}-${timestamp}.yaml`);
+}
+
 export function getEvolutionContextRoot(workspaceRoot: string): string {
   return path.join(getEvolutionRoot(workspaceRoot), 'context');
 }
