@@ -42,6 +42,8 @@ export const FeedbackConfidenceSchema = z.enum(['low', 'medium', 'high']);
 export const FeedbackTrendDirectionSchema = z.enum(['improving', 'declining', 'stable', 'unknown']);
 export const FeedbackProposalReadinessStateSchema = z.enum(['not_ready', 'ready_for_review', 'proposal_candidate']);
 export const FeedbackMutationStrategySchema = z.enum(['manual_review_only']);
+export const ValidationFeedbackExtractionMethodSchema = z.enum(['machine_readable_block', 'markdown_fallback']);
+export const ValidationFeedbackPromptTargetTypeSchema = z.enum(['workflow_prompt_template']);
 export const FeedbackPathKindSchema = z.enum([
   'workspace_relative',
   'workflow_relative',
@@ -255,6 +257,73 @@ export const FeedbackCauseClassificationSchema = z.object({
   selected: FeedbackCauseCategorySchema,
   confidence: FeedbackConfidenceSchema,
   summary: z.string().min(1).optional(),
+});
+
+const ValidationFeedbackScoreSchema = z.number().min(0).max(100);
+
+export const ValidationFeedbackBlockSchema = z.object({
+  sourcePhaseId: z.string().min(1).optional(),
+  evaluatedArtifactPhaseId: z.string().min(1).optional(),
+  evolutionTargetPhaseId: z.string().min(1).optional(),
+  score: ValidationFeedbackScoreSchema,
+  approval: z
+    .object({
+      threshold: ValidationFeedbackScoreSchema.optional(),
+      result: FeedbackApprovalResultSchema.optional(),
+    })
+    .optional(),
+  feedback: z
+    .object({
+      threshold: ValidationFeedbackScoreSchema.optional(),
+      result: FeedbackSignalResultSchema.optional(),
+    })
+    .optional(),
+  cause: z.object({
+    category: FeedbackCauseCategorySchema,
+    confidence: FeedbackConfidenceSchema,
+    summary: z.string().min(1).optional(),
+  }),
+  promptEvolution: z
+    .object({
+      targetType: ValidationFeedbackPromptTargetTypeSchema.default('workflow_prompt_template'),
+      guidance: z.string().min(1).optional(),
+    })
+    .optional(),
+  workflowSource: FeedbackWorkflowSourceSchema.optional(),
+  target: FeedbackTargetPromptTemplateSchema.optional(),
+  targetWritable: z.boolean().optional(),
+  targetPath: z.string().min(1).optional(),
+  summary: z.string().min(1).optional(),
+  dedupeFieldValues: z.record(z.string()).optional(),
+});
+
+export const ValidationFeedbackExtractionSchema = z.object({
+  method: ValidationFeedbackExtractionMethodSchema,
+  confidence: FeedbackConfidenceSchema,
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  score: ValidationFeedbackScoreSchema.optional(),
+  approval: z.object({
+    threshold: ValidationFeedbackScoreSchema,
+    result: FeedbackApprovalResultSchema,
+  }),
+  feedback: z.object({
+    threshold: ValidationFeedbackScoreSchema,
+    result: FeedbackSignalResultSchema,
+  }),
+  causeClassification: FeedbackCauseClassificationSchema,
+  promptEvolution: z.object({
+    targetType: ValidationFeedbackPromptTargetTypeSchema,
+    guidance: z.string().min(1).optional(),
+  }),
+  workflowSource: FeedbackWorkflowSourceSchema,
+  targetPromptTemplate: FeedbackTargetPromptTemplateSchema,
+  targetWritable: z.boolean(),
+  targetPath: z.string().min(1),
+  summary: z.string().min(1),
+  rawObservationRef: WorkspaceRelativePathSchema.optional(),
+  dedupeFieldValues: z.record(z.string()).optional(),
 });
 
 export const FeedbackThreadEventSchema = z.object({
