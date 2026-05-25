@@ -201,6 +201,38 @@ export const FeedbackTargetPromptTemplateSchema = z.object({
   writable: z.boolean(),
 });
 
+export const FeedbackPromptSnapshotSchema = z.object({
+  algorithm: z.literal('sha256'),
+  hash: z.string().regex(/^[a-f0-9]{64}$/, 'Prompt snapshot hash must be a lowercase SHA-256 hex digest.'),
+  renderedByteLength: z.number().int().nonnegative(),
+  targetPhaseId: z.string().min(1),
+  templatePath: z.string().min(1),
+  templatePathKind: FeedbackPathKindSchema,
+  createdAt: z.string(),
+  workflowVersion: z.union([z.string(), z.number()]).optional(),
+});
+
+export const FeedbackDedupeKeySchema = z.object({
+  version: z.literal(1),
+  workflowId: z.string().min(1),
+  feedbackKind: z.literal('prompt_evolution_signal'),
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  causeCategory: FeedbackCauseCategorySchema,
+  fields: z.record(z.string()),
+});
+
+export const FeedbackHistoryOverflowSummarySchema = z.object({
+  omittedEventCount: z.number().int().nonnegative(),
+  positiveCount: z.number().int().nonnegative(),
+  negativeCount: z.number().int().nonnegative(),
+  neutralCount: z.number().int().nonnegative(),
+  parseFailureCount: z.number().int().nonnegative(),
+  firstOmittedAt: z.string().optional(),
+  lastOmittedAt: z.string().optional(),
+});
+
 export const FeedbackCompactHistoryPolicySchema = z.object({
   maxEntries: z.number().int().positive(),
   keepFirst: z.boolean(),
@@ -235,6 +267,7 @@ export const FeedbackThreadEventSchema = z.object({
   score: z.number().min(0).max(100).optional(),
   causeClassification: FeedbackCauseClassificationSchema,
   summary: z.string().min(1),
+  promptSnapshot: FeedbackPromptSnapshotSchema,
   rawObservationRef: WorkspaceRelativePathSchema.optional(),
 });
 
@@ -254,6 +287,8 @@ export const FeedbackThreadSchema = z.object({
   id: FeedbackThreadIdSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+  dedupeKey: FeedbackDedupeKeySchema,
+  dedupeKeyHash: z.string().regex(/^[a-f0-9]{64}$/, 'Dedupe key hash must be a lowercase SHA-256 hex digest.'),
   sourcePhaseId: z.string().min(1),
   evaluatedArtifactPhaseId: z.string().min(1),
   evolutionTargetPhaseId: z.string().min(1),
@@ -266,6 +301,7 @@ export const FeedbackThreadSchema = z.object({
   mutationStrategy: FeedbackMutationStrategySchema,
   trend: FeedbackTrendStateSchema,
   events: z.array(FeedbackThreadEventSchema),
+  historyOverflowSummary: FeedbackHistoryOverflowSummarySchema.optional(),
 });
 
 export const FeedbackRawObservationEventSchema = z.object({

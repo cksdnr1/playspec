@@ -225,6 +225,38 @@ export interface FeedbackTargetPromptTemplate {
   writable: boolean;
 }
 
+export interface FeedbackPromptSnapshot {
+  algorithm: 'sha256';
+  hash: string;
+  renderedByteLength: number;
+  targetPhaseId: string;
+  templatePath: string;
+  templatePathKind: FeedbackPathKind;
+  createdAt: string;
+  workflowVersion?: string | number;
+}
+
+export interface FeedbackDedupeKey {
+  version: 1;
+  workflowId: string;
+  feedbackKind: 'prompt_evolution_signal';
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  causeCategory: FeedbackCauseCategory;
+  fields: Record<string, string>;
+}
+
+export interface FeedbackHistoryOverflowSummary {
+  omittedEventCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  parseFailureCount: number;
+  firstOmittedAt?: string;
+  lastOmittedAt?: string;
+}
+
 export interface FeedbackCompactHistoryPolicy {
   maxEntries: number;
   keepFirst: boolean;
@@ -256,6 +288,7 @@ export interface FeedbackThreadEvent {
   score?: number;
   causeClassification: FeedbackCauseClassification;
   summary: string;
+  promptSnapshot: FeedbackPromptSnapshot;
   rawObservationRef?: string;
 }
 
@@ -275,6 +308,8 @@ export interface FeedbackThread {
   id: string;
   createdAt: string;
   updatedAt: string;
+  dedupeKey: FeedbackDedupeKey;
+  dedupeKeyHash: string;
   sourcePhaseId: string;
   evaluatedArtifactPhaseId: string;
   evolutionTargetPhaseId: string;
@@ -287,6 +322,7 @@ export interface FeedbackThread {
   mutationStrategy: FeedbackMutationStrategy;
   trend: FeedbackTrendState;
   events: FeedbackThreadEvent[];
+  historyOverflowSummary?: FeedbackHistoryOverflowSummary;
 }
 
 export interface FeedbackRawObservationEvent {
@@ -301,6 +337,27 @@ export interface FeedbackRawObservationEvent {
   causeClassification: FeedbackCauseClassification;
   summary: string;
   raw?: unknown;
+}
+
+export interface FeedbackThreadUpdateInput {
+  task: import('#core/types.js').TaskRecord;
+  workflow: import('#core/types.js').ResolvedWorkflow;
+  feedbackConfig: import('#core/types.js').PhaseFeedbackConfig;
+  phaseId: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  score?: number;
+  rawObservationRef?: string;
+  createdAt?: string;
+  dedupeFieldValues?: Record<string, string>;
+}
+
+export interface FeedbackThreadUpdateResult {
+  thread: FeedbackThread;
+  threadPath: string;
+  created: boolean;
 }
 
 export type EvolutionContextGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';
