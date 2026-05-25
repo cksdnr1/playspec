@@ -76,6 +76,99 @@ phases:
     await writeFile(path.join(root, 'templates', 'start.md'), '# {{TASK_TITLE}}\n', 'utf8');
   }
 
+  async function writeFeedbackWorkflow(
+    root: string,
+    transform: (content: string) => string = (content) => content
+  ): Promise<void> {
+    await mkdir(path.join(root, 'templates'), { recursive: true });
+    const workflow = `id: feedback-workflow
+description: Feedback workflow
+mode: linear
+phaseOrder:
+  - draft
+  - validate
+  - target
+phases:
+  draft:
+    title: Draft
+    template: draft.md
+    requiredVariables:
+      - SPEC_FILE
+  validate:
+    title: Validate
+    template: validate.md
+    feedback:
+      enabled: true
+      kind: prompt_evolution_signal
+      feedbackThreshold: 90
+      thresholdMode: greater_or_equal
+      required: true
+      onFailure: fail_completion
+      sourcePhaseId: validate
+      evaluatedArtifactPhaseId: draft
+      evolutionTargetPhaseId: target
+      scoreSource:
+        artifactRole: validation_report
+        preferredBlock: playspecFeedback
+        markdownFallback: true
+      approval:
+        threshold: 95
+        resultSource: completion_result
+      causeClassification:
+        required: true
+        allowed:
+          - artifact_quality_issue
+          - authoring_prompt_gap
+          - validation_prompt_gap
+          - workflow_policy_gap
+          - extractor_or_parser_error
+      targetPromptSnapshot:
+        required: true
+        hashAlgorithm: sha256
+      dedupe:
+        enabled: true
+        fields:
+          - workflowId
+          - evolutionTargetPhaseId
+          - targetType
+          - targetGuidanceSection
+          - causeCategory
+          - suspectedCause
+          - suggestedChangeFingerprint
+      evolution:
+        mode: thread_only
+        storageMode: thread_with_compact_history
+        targetFiles:
+          - .playspec/workflows/mono-spec/templates/tech_spec_draft.md
+      workflowSource:
+        kind: project_local
+        root: .playspec/workflows/mono-spec
+        rootPathKind: workspace_relative
+      targetPromptTemplate:
+        path: .playspec/workflows/mono-spec/templates/tech_spec_draft.md
+        pathKind: workspace_relative
+        writable: true
+      compactHistoryPolicy:
+        maxEntries: 20
+        keepFirst: true
+        keepLatest: 10
+        summarizeOverflow: true
+      proposalReadinessPolicy:
+        mode: manual_only_initial
+        minRunCount: 3
+        minNegativeCount: 2
+        minConfidence: medium
+        requireHumanReviewBeforeProposal: true
+  target:
+    title: Target
+    template: target.md
+`;
+    await writeFile(path.join(root, 'workflow.yaml'), transform(workflow), 'utf8');
+    await writeFile(path.join(root, 'templates', 'draft.md'), '# Draft\n', 'utf8');
+    await writeFile(path.join(root, 'templates', 'validate.md'), '# Validate\n', 'utf8');
+    await writeFile(path.join(root, 'templates', 'target.md'), '# Target\n', 'utf8');
+  }
+
   it('loads multi-spec workflow with expected fields', async () => {
     const loader = new WorkflowLoader(workspace.dir);
     const workflow = await loader.load('multi-spec');
@@ -85,6 +178,80 @@ phases:
     expect(Array.isArray(workflow.phaseOrder)).toBe(true);
     expect(workflow.phaseOrder.length).toBeGreaterThan(0);
     expect(typeof workflow.phases).toBe('object');
+  });
+
+  it('loads workflows without feedback config unchanged', async () => {
+    const workflowRoot = path.join(workspace.dir, 'no-feedback-workflow');
+    await writeWorkflowInDirectory(workflowRoot, 'no-feedback-workflow', 'No feedback workflow');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot);
+
+    expect(workflow.definition.phases['start']?.feedback).toBeUndefined();
+  });
+
+  it('loads workflow feedback config and preserves separate source, evaluated, and target phases', async () => {
+    const workflowRoot = path.join(workspace.dir, 'feedback-workflow');
+    await writeFeedbackWorkflow(workflowRoot);
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot);
+    const feedback = workflow.definition.phases['validate']?.feedback;
+
+    expect(feedback?.kind).toBe('prompt_evolution_signal');
+    expect(feedback?.sourcePhaseId).toBe('validate');
+    expect(feedback?.evaluatedArtifactPhaseId).toBe('draft');
+    expect(feedback?.evolutionTargetPhaseId).toBe('target');
+    expect(feedback?.feedbackThreshold).toBe(90);
+    expect(feedback?.evolution.storageMode).toBe('thread_with_compact_history');
+    expect(feedback?.workflowSource.kind).toBe('project_local');
+    expect(feedback?.targetPromptTemplate.pathKind).toBe('workspace_relative');
+  });
+
+  it.each([
+    [
+      'invalid feedback threshold',
+      (content: string) => content.replace('feedbackThreshold: 90', 'feedbackThreshold: 101'),
+    ],
+    ['invalid feedback kind', (content: string) => content.replace('kind: prompt_evolution_signal', 'kind: unknown_signal')],
+    ['invalid failure policy', (content: string) => content.replace('onFailure: fail_completion', 'onFailure: ignore')],
+    [
+      'invalid storage mode',
+      (content: string) =>
+        content.replace('storageMode: thread_with_compact_history', 'storageMode: file_per_validation_run'),
+    ],
+    ['invalid compact history policy', (content: string) => content.replace('keepLatest: 10', 'keepLatest: 21')],
+    [
+      'invalid proposal readiness policy',
+      (content: string) => content.replace('mode: manual_only_initial', 'mode: auto_when_ready'),
+    ],
+    ['invalid workflow source kind', (content: string) => content.replace('kind: project_local', 'kind: production')],
+    [
+      'invalid workflow source path kind',
+      (content: string) => content.replace('rootPathKind: workspace_relative', 'rootPathKind: remote_url'),
+    ],
+    [
+      'invalid target prompt path kind',
+      (content: string) => content.replace('pathKind: workspace_relative', 'pathKind: remote_url'),
+    ],
+  ])('rejects feedback config with %s', async (_name, transform) => {
+    const workflowRoot = path.join(workspace.dir, 'feedback-workflow');
+    await writeFeedbackWorkflow(workflowRoot, transform);
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow();
+  });
+
+  it.each([
+    ['sourcePhaseId', 'sourcePhaseId: missing_source'],
+    ['evaluatedArtifactPhaseId', 'evaluatedArtifactPhaseId: missing_evaluated'],
+    ['evolutionTargetPhaseId', 'evolutionTargetPhaseId: missing_target'],
+  ])('rejects feedback config with missing %s reference', async (_field, replacement) => {
+    const workflowRoot = path.join(workspace.dir, 'feedback-workflow');
+    await writeFeedbackWorkflow(workflowRoot, (content) =>
+      content.replace(new RegExp(`${_field}: [^\\n]+`), replacement)
+    );
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow(
+      `feedback.${_field} references missing phase`
+    );
   });
 
   it('resolves workflow definitions from an explicit directory', async () => {

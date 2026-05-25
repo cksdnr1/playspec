@@ -28,6 +28,112 @@ export const PhaseGateSchema = z.object({
   eventTypes: z.record(z.string()).optional(),
 });
 
+const FeedbackScoreThresholdSchema = z.number().min(0).max(100);
+
+export const FeedbackScoreSourceSchema = z.object({
+  artifactRole: z.string().min(1),
+  preferredBlock: z.string().min(1).optional(),
+  markdownFallback: z.boolean(),
+});
+
+export const FeedbackApprovalSchema = z.object({
+  threshold: FeedbackScoreThresholdSchema,
+  resultSource: z.enum(['completion_result']),
+});
+
+export const FeedbackCauseClassificationSchema = z.object({
+  required: z.boolean(),
+  allowed: z
+    .array(
+      z.enum([
+        'artifact_quality_issue',
+        'authoring_prompt_gap',
+        'validation_prompt_gap',
+        'workflow_policy_gap',
+        'extractor_or_parser_error',
+      ])
+    )
+    .min(1),
+});
+
+export const FeedbackTargetPromptSnapshotSchema = z.object({
+  required: z.boolean(),
+  hashAlgorithm: z.enum(['sha256']),
+});
+
+export const FeedbackDedupeSchema = z.object({
+  enabled: z.boolean(),
+  fields: z.array(z.string().min(1)).min(1),
+});
+
+export const FeedbackEvolutionSchema = z.object({
+  mode: z.enum(['thread_only']),
+  storageMode: z.enum(['thread_with_compact_history']),
+  targetFiles: z.array(z.string().min(1)).min(1),
+});
+
+export const FeedbackPathKindSchema = z.enum([
+  'workspace_relative',
+  'workflow_relative',
+  'user_home_relative',
+  'package_relative',
+]);
+
+export const FeedbackWorkflowSourceSchema = z.object({
+  kind: z.enum(['project_local', 'user_global', 'bundled_preset', 'external']),
+  root: z.string().min(1),
+  rootPathKind: FeedbackPathKindSchema,
+  packageName: z.string().min(1).optional(),
+  presetId: z.string().min(1).optional(),
+  version: z.union([z.string(), z.number()]).optional(),
+});
+
+export const FeedbackTargetPromptTemplateSchema = z.object({
+  path: z.string().min(1),
+  pathKind: FeedbackPathKindSchema,
+  writable: z.boolean(),
+});
+
+export const FeedbackCompactHistoryPolicySchema = z.object({
+  maxEntries: z.number().int().positive(),
+  keepFirst: z.boolean(),
+  keepLatest: z.number().int().nonnegative(),
+  summarizeOverflow: z.boolean(),
+}).refine((policy) => policy.keepLatest <= policy.maxEntries, {
+  message: 'keepLatest must be less than or equal to maxEntries',
+  path: ['keepLatest'],
+});
+
+export const FeedbackProposalReadinessPolicySchema = z.object({
+  mode: z.enum(['manual_only_initial']),
+  minRunCount: z.number().int().positive(),
+  minNegativeCount: z.number().int().nonnegative(),
+  minConfidence: z.enum(['low', 'medium', 'high']),
+  requireHumanReviewBeforeProposal: z.boolean(),
+});
+
+export const PhaseFeedbackConfigSchema = z.object({
+  enabled: z.boolean(),
+  kind: z.enum(['prompt_evolution_signal']),
+  feedbackThreshold: FeedbackScoreThresholdSchema,
+  thresholdMode: z.enum(['greater_or_equal']),
+  required: z.boolean(),
+  onFailure: z.enum(['fail_completion', 'warn_and_continue', 'record_failure']),
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  scoreSource: FeedbackScoreSourceSchema,
+  approval: FeedbackApprovalSchema,
+  causeClassification: FeedbackCauseClassificationSchema,
+  targetPromptSnapshot: FeedbackTargetPromptSnapshotSchema,
+  dedupe: FeedbackDedupeSchema,
+  evolution: FeedbackEvolutionSchema,
+  workflowSource: FeedbackWorkflowSourceSchema,
+  targetPromptTemplate: FeedbackTargetPromptTemplateSchema,
+  compactHistoryPolicy: FeedbackCompactHistoryPolicySchema,
+  proposalReadinessPolicy: FeedbackProposalReadinessPolicySchema,
+});
+
 export const VariableDeclarationSchema = z.object({
   required: z.boolean().optional(),
   default: z.string().optional(),
@@ -161,6 +267,7 @@ export const PhaseDefinitionSchema = z.object({
   nextByResult: z.record(z.string()).optional(),
   eventTypes: z.record(z.string()).optional(),
   maxVisits: z.number().int().positive().optional(),
+  feedback: PhaseFeedbackConfigSchema.optional(),
 });
 
 export const WorkflowDefinitionSchema = z.object({
