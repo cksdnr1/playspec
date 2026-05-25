@@ -53,6 +53,116 @@ async function initWorkspaceWithTask(title: string, workflow = 'multi-spec') {
   return { taskId, store };
 }
 
+async function initWorkspaceWithFeedbackTask() {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'workflow.yaml'),
+    `id: feedback-flow
+mode: linear
+phaseOrder:
+  - validate
+  - target
+phases:
+  validate:
+    title: Validate
+    template: validate.md
+    gate:
+      results:
+        - approved
+      nextByResult:
+        approved: target
+    feedback:
+      enabled: true
+      kind: prompt_evolution_signal
+      feedbackThreshold: 90
+      thresholdMode: greater_or_equal
+      required: true
+      onFailure: fail_completion
+      sourcePhaseId: validate
+      evaluatedArtifactPhaseId: validate
+      evolutionTargetPhaseId: target
+      scoreSource:
+        artifactRole: prompt_snapshot
+        preferredBlock: playspecFeedback
+        markdownFallback: false
+      approval:
+        threshold: 60
+        resultSource: completion_result
+      causeClassification:
+        required: true
+        allowed:
+          - authoring_prompt_gap
+          - extractor_or_parser_error
+      targetPromptSnapshot:
+        required: true
+        hashAlgorithm: sha256
+      dedupe:
+        enabled: true
+        fields:
+          - artifactRole
+      evolution:
+        mode: thread_only
+        storageMode: thread_with_compact_history
+        targetFiles:
+          - target.md
+      workflowSource:
+        kind: project_local
+        root: .playspec/workflows/feedback-flow
+        rootPathKind: workspace_relative
+      targetPromptTemplate:
+        path: target.md
+        pathKind: workflow_relative
+        writable: true
+      compactHistoryPolicy:
+        maxEntries: 5
+        keepFirst: true
+        keepLatest: 4
+        summarizeOverflow: true
+      proposalReadinessPolicy:
+        mode: manual_only_initial
+        minRunCount: 2
+        minNegativeCount: 1
+        minConfidence: medium
+        requireHumanReviewBeforeProposal: true
+  target:
+    title: Target
+    template: target.md
+`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'templates', 'validate.md'),
+    `# Validate
+\`\`\`playspecFeedback
+sourcePhaseId: validate
+evaluatedArtifactPhaseId: validate
+evolutionTargetPhaseId: target
+score: 72
+cause:
+  category: authoring_prompt_gap
+  confidence: medium
+summary: MCP feedback capture.
+dedupeFieldValues:
+  artifactRole: prompt_snapshot
+\`\`\`
+`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'templates', 'target.md'),
+    '# Target\n'
+  );
+  const store = new YamlTaskStore(workspace.dir);
+  const taskId = 'mcp_feedback_task';
+  await store.createTask({ id: taskId, title: 'MCP Feedback Task', workflow: 'feedback-flow' });
+  await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+  await execa('git', ['init'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
+  await execa('git', ['add', '.'], { cwd: workspace.dir });
+  await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
+  return { taskId, store };
+}
+
 function makeProposal(id: string, taskId: string): EvolutionProposal {
   return {
     id,
@@ -408,6 +518,23 @@ describe('buildMcpServer', () => {
       `task search paths.active: ${path.join(workspace.dir, '.playspec', 'tasks', 'active')}`
     );
     expect(result.content[0].text).toContain('cache: not used; task state is read from disk per request');
+  });
+
+  it('returns feedback capture metadata through MCP complete-phase delegation', async () => {
+    const { taskId } = await initWorkspaceWithFeedbackTask();
+    const handler = getRegisteredToolHandler('playspec_complete_phase');
+
+    const result = await handler({ taskId, result: 'approved' });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['taskId']).toBe(taskId);
+    expect(body['feedback']).toMatchObject({
+      status: 'captured',
+      approvalResult: 'approved',
+      feedbackResult: 'negative',
+      score: 72,
+    });
   });
 
   it('does not register archive lookup tools in Phase 5', () => {
