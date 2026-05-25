@@ -229,6 +229,7 @@ export class PlaySpecCore {
 
   async checkTaskDesync(taskId: string): Promise<DesyncCheckResult> {
     const task = await this.taskStore.getTask(taskId);
+    this.assertTaskIsActive(task);
     return this.stateDesyncDetector.run(task);
   }
 

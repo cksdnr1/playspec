@@ -2251,6 +2251,31 @@ phases:
     expect(result.stdout).toContain('Untracked files: src/untracked.ts');
   });
 
+  it('rejects HEAD-based completed tasks through desync-check', async () => {
+    const taskId = await createActiveTask('CLI Completed Desync Head Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('pass an active task with `--task <TASK_ID>`');
+  });
+
+  it('rejects explicit completed tasks through desync-check --task', async () => {
+    await createActiveTask('CLI Active Desync Head Task');
+    const completedTaskId = await createAdditionalActiveTask('CLI Completed Explicit Desync Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, { status: 'completed' });
+
+    const result = await runCli(['desync-check', '--task', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('pass an active task with `--task <TASK_ID>`');
+  });
+
   it('prints a high desync warning before next prompt output', async () => {
     await createActiveTask('CLI Next Desync Task');
     await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
