@@ -392,6 +392,30 @@ export interface CompletePhaseOptions {
   contextMode?: PromptContextMode;
 }
 
+export type CompletionFeedbackPolicy = PhaseFeedbackFailurePolicy;
+export type CompletionFeedbackFailureStage = 'missing_artifact' | 'extraction' | 'thread_update';
+
+export interface CompletionFeedbackSuccess {
+  status: 'captured';
+  threadId: string;
+  threadPath: string;
+  created: boolean;
+  approvalResult: string;
+  feedbackResult: string;
+  dedupeKeyHash: string;
+  score?: number;
+}
+
+export interface CompletionFeedbackFailure {
+  status: 'failed';
+  policy: CompletionFeedbackPolicy;
+  stage: CompletionFeedbackFailureStage;
+  message: string;
+  feedbackResult: 'parse_failed';
+}
+
+export type CompletionFeedbackResult = CompletionFeedbackSuccess | CompletionFeedbackFailure;
+
 export interface CompletionResult {
   taskId: TaskId;
   completedPhase: PhaseId;
@@ -402,6 +426,7 @@ export interface CompletionResult {
   reviewFile?: string;
   evolutionContextSnapshotFile?: string;
   completionEvent?: CompletionEvent;
+  feedback?: CompletionFeedbackResult;
 }
 
 export interface CompletionEvent {
@@ -421,6 +446,7 @@ export interface CompletionEvent {
   snapshotFiles: string[];
   reviewFile?: string;
   rollbackSafePointId?: string;
+  feedback?: CompletionFeedbackResult;
   markdownFile: string;
 }
 

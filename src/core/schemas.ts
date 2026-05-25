@@ -227,6 +227,30 @@ export const PromptArtifactMetadataSchema = z.object({
   omittedContext: z.array(OmittedPromptContextSchema),
 });
 
+export const CompletionFeedbackSuccessSchema = z.object({
+  status: z.literal('captured'),
+  threadId: z.string(),
+  threadPath: z.string(),
+  created: z.boolean(),
+  approvalResult: z.string(),
+  feedbackResult: z.string(),
+  dedupeKeyHash: z.string(),
+  score: z.number().min(0).max(100).optional(),
+});
+
+export const CompletionFeedbackFailureSchema = z.object({
+  status: z.literal('failed'),
+  policy: z.enum(['fail_completion', 'warn_and_continue', 'record_failure']),
+  stage: z.enum(['missing_artifact', 'extraction', 'thread_update']),
+  message: z.string(),
+  feedbackResult: z.literal('parse_failed'),
+});
+
+export const CompletionFeedbackResultSchema = z.discriminatedUnion('status', [
+  CompletionFeedbackSuccessSchema,
+  CompletionFeedbackFailureSchema,
+]);
+
 export const CompletionEventSchema = z.object({
   id: z.string(),
   sequence: z.number().int().positive(),
@@ -244,6 +268,7 @@ export const CompletionEventSchema = z.object({
   snapshotFiles: z.array(z.string()),
   reviewFile: z.string().optional(),
   rollbackSafePointId: z.string().optional(),
+  feedback: CompletionFeedbackResultSchema.optional(),
   markdownFile: z.string(),
 });
 

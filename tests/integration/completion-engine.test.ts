@@ -61,6 +61,159 @@ async function initWorkspaceWithTask(taskId = 'phase_two_task') {
   return { store, taskId };
 }
 
+async function initWorkspaceWithFeedbackTask(
+  taskId = 'feedback_task',
+  options: {
+    score?: number;
+    feedbackThreshold?: number;
+    approvalThreshold?: number;
+    onFailure?: 'fail_completion' | 'warn_and_continue' | 'record_failure';
+    includeBlock?: boolean;
+    nextPhase?: string;
+  } = {}
+) {
+  const manager = new PresetManager();
+  await manager.initWorkspace(workspace.dir, 'default');
+
+  const score = options.score ?? 72;
+  const feedbackThreshold = options.feedbackThreshold ?? 90;
+  const approvalThreshold = options.approvalThreshold ?? 60;
+  const onFailure = options.onFailure ?? 'fail_completion';
+  const includeBlock = options.includeBlock ?? true;
+  const nextPhase = options.nextPhase ?? 'target';
+  const feedbackBlock = includeBlock
+    ? `
+\`\`\`playspecFeedback
+sourcePhaseId: validate
+evaluatedArtifactPhaseId: draft
+evolutionTargetPhaseId: target
+score: ${score}
+cause:
+  category: authoring_prompt_gap
+  confidence: medium
+  summary: Validation found prompt guidance gaps.
+summary: Validation should improve prompt guidance.
+dedupeFieldValues:
+  artifactRole: prompt_snapshot
+\`\`\`
+`
+    : '';
+
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'workflow.yaml'),
+    `id: feedback-flow
+mode: linear
+phaseOrder:
+  - draft
+  - validate
+  - target
+phases:
+  draft:
+    title: Draft
+    template: draft.md
+    next: validate
+  validate:
+    title: Validate
+    template: validate.md
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: "${nextPhase}"
+        needs_revision: draft
+    feedback:
+      enabled: true
+      kind: prompt_evolution_signal
+      feedbackThreshold: ${feedbackThreshold}
+      thresholdMode: greater_or_equal
+      required: true
+      onFailure: ${onFailure}
+      sourcePhaseId: validate
+      evaluatedArtifactPhaseId: draft
+      evolutionTargetPhaseId: target
+      scoreSource:
+        artifactRole: prompt_snapshot
+        preferredBlock: playspecFeedback
+        markdownFallback: false
+      approval:
+        threshold: ${approvalThreshold}
+        resultSource: completion_result
+      causeClassification:
+        required: true
+        allowed:
+          - artifact_quality_issue
+          - authoring_prompt_gap
+          - validation_prompt_gap
+          - workflow_policy_gap
+          - extractor_or_parser_error
+      targetPromptSnapshot:
+        required: true
+        hashAlgorithm: sha256
+      dedupe:
+        enabled: true
+        fields:
+          - artifactRole
+      evolution:
+        mode: thread_only
+        storageMode: thread_with_compact_history
+        targetFiles:
+          - target.md
+      workflowSource:
+        kind: project_local
+        root: .playspec/workflows/feedback-flow
+        rootPathKind: workspace_relative
+      targetPromptTemplate:
+        path: target.md
+        pathKind: workflow_relative
+        writable: true
+      compactHistoryPolicy:
+        maxEntries: 5
+        keepFirst: true
+        keepLatest: 4
+        summarizeOverflow: true
+      proposalReadinessPolicy:
+        mode: manual_only_initial
+        minRunCount: 2
+        minNegativeCount: 1
+        minConfidence: medium
+        requireHumanReviewBeforeProposal: true
+  target:
+    title: Target
+    template: target.md
+`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'templates', 'draft.md'),
+    '# Draft\n'
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'templates', 'validate.md'),
+    `# Validate\n${feedbackBlock}`
+  );
+  await writeTextFile(
+    path.join(workspace.dir, '.playspec', 'workflows', 'feedback-flow', 'templates', 'target.md'),
+    '# Target prompt\n'
+  );
+
+  const store = new YamlTaskStore(workspace.dir);
+  await store.createTask({
+    id: taskId,
+    title: 'Feedback Task',
+    workflow: 'feedback-flow',
+    currentPhase: 'validate',
+  });
+  await writeTextFile(getHeadPath(workspace.dir), `${taskId}\n`);
+
+  await execa('git', ['init'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.email', 'playspec@example.com'], { cwd: workspace.dir });
+  await execa('git', ['config', 'user.name', 'PlaySpec Test'], { cwd: workspace.dir });
+  await execa('git', ['add', '.'], { cwd: workspace.dir });
+  await execa('git', ['commit', '-m', 'initial'], { cwd: workspace.dir });
+
+  return { store, taskId };
+}
+
 describe('Phase 2 completion engine', () => {
   it('renders the current active phase when currentPhase is set', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
@@ -159,6 +312,7 @@ describe('Phase 2 completion engine', () => {
       ],
       reviewFile: 'reviews/phase1_review.yaml',
     });
+    expect(result.feedback).toBeUndefined();
     expect(ledger.taskId).toBe(taskId);
     expect(ledger.events).toHaveLength(1);
     expect(ledger.events[0]).toMatchObject({
@@ -166,6 +320,7 @@ describe('Phase 2 completion engine', () => {
       type: 'phase_completed',
       markdownFile: 'completions/0001-1.md',
     });
+    expect(ledger.events[0]).not.toHaveProperty('feedback');
     expect(ledger.events[0]?.rollbackSafePointId).toBe(result.completionEvent?.rollbackSafePointId);
     expect(completionFiles.filter((file) => file.endsWith('.md'))).toEqual(['0001-1.md']);
 
@@ -180,6 +335,131 @@ describe('Phase 2 completion engine', () => {
     expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/snapshots/phase1_before_complete.yaml`);
     expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/reviews/phase1_review.yaml`);
     expect(markdown).toContain('- Rollback safe point: phase1_');
+    expect(markdown).not.toContain('## Feedback');
+  });
+
+  it('captures validation feedback and records thread references during completion', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved' });
+
+    expect(result.feedback).toMatchObject({
+      status: 'captured',
+      created: true,
+      approvalResult: 'approved',
+      feedbackResult: 'negative',
+      score: 72,
+    });
+    expect(result.feedback?.status === 'captured' ? result.feedback.threadPath : '').toMatch(
+      /^\.playspec\/evolution\/feedback\/threads\/feedback_[a-f0-9]{24}\.yaml$/
+    );
+    expect(result.completionEvent?.feedback).toEqual(result.feedback);
+
+    const ledger = parseYaml(await readFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', 'index.yaml'),
+      'utf-8'
+    )) as { events: Array<{ feedback?: unknown }> };
+    expect(ledger.events[0]?.feedback).toEqual(result.feedback);
+
+    const markdown = await readFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', '0001-validate-approved.md'),
+      'utf-8'
+    );
+    expect(markdown).toContain('## Feedback');
+    expect(markdown).toContain('- Status: captured');
+    expect(markdown).toContain('- Feedback result: negative');
+  });
+
+  it('updates the same feedback thread path for repeated completions with the same dedupe key', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_loop_task', { nextPhase: 'validate' });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const first = await core.completePhase(taskId, { result: 'approved' });
+    const second = await core.completePhase(taskId, { result: 'approved' });
+
+    expect(first.feedback?.status).toBe('captured');
+    expect(second.feedback?.status).toBe('captured');
+    if (first.feedback?.status !== 'captured' || second.feedback?.status !== 'captured') {
+      throw new Error('Expected captured feedback');
+    }
+    expect(second.feedback.threadPath).toBe(first.feedback.threadPath);
+    expect(second.feedback.threadId).toBe(first.feedback.threadId);
+    expect(second.feedback.created).toBe(false);
+
+    const thread = parseYaml(await readFile(path.join(workspace.dir, second.feedback.threadPath), 'utf-8')) as {
+      events: unknown[];
+    };
+    expect(thread.events).toHaveLength(2);
+  });
+
+  it('keeps approval result and feedback threshold result independent', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_threshold_task', {
+      score: 72,
+      feedbackThreshold: 90,
+      approvalThreshold: 60,
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved' });
+
+    expect(result.feedback).toMatchObject({
+      status: 'captured',
+      approvalResult: 'approved',
+      feedbackResult: 'negative',
+      score: 72,
+    });
+  });
+
+  it('fails required feedback capture before ledger and phase mutation when policy is fail_completion', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_required_failure_task', {
+      includeBlock: false,
+      onFailure: 'fail_completion',
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await expect(core.completePhase(taskId, { result: 'approved' })).rejects.toThrow(/missing a playspecFeedback block/);
+
+    const task = await store.getTask(taskId);
+    expect(task.currentPhase).toBe('validate');
+    expect(task.phaseHistory).toEqual([]);
+    await expect(
+      access(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', 'index.yaml'))
+    ).rejects.toThrow();
+  });
+
+  it('records feedback failure metadata and continues when policy is record_failure', async () => {
+    const { store, taskId } = await initWorkspaceWithFeedbackTask('feedback_record_failure_task', {
+      includeBlock: false,
+      onFailure: 'record_failure',
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved' });
+    const task = await store.getTask(taskId);
+
+    expect(task.currentPhase).toBe('target');
+    expect(result.feedback).toMatchObject({
+      status: 'failed',
+      policy: 'record_failure',
+      stage: 'extraction',
+      feedbackResult: 'parse_failed',
+    });
+    expect(result.completionEvent?.feedback).toEqual(result.feedback);
+  });
+
+  it('prints feedback thread references from CLI completion output', async () => {
+    const { taskId } = await initWorkspaceWithFeedbackTask('feedback_cli_task');
+
+    const result = await execa(
+      TSX_PATH,
+      ['--tsconfig', TSCONFIG_PATH, CLI_PATH, 'complete', '--result', 'approved', '--no-copy'],
+      { cwd: workspace.dir }
+    );
+
+    expect(result.stdout).toContain(`Completed phase validate for task "${taskId}".`);
+    expect(result.stdout).toContain('Feedback thread: .playspec/evolution/feedback/threads/feedback_');
+    expect(result.stdout).toContain('Feedback result: negative');
   });
 
   it('creates manual evidence and snapshot artifacts without phase mutation', async () => {
