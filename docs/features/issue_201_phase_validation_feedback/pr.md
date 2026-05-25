@@ -2,6 +2,8 @@
 
 Fixes #201
 
+Draft PR: https://github.com/cksdnr1/playspec/pull/210
+
 ## Summary
 
 - Opts `mono-spec` technical spec and implementation plan validation phases into prompt-evolution feedback capture.

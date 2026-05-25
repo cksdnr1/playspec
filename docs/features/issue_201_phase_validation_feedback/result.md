@@ -2,6 +2,8 @@
 
 ## Behavior Implemented
 
+- Draft PR: https://github.com/cksdnr1/playspec/pull/210
+
 - Added feedback opt-in config to `mono-spec` validation phases:
   - `tech_spec_validate` defaults prompt evolution feedback to `tech_spec_draft`.
   - `implementation_plan_validate` defaults prompt evolution feedback to `implementation_plan_create`.
