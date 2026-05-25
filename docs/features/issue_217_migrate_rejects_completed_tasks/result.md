@@ -34,7 +34,7 @@
 ## PR Preparation
 
 - Reusable agent guidance: not needed. The implementation follows existing lifecycle errors and migration runner boundaries.
-- PR link: pending draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/219
 
 ## Remaining Risks
 
