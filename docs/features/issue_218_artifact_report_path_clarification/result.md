@@ -42,3 +42,10 @@
 - Reviewed the diff for local cleanup opportunities after tests passed.
 - No refactor was applied. The implementation is already limited to the planned workflow template, workflow docs, and integration test assertions.
 - Intentionally skipped broader wording or test-structure rewrites to keep the change scoped to issue #218.
+
+## Final PR Notes
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/220
+- Branch: `agent/issue-218-artifact-write-paths`
+- PlaySpec task ID: `issue_218_artifact_report_path_clarification`
+- Reusable agent guidance: no new guidance needed; the fix is local to one built-in workflow.
