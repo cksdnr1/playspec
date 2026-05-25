@@ -11,6 +11,7 @@ import {
   generateHumanEditObservationId,
 } from '#evolution/human-edit-store.js';
 import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
+import { appendFeedbackThreadEvidence } from '#evolution/feedback-updater.js';
 import { generateEvolutionProposal } from '#evolution/proposal-generator.js';
 import type {
   EvolutionRiskLevel,
@@ -100,6 +101,28 @@ export async function runEvolutionAppendEvidence(
       console.log(`Evidence file: ${evidence.path}`);
       console.log(`Evidence note: ${evidence.note}`);
     }
+    console.log(`Revision file: ${path.relative(workspaceRoot, result.revisionPath)}`);
+    console.log(`Proposal file: ${path.relative(workspaceRoot, result.proposalPath)}`);
+    console.log(`Validation file: ${path.relative(workspaceRoot, result.validationPath)}`);
+  } catch (error: unknown) {
+    throw withChangeHint(error);
+  }
+}
+
+export async function runEvolutionAppendThreadEvidence(
+  workspaceRoot: string,
+  proposalId: string,
+  threadId: string
+): Promise<void> {
+  try {
+    const result = await appendFeedbackThreadEvidence(workspaceRoot, { proposalId, threadId });
+    console.log(`Thread evidence appended: ${result.proposal.id}`);
+    console.log(`Status: ${result.proposal.status}`);
+    console.log(`Revision: ${result.proposal.revision}`);
+    console.log(`Thread ID: ${result.threadId}`);
+    console.log(`Thread path: ${result.threadPath}`);
+    console.log(`Evidence file: ${result.evidencePath}`);
+    console.log(`Evidence note: ${result.evidenceNote}`);
     console.log(`Revision file: ${path.relative(workspaceRoot, result.revisionPath)}`);
     console.log(`Proposal file: ${path.relative(workspaceRoot, result.proposalPath)}`);
     console.log(`Validation file: ${path.relative(workspaceRoot, result.validationPath)}`);

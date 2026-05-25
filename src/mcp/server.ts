@@ -12,6 +12,7 @@ import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
 import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
+import { appendFeedbackThreadEvidence } from '#evolution/feedback-updater.js';
 import { generateEvolutionProposal } from '#evolution/proposal-generator.js';
 import {
   EvolutionHumanEditStore,
@@ -716,6 +717,22 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     async (args) => {
       try {
         return ok(await proposalStore.appendEvidence(args.proposalId, { path: args.path, note: args.note }));
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_append_evolution_thread_evidence',
+    'Append feedback thread evidence to an existing pending/refining evolution proposal',
+    { proposalId: z.string(), threadId: z.string() },
+    async (args) => {
+      try {
+        return ok(await appendFeedbackThreadEvidence(workspaceRoot, {
+          proposalId: args.proposalId,
+          threadId: args.threadId,
+        }));
       } catch (e) {
         return err(e);
       }
