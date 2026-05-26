@@ -1,18 +1,17 @@
 import path from 'node:path';
-import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowInstaller } from '#workflow/workflow-installer.js';
 import { WorkflowEditor } from '#workflow/workflow-editor.js';
 import type { WorkflowEditResult } from '#workflow/workflow-editor.js';
+import type { ResolvedWorkflow } from '#core/types.js';
 
 export async function runWorkflowList(workspaceRoot: string): Promise<void> {
-  const registry = new WorkflowRegistry(workspaceRoot);
   const loader = new WorkflowLoader(workspaceRoot);
-  const locations = await registry.list();
-  for (const location of locations) {
-    const workflow = await loader.resolve(location.id);
+  const workflows = await loader.listWithDiagnostics();
+  for (const workflow of workflows) {
     const description = workflow.definition.description ? ` - ${workflow.definition.description}` : '';
     console.log(`${workflow.id}\t${workflow.source}${description}`);
+    printWorkflowDiagnostics(workflow);
   }
 }
 
@@ -24,16 +23,9 @@ export async function runWorkflowShow(workspaceRoot: string, workflowId: string)
     console.log(`Shadow source: ${workflow.shadow.shadowSource}`);
     console.log(`Shadow differs from builtin: ${workflow.shadow.differsFromBuiltin ? 'yes' : 'no'}`);
     console.log(`Shadow accepted: ${workflow.shadow.accepted ? 'yes' : 'no'}`);
-    if (workflow.shadow.usingBuiltinFallback) {
-      console.log(`Selected source: builtin`);
-      console.log(
-        `Warning: ${workflow.shadow.shadowSource} workflow override differs from the built-in workflow and is not accepted; using built-in assets.`
-      );
-    } else if (workflow.shadow.differsFromBuiltin) {
-      console.log(`Selected source: ${workflow.shadow.effectiveSource}`);
-      console.log(`Warning: ${workflow.shadow.shadowSource} workflow override differs from the built-in workflow and is explicitly accepted.`);
-    }
+    console.log(`Selected source: ${workflow.shadow.effectiveSource}`);
   }
+  printWorkflowDiagnostics(workflow);
   if (workflow.definition.name) console.log(`Name: ${workflow.definition.name}`);
   if (workflow.definition.description) console.log(`Description: ${workflow.definition.description}`);
   console.log('Phases:');
@@ -52,6 +44,15 @@ export async function runWorkflowShow(workspaceRoot: string, workflowId: string)
   console.log('Artifacts:');
   for (const [name, artifact] of Object.entries(workflow.definition.artifacts ?? {})) {
     console.log(`  - ${name}: ${artifact.path}${artifact.kind ? ` (${artifact.kind})` : ''}`);
+  }
+}
+
+function printWorkflowDiagnostics(workflow: ResolvedWorkflow): void {
+  for (const diagnostic of workflow.diagnostics ?? []) {
+    console.log(`Warning [${diagnostic.code}]: ${diagnostic.message}`);
+    console.log(`  Active: ${diagnostic.activeSource} (${diagnostic.activeRootDir})`);
+    console.log(`  Shadowed: ${diagnostic.builtinSource} (${diagnostic.builtinRootDir})`);
+    console.log(`  Drift: ${diagnostic.details.map((detail) => detail.field).join(', ')}`);
   }
 }
 

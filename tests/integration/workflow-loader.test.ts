@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
@@ -576,23 +576,34 @@ phases:
     expect(creation).toContain('Skip the candidate if the duplicate search now finds');
   });
 
-  it('falls back to built-in assets for an unaccepted stale project shadow', async () => {
+  it('warns but preserves project precedence for an unaccepted stale project shadow', async () => {
     const registry = new WorkflowRegistry(workspace.dir);
     await writeWorkflow(registry.getProjectRoot(), 'mono-spec', 'Stale project override');
 
     const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
 
-    expect(workflow.source).toBe('builtin');
+    expect(workflow.source).toBe('project');
     expect(workflow.shadow).toEqual(expect.objectContaining({
+      effectiveSource: 'project',
       shadowSource: 'project',
       differsFromBuiltin: true,
       accepted: false,
-      usingBuiltinFallback: true,
+      usingBuiltinFallback: false,
     }));
-    expect(workflow.definition.description).toBe('Built-in workflow for one feature spec, implementation, tests, and PR prep.');
+    expect(workflow.diagnostics).toHaveLength(1);
+    expect(workflow.diagnostics?.[0]).toEqual(expect.objectContaining({
+      code: 'workflow_builtin_shadow_artifact_drift',
+      workflowId: 'mono-spec',
+      activeSource: 'project',
+      builtinSource: 'builtin',
+    }));
+    expect(workflow.diagnostics?.[0]?.details.map((detail) => detail.field)).toEqual(
+      expect.arrayContaining(['version', 'artifacts'])
+    );
+    expect(workflow.definition.description).toBe('Stale project override');
   });
 
-  it('keeps an explicitly accepted project shadow usable', async () => {
+  it('warns but keeps an explicitly accepted project shadow usable', async () => {
     const registry = new WorkflowRegistry(workspace.dir);
     await writeWorkflow(registry.getProjectRoot(), 'mono-spec', 'Accepted project override', {
       acceptedBuiltinShadow: true,
@@ -607,10 +618,11 @@ phases:
       accepted: true,
       usingBuiltinFallback: false,
     }));
+    expect(workflow.diagnostics?.[0]?.code).toBe('workflow_builtin_shadow_artifact_drift');
     expect(workflow.definition.description).toBe('Accepted project override');
   });
 
-  it('renders current built-in issue-scope-create prompt content when the project copy is stale', async () => {
+  it('warns but renders active issue-scope-create project prompt content when the project copy is stale', async () => {
     const registry = new WorkflowRegistry(workspace.dir);
     await writeFile(
       path.join(registry.getProjectRoot(), 'issue-scope-create', 'templates', 'scoped_issue_discovery.md'),
@@ -633,10 +645,88 @@ phases:
     });
 
     const prompt = await new PlaySpecCore(workspace.dir, store).renderNextPrompt('stale_issue_scope_prompt');
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('issue-scope-create');
 
-    expect(prompt).toContain('Replacement Search');
-    expect(prompt).toContain('replacement candidate');
-    expect(prompt).not.toContain('This stale project template must not render.');
+    expect(workflow.source).toBe('project');
+    expect(workflow.diagnostics).toBeUndefined();
+    expect(prompt).toContain('This stale project template must not render.');
+    expect(prompt).not.toContain('Replacement Search');
+  });
+
+  it('warns for user workflows that shadow built-in artifact definitions', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await rm(path.join(registry.getProjectRoot(), 'mono-spec'), { recursive: true, force: true });
+    await writeWorkflow(registry.getUserRoot(), 'mono-spec', 'Stale user override');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
+
+    expect(workflow.source).toBe('user');
+    expect(workflow.definition.description).toBe('Stale user override');
+    expect(workflow.diagnostics?.[0]).toEqual(expect.objectContaining({
+      code: 'workflow_builtin_shadow_artifact_drift',
+      workflowId: 'mono-spec',
+      activeSource: 'user',
+      builtinSource: 'builtin',
+    }));
+  });
+
+  it('does not warn when artifact output and version definitions match despite template customization', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const projectMonoSpec = path.join(registry.getProjectRoot(), 'mono-spec');
+    await rm(projectMonoSpec, { recursive: true, force: true });
+    await cp(path.join(registry.getBuiltinRoot(), 'mono-spec'), projectMonoSpec, { recursive: true });
+    await writeFile(
+      path.join(projectMonoSpec, 'templates', 'tech_spec_draft.md'),
+      '# Customized local prompt\n\nArtifact definitions are unchanged.\n',
+      'utf8'
+    );
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
+
+    expect(workflow.source).toBe('project');
+    expect(workflow.diagnostics).toBeUndefined();
+    expect(workflow.shadow).toEqual(expect.objectContaining({
+      shadowSource: 'project',
+      differsFromBuiltin: false,
+      usingBuiltinFallback: false,
+    }));
+  });
+
+  it('warns for copied older issue-scope-create project artifact and output definitions', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    const projectWorkflowRoot = path.join(registry.getProjectRoot(), 'issue-scope-create');
+    const builtinWorkflowRoot = path.join(registry.getBuiltinRoot(), 'issue-scope-create');
+    await rm(projectWorkflowRoot, { recursive: true, force: true });
+    await mkdir(path.join(projectWorkflowRoot, 'templates'), { recursive: true });
+    const builtinWorkflow = await readFile(path.join(builtinWorkflowRoot, 'workflow.yaml'), 'utf8');
+    const staleWorkflow = builtinWorkflow
+      .replace('version: 1', 'version: 0')
+      .replace('path: "{{DISCOVERY_FILE}}"', 'path: "docs/issues/scope-create/discovery.md"')
+      .replace('path: "{{CANDIDATE_ISSUES_FILE}}"', 'path: "docs/issues/scope-create/candidate_issues.md"')
+      .replace('path: "{{CREATED_ISSUES_FILE}}"', 'path: "docs/issues/scope-create/created_issues.md"')
+      .replace('- "{{DISCOVERY_FILE}}"', '- "docs/issues/scope-create/discovery.md"')
+      .replace('- "{{CANDIDATE_ISSUES_FILE}}"', '- "docs/issues/scope-create/candidate_issues.md"')
+      .replace('- "{{CREATED_ISSUES_FILE}}"', '- "docs/issues/scope-create/created_issues.md"');
+    await writeFile(path.join(projectWorkflowRoot, 'workflow.yaml'), staleWorkflow, 'utf8');
+    await writeFile(path.join(projectWorkflowRoot, 'templates', 'scoped_issue_discovery.md'), '# Stale discovery\n', 'utf8');
+    await writeFile(path.join(projectWorkflowRoot, 'templates', 'create_scoped_issues.md'), '# Stale creation\n', 'utf8');
+
+    const workflow = await new WorkflowLoader(workspace.dir).resolve('issue-scope-create');
+
+    expect(workflow.source).toBe('project');
+    expect(workflow.definition.version).toBe(0);
+    expect(workflow.diagnostics?.[0]).toEqual(expect.objectContaining({
+      code: 'workflow_builtin_shadow_artifact_drift',
+      workflowId: 'issue-scope-create',
+      activeSource: 'project',
+      builtinSource: 'builtin',
+    }));
+    expect(workflow.diagnostics?.[0]?.details.map((detail) => detail.field)).toEqual(expect.arrayContaining([
+      'version',
+      'artifacts',
+      'phases.scoped_issue_discovery.outputs',
+      'phases.create_scoped_issues.outputs',
+    ]));
   });
 
   it('throws WorkflowNotFoundError for unknown workflow', async () => {
@@ -807,5 +897,22 @@ phases:
     expect(locations.filter((location) => location.source === 'project').map((location) => location.id)).toEqual(
       [...locations.filter((location) => location.source === 'project').map((location) => location.id)].sort()
     );
+  });
+
+  it('lists effective workflows with stale artifact diagnostics', async () => {
+    const registry = new WorkflowRegistry(workspace.dir);
+    await writeWorkflow(registry.getProjectRoot(), 'mono-spec', 'Listed stale project override');
+
+    const workflows = await new WorkflowLoader(workspace.dir).listWithDiagnostics();
+    const monoSpec = workflows.find((workflow) => workflow.id === 'mono-spec');
+
+    expect(monoSpec?.source).toBe('project');
+    expect(monoSpec?.definition.description).toBe('Listed stale project override');
+    expect(monoSpec?.diagnostics?.[0]).toEqual(expect.objectContaining({
+      code: 'workflow_builtin_shadow_artifact_drift',
+      workflowId: 'mono-spec',
+      activeSource: 'project',
+      builtinSource: 'builtin',
+    }));
   });
 });
