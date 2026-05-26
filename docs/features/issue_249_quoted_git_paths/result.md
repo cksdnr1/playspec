@@ -26,6 +26,12 @@
 - `pnpm build`
 - `pnpm test`
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/250
+- Branch: `agent/issue-249-quoted-paths`
+- Reusable agent guidance: no new guidance needed; this was a localized Git parsing fix covered by tests.
+
 ## Remaining Risks
 
 - The old line-oriented parser exports remain for existing unit coverage and compatibility, but production `GitState` methods no longer use them for rollback/desync path collection.
