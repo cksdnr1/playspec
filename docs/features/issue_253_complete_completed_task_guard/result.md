@@ -43,6 +43,13 @@ Focused verification after the refactor review:
 
 - `pnpm exec vitest run tests/cli.test.ts -t "complete"` passed.
 
+## PR Preparation
+
+- Branch: `agent/issue-253-complete-guard`
+- Draft PR: https://github.com/cksdnr1/playspec/pull/254
+- Commit: `b83d40d`
+- Reusable agent guidance: no new reusable guidance needed.
+
 ## Remaining Risks
 
 Low risk: callers that previously consumed partial stdout from failed completed-task `complete` calls will no longer receive the context header. This is the intended lifecycle-safety behavior from the issue acceptance criteria.
