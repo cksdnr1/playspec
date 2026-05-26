@@ -28,7 +28,7 @@ export async function runSpecs(workspaceRoot: string, opts: SpecsOptions): Promi
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(opts.task);
-  if (!opts.task && task.status !== 'active') {
+  if (task.status !== 'active') {
     throw new TaskNotActiveError(task.id, task.status);
   }
 
