@@ -1,9 +1,15 @@
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { WorkflowDefinitionSchema } from './workflow-schema.js';
 import { TemplateNotFoundError } from '#core/errors.js';
-import type { ResolvedWorkflow, WorkflowDefinition, WorkflowSource } from '#core/types.js';
+import type {
+  PhaseDefinition,
+  ResolvedWorkflow,
+  WorkflowDefinition,
+  WorkflowDiagnostic,
+  WorkflowDiagnosticDetail,
+} from '#core/types.js';
 import { readTextFile } from '#utils/fs.js';
 import { assertSafeWorkflowId, WorkflowLocation, WorkflowRegistry } from './workflow-registry.js';
 
@@ -24,39 +30,17 @@ export class WorkflowLoader {
     const location = this.getRegistry().resolve(workflow);
     const resolvedLocation = await location;
     const selected = await this.loadResolvedLocation(workflow, resolvedLocation);
-    if (resolvedLocation.source === 'builtin') {
-      return selected;
+    return this.attachBuiltinShadowDiagnostics(selected);
+  }
+
+  async listWithDiagnostics(): Promise<ResolvedWorkflow[]> {
+    const locations = await this.getRegistry().list();
+    const workflows: ResolvedWorkflow[] = [];
+    for (const location of locations) {
+      const selected = await this.loadResolvedLocation(location.id, location);
+      workflows.push(await this.attachBuiltinShadowDiagnostics(selected));
     }
-
-    const builtinLocation = await this.getBuiltinLocationIfPresent(workflow);
-    if (!builtinLocation) {
-      return selected;
-    }
-
-    const builtin = await this.loadResolvedLocation(workflow, builtinLocation);
-    const differsFromBuiltin = !(await this.workflowAssetsEqual(selected, builtin));
-    const accepted = selected.definition.builtinShadow?.accepted === true;
-    const shadow = {
-      effectiveSource: differsFromBuiltin && !accepted ? 'builtin' as WorkflowSource : selected.source,
-      shadowSource: selected.source as Exclude<WorkflowSource, 'builtin'>,
-      shadowRootDir: selected.rootDir,
-      builtinRootDir: builtin.rootDir,
-      differsFromBuiltin,
-      accepted,
-      usingBuiltinFallback: differsFromBuiltin && !accepted,
-    };
-
-    if (shadow.usingBuiltinFallback) {
-      return {
-        ...builtin,
-        shadow,
-      };
-    }
-
-    return {
-      ...selected,
-      shadow,
-    };
+    return workflows;
   }
 
   async resolveFromDirectory(rootDir: string): Promise<ResolvedWorkflow> {
@@ -117,49 +101,6 @@ export class WorkflowLoader {
     }
   }
 
-  private async workflowAssetsEqual(left: ResolvedWorkflow, right: ResolvedWorkflow): Promise<boolean> {
-    return (await this.workflowAssetSignature(left)) === (await this.workflowAssetSignature(right));
-  }
-
-  private async workflowAssetSignature(workflow: ResolvedWorkflow): Promise<string> {
-    const normalizedDefinition = {
-      ...workflow.definition,
-      builtinShadow: undefined,
-    };
-    return JSON.stringify({
-      definition: normalizedDefinition,
-      templates: await this.directoryFiles(workflow.templateDir),
-    });
-  }
-
-  private async directoryFiles(rootDir: string): Promise<Record<string, string>> {
-    const files: Record<string, string> = {};
-    await this.collectDirectoryFiles(rootDir, rootDir, files);
-    return Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
-  }
-
-  private async collectDirectoryFiles(rootDir: string, currentDir: string, files: Record<string, string>): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(currentDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        await this.collectDirectoryFiles(rootDir, absolutePath, files);
-        continue;
-      }
-      if (!entry.isFile()) {
-        continue;
-      }
-      const relativePath = path.relative(rootDir, absolutePath).split(path.sep).join('/');
-      files[relativePath] = await readFile(absolutePath, 'utf8');
-    }
-  }
-
   async validateWorkflowDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {
     for (const phaseId of definition.phaseOrder) {
       const phase = definition.phases[phaseId];
@@ -207,6 +148,108 @@ export class WorkflowLoader {
       throw new Error(`Workflow template path escapes templates directory: ${templatePath}`);
     }
     return resolved;
+  }
+
+  private async attachBuiltinShadowDiagnostics(selected: ResolvedWorkflow): Promise<ResolvedWorkflow> {
+    if (selected.source === 'builtin') {
+      return selected;
+    }
+
+    const builtinLocation = await this.getBuiltinLocationIfPresent(selected.id);
+    if (!builtinLocation) {
+      return selected;
+    }
+
+    const builtin = await this.loadResolvedLocation(selected.id, builtinLocation);
+    const details = this.compareDiagnosticFields(selected.definition, builtin.definition);
+    const differsFromBuiltin = details.length > 0;
+    const diagnostics = differsFromBuiltin
+      ? [this.createBuiltinShadowDiagnostic(selected, builtin, details)]
+      : undefined;
+
+    return {
+      ...selected,
+      diagnostics,
+      shadow: {
+        effectiveSource: selected.source,
+        shadowSource: selected.source,
+        shadowRootDir: selected.rootDir,
+        builtinRootDir: builtin.rootDir,
+        differsFromBuiltin,
+        accepted: selected.definition.builtinShadow?.accepted === true,
+        usingBuiltinFallback: false,
+      },
+    };
+  }
+
+  private compareDiagnosticFields(active: WorkflowDefinition, builtin: WorkflowDefinition): WorkflowDiagnosticDetail[] {
+    const details: WorkflowDiagnosticDetail[] = [];
+    this.addValueDifference(details, 'version', active.version, builtin.version);
+    this.addValueDifference(details, 'artifacts', active.artifacts ?? {}, builtin.artifacts ?? {});
+
+    const phaseIds = [...new Set([...Object.keys(active.phases), ...Object.keys(builtin.phases)])].sort();
+    for (const phaseId of phaseIds) {
+      const activeOutputs = this.phaseOutputs(active.phases[phaseId]);
+      const builtinOutputs = this.phaseOutputs(builtin.phases[phaseId]);
+      this.addValueDifference(details, `phases.${phaseId}.outputs`, activeOutputs, builtinOutputs);
+    }
+
+    return details;
+  }
+
+  private phaseOutputs(phase: PhaseDefinition | undefined): string[] {
+    return phase?.outputs ?? [];
+  }
+
+  private addValueDifference(
+    details: WorkflowDiagnosticDetail[],
+    field: string,
+    activeValue: unknown,
+    builtinValue: unknown
+  ): void {
+    if (this.stableStringify(activeValue) === this.stableStringify(builtinValue)) {
+      return;
+    }
+    details.push({
+      field,
+      activeValue,
+      builtinValue,
+    });
+  }
+
+  private stableStringify(value: unknown): string {
+    return JSON.stringify(this.sortValue(value));
+  }
+
+  private sortValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sortValue(item));
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, item]) => [key, this.sortValue(item)])
+      );
+    }
+    return value;
+  }
+
+  private createBuiltinShadowDiagnostic(
+    active: ResolvedWorkflow,
+    builtin: ResolvedWorkflow,
+    details: WorkflowDiagnosticDetail[]
+  ): WorkflowDiagnostic {
+    return {
+      code: 'workflow_builtin_shadow_artifact_drift',
+      message: `Workflow "${active.id}" from ${active.source} shadows a built-in workflow with different artifact/output or version definitions.`,
+      workflowId: active.id,
+      activeSource: active.source as Exclude<ResolvedWorkflow['source'], 'builtin'>,
+      activeRootDir: active.rootDir,
+      builtinSource: 'builtin',
+      builtinRootDir: builtin.rootDir,
+      details,
+    };
   }
 
   private resolveDirectoryLocation(rootDir: string): {

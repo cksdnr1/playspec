@@ -1296,19 +1296,20 @@ review:
     expect(show.stdout).not.toContain(userWorkflows);
   });
 
-  it('shows stale project workflow shadows and selected built-in fallback', async () => {
+  it('shows stale project workflow shadow warnings without changing selected source', async () => {
     await writeWorkflow(path.join(workspace.dir, '.playspec', 'workflows'), 'mono-spec', 'Stale project duplicate');
 
     const show = await runCli(['workflow', 'show', 'mono-spec'], workspace.dir);
 
     expect(show.exitCode).toBe(0);
-    expect(show.stdout).toContain('Source: builtin');
+    expect(show.stdout).toContain('Source: project');
     expect(show.stdout).toContain('Shadow source: project');
     expect(show.stdout).toContain('Shadow differs from builtin: yes');
     expect(show.stdout).toContain('Shadow accepted: no');
-    expect(show.stdout).toContain('Selected source: builtin');
-    expect(show.stdout).toContain('using built-in assets');
-    expect(show.stdout).not.toContain('Description: Stale project duplicate');
+    expect(show.stdout).toContain('Selected source: project');
+    expect(show.stdout).toContain('Warning [workflow_builtin_shadow_artifact_drift]');
+    expect(show.stdout).toContain('Drift: version, artifacts');
+    expect(show.stdout).toContain('Description: Stale project duplicate');
   });
 
   it('supports init workflow install destinations from the CLI', async () => {

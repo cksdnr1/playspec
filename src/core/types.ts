@@ -274,6 +274,7 @@ export interface ResolvedWorkflow {
   templateDir: string;
   source: WorkflowSource;
   shadow?: WorkflowBuiltinShadow;
+  diagnostics?: WorkflowDiagnostic[];
   definition: WorkflowDefinition;
 }
 
@@ -285,6 +286,25 @@ export interface WorkflowBuiltinShadow {
   differsFromBuiltin: boolean;
   accepted: boolean;
   usingBuiltinFallback: boolean;
+}
+
+export type WorkflowDiagnosticCode = 'workflow_builtin_shadow_artifact_drift';
+
+export interface WorkflowDiagnosticDetail {
+  field: string;
+  activeValue?: unknown;
+  builtinValue?: unknown;
+}
+
+export interface WorkflowDiagnostic {
+  code: WorkflowDiagnosticCode;
+  message: string;
+  workflowId: string;
+  activeSource: Exclude<WorkflowSource, 'builtin'>;
+  activeRootDir: string;
+  builtinSource: 'builtin';
+  builtinRootDir: string;
+  details: WorkflowDiagnosticDetail[];
 }
 
 export interface SessionRecord {
