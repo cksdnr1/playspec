@@ -42,4 +42,4 @@
 
 - PR body source: `docs/features/github_issue_244_package_artifact_coverage/pr.md`.
 - Reusable agent guidance: no new guidance needed.
-- PR link: pending draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/246.
