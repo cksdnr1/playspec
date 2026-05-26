@@ -42,3 +42,9 @@
 
 - Low: placeholder parsing remains intentionally limited to the resolver's existing `{{...}}` default-template syntax. This matches the issue scope and avoids broad workflow-template semantics changes.
 - Low: bare output names remain demanded for backward compatibility, even though built-in workflows generally use templated output paths.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/256
+- Branch: `agent/issue-255-output-path-placeholders`
+- Reusable agent guidance: no update needed; this was a local resolver behavior correction with regression tests.
