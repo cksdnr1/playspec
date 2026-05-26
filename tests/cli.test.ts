@@ -12,7 +12,7 @@ import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import { getHeadPath } from '#utils/paths.js';
+import { getHeadPath, getMigrationPlansDir, getMigrationReportsDir } from '#utils/paths.js';
 import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -145,6 +145,50 @@ async function createAdditionalActiveTask(title: string, workflow = 'multi-spec'
     workflow,
   });
   return taskId;
+}
+
+async function expectNoMigrationArtifacts(planId: string) {
+  await expect(access(path.join(getMigrationPlansDir(workspace.dir), `${planId}.yaml`))).rejects.toThrow();
+  await expect(access(path.join(getMigrationReportsDir(workspace.dir), `${planId}_report.yaml`))).rejects.toThrow();
+}
+
+async function writeDryRunContextMigrationPlan(taskId: string, planId: string): Promise<string> {
+  const planPath = path.join(workspace.dir, `${planId}.yaml`);
+  await writeTextFile(
+    planPath,
+    `id: ${planId}
+createdAt: 2026-05-25T00:00:00.000Z
+mode: dry-run
+sourceRoot: docs
+targetTaskId: ${taskId}
+sourceFiles:
+  - docs/total_spec.md
+targetFiles:
+  - .playspec/tasks/active/${taskId}/task.yaml
+actions:
+  - actionId: action_001
+    type: add_context_ref
+    targetPath: .playspec/tasks/active/${taskId}/task.yaml
+    sourcePaths:
+      - docs/total_spec.md
+    reason: Add total spec as context
+    evidence: External plan proposes a task context mutation
+    riskLevel: medium
+    preview: "+ contextRefs"
+    backupRequired: true
+    requiresReview: false
+    contextRef:
+      path: docs/total_spec.md
+      role: planning-context
+      source: ${planId}
+statePromotions: []
+riskLevel: medium
+requiresReview: false
+summary: 1 action proposed
+warnings: []
+`
+  );
+  return planPath;
 }
 
 async function createMonoSpecTasks(titles: string[]): Promise<void> {
@@ -503,6 +547,44 @@ describe('CLI placeholder', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
     expect(result.stdout).toContain('No source documents found.');
+  });
+
+  it('rejects migrate for a completed HEAD task before writing dry-run migration artifacts', async () => {
+    const taskId = await createActiveTask('Migrate Completed Head Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planId = 'migration_completed_head_guard';
+    const planPath = await writeDryRunContextMigrationPlan(taskId, planId);
+
+    const result = await runCli(['migrate', '--plan', planPath, '--mode', 'dry-run'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+    await expectNoMigrationArtifacts(planId);
+  });
+
+  it('rejects migrate --task for a completed task before writing dry-run migration artifacts', async () => {
+    const taskId = await createActiveTask('Migrate Completed Explicit Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planId = 'migration_completed_explicit_guard';
+    const planPath = await writeDryRunContextMigrationPlan(taskId, planId);
+
+    const result = await runCli(['migrate', '--task', taskId, '--plan', planPath, '--mode', 'dry-run'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+    await expectNoMigrationArtifacts(planId);
   });
 
   it('rejects migrate --plan task mutations for completed tasks before changing task YAML', async () => {
