@@ -35,6 +35,8 @@ export interface ResolvedVariables {
   [key: string]: string;
 }
 
+const TARGET_BRANCH_FALLBACK = 'origin/master';
+
 export class VariableResolver {
   resolve(
     task: TaskRecord,
@@ -64,7 +66,7 @@ export class VariableResolver {
       TASK_ID: task.id,
       TASK_TITLE: task.title,
       WORKFLOW_TYPE: task.workflow,
-      TARGET_BRANCH: 'origin/master',
+      TARGET_BRANCH: '',
       SOURCE_PROBLEM_FILE: contextVariables.SOURCE_PROBLEM_FILE,
       CONTEXT_FILES: contextVariables.CONTEXT_FILES,
       CONTEXT_REFS_DETAIL: contextVariables.CONTEXT_REFS_DETAIL,
@@ -97,6 +99,7 @@ export class VariableResolver {
 
     return {
       ...engineVariables,
+      TARGET_BRANCH: TARGET_BRANCH_FALLBACK,
       ...resolvedDefaults,
       ...nonEmptyTaskVariables,
     };
