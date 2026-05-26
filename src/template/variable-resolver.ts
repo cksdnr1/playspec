@@ -201,7 +201,9 @@ function getDemandedVariableNames(
   }
 
   for (const name of Object.keys(definition?.variables ?? {})) {
-    demanded.add(name);
+    if (declarations[name]?.required !== false) {
+      demanded.add(name);
+    }
   }
 
   for (const name of definition?.requiredVariables ?? []) {
