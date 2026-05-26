@@ -626,6 +626,34 @@ describe('Phase 2 completion engine', () => {
     expect(changedFiles.split('\n')).not.toContain('src/new-name.ts');
   });
 
+  it('preserves non-renamed paths containing the rename delimiter in changed-files evidence', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'source -> target.md'),
+      'literal delimiter path\n'
+    );
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.collectEvidence(taskId);
+
+    const changedFiles = await readFile(
+      path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        taskId,
+        'evidence',
+        'phase1_manual_changed_files.txt'
+      ),
+      'utf-8'
+    );
+
+    expect(changedFiles.split('\n')).toContain('docs/source -> target.md');
+    expect(changedFiles.split('\n')).not.toContain('docs/source');
+    expect(changedFiles.split('\n')).not.toContain('target.md');
+  });
+
   it('marks the task completed on the final workflow phase', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     await store.updateTask(taskId, { currentPhase: '5' });
