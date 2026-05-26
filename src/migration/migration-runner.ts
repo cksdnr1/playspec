@@ -2,7 +2,7 @@ import path from 'node:path';
 import * as readline from 'node:readline';
 import { stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
-import { PlaySpecError } from '#core/errors.js';
+import { PlaySpecError, TaskNotActiveError } from '#core/errors.js';
 import type { TaskRecord, TaskContextRef } from '#core/types.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
@@ -49,6 +49,11 @@ export class AutoModeConfidenceError extends PlaySpecError {
 
 // Whitelisted task fields for update_task_state
 const ALLOWED_TASK_FIELDS = new Set(['title', 'currentPhase', 'target']);
+const TASK_MUTATION_ACTION_TYPES = new Set<MigrationAction['type']>([
+  'update_task_state',
+  'add_context_ref',
+  'remove_context_ref',
+]);
 
 export interface MigrationRunnerOptions {
   withArchive?: boolean;
@@ -82,6 +87,8 @@ export class MigrationRunner {
       }
     }
 
+    await this.assertTaskMutationTargetIsActive(plan);
+
     // Persist plan before any mutation
     const planPath = await this.store.savePlan(plan);
 
@@ -112,6 +119,17 @@ export class MigrationRunner {
     const report = this.buildReport(plan, actionReports);
     const reportPath = await this.store.saveReport(report);
     return { planPath, reportPath };
+  }
+
+  private async assertTaskMutationTargetIsActive(plan: MigrationPlan): Promise<void> {
+    if (plan.mode === 'dry-run' || !plan.actions.some(isTaskMutationAction)) {
+      return;
+    }
+
+    const task = await this.taskStore.getTask(plan.targetTaskId);
+    if (task.status !== 'active') {
+      throw new TaskNotActiveError(task.id, task.status);
+    }
   }
 
   private async runAutoAction(
@@ -397,4 +415,8 @@ export class MigrationRunner {
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isTaskMutationAction(action: MigrationAction): boolean {
+  return TASK_MUTATION_ACTION_TYPES.has(action.type);
 }
