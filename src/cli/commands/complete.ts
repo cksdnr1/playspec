@@ -6,7 +6,7 @@ import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
 import { gateResults, phaseDisplayInfo } from '#workflow/phase-display.js';
 import { formatContextHeader } from '../context-header.js';
-import { MissingResultError } from '#core/errors.js';
+import { MissingResultError, TaskNotActiveError } from '#core/errors.js';
 import { outputPrompt } from './prompt.js';
 import { normalizePromptContextMode } from '#core/prompt-metadata.js';
 
@@ -46,6 +46,9 @@ export async function runComplete(
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
+  if (task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
+  }
 
   if (!quiet) {
     console.log(formatContextHeader(task).join('\n'));
