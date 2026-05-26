@@ -39,6 +39,12 @@
 - Intentionally skipped broader parsing changes to `parseNameStatus()` because workspace changed-files evidence is the issue scope.
 - Intentionally left `statusEntryPathList()` unchanged to preserve existing artifact shape.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/252
+- Branch: `agent/issue-251-git-status-paths`
+- Reusable agent guidance: no update needed; existing repository instructions already cover this workflow and scoped implementation boundary.
+
 ## Remaining Risks
 
 - Changed-files evidence remains newline-delimited, so filenames containing literal newlines are still not representable as one unambiguous artifact line. This was out of scope.
