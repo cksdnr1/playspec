@@ -27,6 +27,7 @@
 
 - Before the fix, the new optional phase default test failed with `UnknownVariableDefaultError`, confirming the issue.
 - The repository already had an untracked `docs/issues/scope-create/` directory before this work; it was left untouched.
+- Draft PR: https://github.com/cksdnr1/playspec/pull/234
 
 ## Remaining Risks
 
