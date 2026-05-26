@@ -616,6 +616,35 @@ describe('VariableResolver', () => {
     expect(vars.FUTURE_FILE).toBeUndefined();
   });
 
+  it('does not fail for an unused optional phase default with an unavailable dependency', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'unused-optional-phase-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['FEATURE_SLUG'],
+          variables: {
+            OPTIONAL_REPORT: {
+              required: false,
+              default: 'docs/{{MISSING_KEY}}/report.md',
+            },
+          },
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.OPTIONAL_REPORT).toBeUndefined();
+  });
+
   it('throws a clear error for unknown default references', () => {
     const workflow: WorkflowDefinition = {
       id: 'bad-default',
@@ -629,6 +658,56 @@ describe('VariableResolver', () => {
           title: 'Start',
           template: 'start.md',
           requiredVariables: ['BAD_FILE'],
+        },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      UnknownVariableDefaultError
+    );
+  });
+
+  it('throws a clear error for an unknown optional phase default listed in requiredVariables', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'bad-required-phase-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['OPTIONAL_REPORT'],
+          variables: {
+            OPTIONAL_REPORT: {
+              required: false,
+              default: 'docs/{{MISSING_KEY}}/report.md',
+            },
+          },
+        },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      UnknownVariableDefaultError
+    );
+  });
+
+  it('throws a clear error for an unknown optional phase default listed in outputs', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'bad-output-phase-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          outputs: ['OPTIONAL_REPORT'],
+          variables: {
+            OPTIONAL_REPORT: {
+              required: false,
+              default: 'docs/{{MISSING_KEY}}/report.md',
+            },
+          },
         },
       },
     };
