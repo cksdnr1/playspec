@@ -7,6 +7,10 @@
     "playspec": "dist/cli/index.js",
     "playspec-mcp": "dist/mcp/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "imports": {
     "#core/*.js": "./dist/core/*.js",
     "#storage/*.js": "./dist/storage/*.js",
@@ -22,6 +26,8 @@
   },
   "scripts": {
     "build": "tsc && tsc-alias && mkdir -p dist/preset/assets && cp -R src/preset/assets/. dist/preset/assets",
+    "prepack": "pnpm build",
+    "test:package-artifact": "vitest run tests/integration/package-artifact.test.ts",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },
