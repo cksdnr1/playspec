@@ -174,7 +174,12 @@ function resolveDeclaredDefaults(
         }
       );
     } catch (error) {
-      if (!demanded && error instanceof UnknownVariableDefaultError) {
+      if (
+        !demanded &&
+        chain.length === 0 &&
+        (error instanceof UnknownVariableDefaultError ||
+          error instanceof CircularVariableDefaultError)
+      ) {
         return undefined;
       }
       throw error;
