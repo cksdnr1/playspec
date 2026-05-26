@@ -1,5 +1,6 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
+import { TaskNotActiveError } from '#core/errors.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { formatContextRef, resolveEffectivePhaseDisplay } from '../cli-utils.js';
 
@@ -7,6 +8,9 @@ export async function runCurrentTask(workspaceRoot: string): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask();
+  if (task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
+  }
 
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const eph = await resolveEffectivePhaseDisplay(task, workflowLoader);

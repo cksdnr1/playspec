@@ -1728,6 +1728,39 @@ phases:
     expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual_task)`);
   });
 
+  it('rejects current-task when HEAD points at a completed task', async () => {
+    const taskId = await createActiveTask('Current Task Completed Head Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects deprecated current when HEAD points at a completed task', async () => {
+    const taskId = await createActiveTask('Current Deprecated Completed Head Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['current'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Warning: `playspec current` is deprecated.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
   it('renders a manually linked context file in next prompt variables', async () => {
     const taskId = await createActiveTask('Manual Context Prompt Task', 'mono-spec');
     const contextPath = 'cross_project_cli_import_alias_bug.md';
