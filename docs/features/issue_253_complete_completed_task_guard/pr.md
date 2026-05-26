@@ -25,6 +25,15 @@ Fixes #253
   - Adds explicit completed-task regression coverage for `playspec complete --task <id>`.
   - Asserts the standard error and recovery hint while ensuring stdout does not contain the context header.
 
+## Changed Files
+
+- `src/cli/commands/complete.ts`
+- `tests/cli.test.ts`
+- `docs/features/issue_253_complete_completed_task_guard/spec.md`
+- `docs/features/issue_253_complete_completed_task_guard/plan.md`
+- `docs/features/issue_253_complete_completed_task_guard/result.md`
+- `docs/features/issue_253_complete_completed_task_guard/pr.md`
+
 ## Validation
 
 - `pnpm exec vitest run tests/cli.test.ts -t "complete"`: passed.
