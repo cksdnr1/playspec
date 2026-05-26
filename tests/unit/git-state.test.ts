@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parsePorcelain } from '#core/git-state.js';
+import { parseNameStatusZ, parsePorcelain, parsePorcelainZ } from '#core/git-state.js';
 
 describe('parsePorcelain', () => {
   it('preserves ordinary unquoted paths', () => {
@@ -36,6 +36,41 @@ describe('parsePorcelain', () => {
   it('falls back to the raw token for malformed quoted paths', () => {
     expect(parsePorcelain('?? "docs/unclosed\\tname.md')).toEqual([
       { code: '??', path: '"docs/unclosed\\tname.md' },
+    ]);
+  });
+});
+
+describe('parsePorcelainZ', () => {
+  it('preserves exact untracked paths that Git quotes in text mode', () => {
+    expect(parsePorcelainZ('?? src/quote"file.ts\0')).toEqual([
+      { code: '??', path: 'src/quote"file.ts' },
+    ]);
+  });
+
+  it('preserves exact paths containing tabs and UTF-8 characters', () => {
+    expect(parsePorcelainZ('?? docs/name\twithtab.md\0?? docs/caf\u00e9.md\0')).toEqual([
+      { code: '??', path: 'docs/name\twithtab.md' },
+      { code: '??', path: 'docs/caf\u00e9.md' },
+    ]);
+  });
+
+  it('maps porcelain -z rename destination and source fields to path and originalPath', () => {
+    expect(parsePorcelainZ('R  src/new"file.ts\0src/old"file.ts\0')).toEqual([
+      { code: 'R ', originalPath: 'src/old"file.ts', path: 'src/new"file.ts' },
+    ]);
+  });
+});
+
+describe('parseNameStatusZ', () => {
+  it('preserves exact changed paths that Git quotes in text mode', () => {
+    expect(parseNameStatusZ('M\0src/quote"file.ts\0')).toEqual([
+      { code: 'M', path: 'src/quote"file.ts' },
+    ]);
+  });
+
+  it('maps name-status -z rename source and destination fields', () => {
+    expect(parseNameStatusZ('R100\0src/old"file.ts\0src/new"file.ts\0')).toEqual([
+      { code: 'R100', originalPath: 'src/old"file.ts', path: 'src/new"file.ts' },
     ]);
   });
 });

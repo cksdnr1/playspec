@@ -34,13 +34,13 @@ export class GitState {
     const [head, branchStatus, porcelain] = await Promise.all([
       this.getCurrentHead(),
       this.run(['status', '--short', '--branch', '--untracked-files=all']),
-      this.run(['status', '--porcelain', '--untracked-files=all']),
+      this.run(['status', '--porcelain', '-z', '--untracked-files=all']),
     ]);
 
     return {
       head,
       branchStatus,
-      entries: parsePorcelain(porcelain),
+      entries: parsePorcelainZ(porcelain),
     };
   }
 
@@ -54,8 +54,8 @@ export class GitState {
   }
 
   async listNameStatusSince(baseHead: string): Promise<GitNameStatusEntry[]> {
-    const output = await this.run(['diff', '--name-status', `${baseHead}..HEAD`]);
-    return parseNameStatus(output);
+    const output = await this.run(['diff', '--name-status', '-z', `${baseHead}..HEAD`]);
+    return parseNameStatusZ(output);
   }
 
   async run(args: string[]): Promise<string> {
@@ -207,6 +207,30 @@ export function statusEntryPathList(entries: GitStatusEntry[]): string {
     .join('\n');
 }
 
+export function parsePorcelainZ(output: string): GitStatusEntry[] {
+  const fields = splitNulFields(output);
+  const entries: GitStatusEntry[] = [];
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+    const code = record.slice(0, 2);
+    const path = record.slice(3);
+
+    if (isRenameOrCopyCode(code)) {
+      const originalPath = fields[index + 1];
+      if (originalPath !== undefined) {
+        entries.push({ code, originalPath, path });
+        index += 1;
+        continue;
+      }
+    }
+
+    entries.push({ code, path });
+  }
+
+  return entries;
+}
+
 export function parseNameStatus(output: string): GitNameStatusEntry[] {
   return output
     .split('\n')
@@ -220,4 +244,40 @@ export function parseNameStatus(output: string): GitNameStatusEntry[] {
       }
       return { code, path: parts[1] };
     });
+}
+
+export function parseNameStatusZ(output: string): GitNameStatusEntry[] {
+  const fields = splitNulFields(output);
+  const entries: GitNameStatusEntry[] = [];
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const code = fields[index];
+    const firstPath = fields[index + 1];
+    if (firstPath === undefined) {
+      break;
+    }
+
+    if (isRenameOrCopyCode(code)) {
+      const secondPath = fields[index + 2];
+      if (secondPath === undefined) {
+        break;
+      }
+      entries.push({ code, originalPath: firstPath, path: secondPath });
+      index += 2;
+      continue;
+    }
+
+    entries.push({ code, path: firstPath });
+    index += 1;
+  }
+
+  return entries;
+}
+
+function splitNulFields(output: string): string[] {
+  return output.split('\0').filter((field) => field.length > 0);
+}
+
+function isRenameOrCopyCode(code: string): boolean {
+  return code.startsWith('R') || code.startsWith('C');
 }
