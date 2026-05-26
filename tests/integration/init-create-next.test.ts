@@ -977,6 +977,12 @@ describe('init → create → next (end-to-end)', () => {
     expect(prPrompt).toContain('TARGET_BRANCH=`origin/master`');
     expect(prPrompt).toContain('Current branch diff compared against `origin/master`');
     expect(prPrompt).toContain('PR_FILE=`docs/features/migration_bug_fix/pr.md`');
+    expect(prPrompt).toContain('Do not write a summary-only PR body.');
+    expect(prPrompt).toContain('Why this PR: what triggered the work');
+    expect(prPrompt).toContain('Problem: the specific broken, missing, confusing, or risky behavior');
+    expect(prPrompt).toContain('How it was fixed: code-anchored bullets naming the main files/functions');
+    expect(prPrompt).toContain('Validation: exact commands run and their pass/fail result');
+    expect(prPrompt).toContain('Risks / follow-ups: unresolved risks, intentional non-goals');
     expect(prPrompt).toContain('Update `docs/features/migration_bug_fix/result.md`');
   });
 
@@ -1259,6 +1265,48 @@ phases:
     await expect(core.renderNextPrompt(taskId)).rejects.toThrow(
       MissingRequiredVariablesError
     );
+  });
+
+  it('renders a required TARGET_BRANCH from a workflow declaration default', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'workflow.yaml'),
+      `id: multi-spec
+builtinShadow:
+  accepted: true
+mode: linear
+phaseOrder:
+  - "1"
+variables:
+  TARGET_BRANCH:
+    default: origin/main
+phases:
+  "1":
+    title: "Phase 1"
+    template: phase_template.md
+    requiredVariables:
+      - TARGET_BRANCH
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'multi-spec', 'templates', 'phase_template.md'),
+      'Target: {{TARGET_BRANCH}}\n'
+    );
+
+    const taskId = slugify('Target Branch Default Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Target Branch Default Task',
+      workflow: 'multi-spec',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const prompt = await core.renderNextPrompt(taskId);
+
+    expect(prompt).toContain('Target: origin/main');
   });
 
   it('reports a missing required variable referenced indirectly by a default', async () => {

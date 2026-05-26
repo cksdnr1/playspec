@@ -88,6 +88,69 @@ phases:
       nextByResult:
         approved: implementation_plan_create
         needs_revision: tech_spec_patch
+    feedback:
+      enabled: true
+      kind: prompt_evolution_signal
+      feedbackThreshold: 90
+      thresholdMode: greater_or_equal
+      required: true
+      onFailure: record_failure
+      sourcePhaseId: tech_spec_validate
+      evaluatedArtifactPhaseId: tech_spec_draft
+      evolutionTargetPhaseId: tech_spec_draft
+      scoreSource:
+        artifactRole: prompt_snapshot
+        preferredBlock: playspecFeedback
+        markdownFallback: true
+      approval:
+        threshold: 95
+        resultSource: completion_result
+      causeClassification:
+        required: true
+        allowed:
+          - artifact_quality_issue
+          - authoring_prompt_gap
+          - validation_prompt_gap
+          - workflow_policy_gap
+          - extractor_or_parser_error
+      targetPromptSnapshot:
+        required: true
+        hashAlgorithm: sha256
+      dedupe:
+        enabled: true
+        fields:
+          - targetType
+          - targetGuidanceSection
+          - causeCategory
+          - suspectedCause
+          - suggestedChangeFingerprint
+      evolution:
+        mode: thread_only
+        storageMode: thread_with_compact_history
+        targetFiles:
+          - tech_spec_draft.md
+      workflowSource:
+        kind: bundled_preset
+        root: src/preset/assets/workflows/mono-spec
+        rootPathKind: package_relative
+        packageName: playspec
+        presetId: default
+        version: 1
+      targetPromptTemplate:
+        path: tech_spec_draft.md
+        pathKind: workflow_relative
+        writable: false
+      compactHistoryPolicy:
+        maxEntries: 20
+        keepFirst: true
+        keepLatest: 10
+        summarizeOverflow: true
+      proposalReadinessPolicy:
+        mode: manual_only_initial
+        minRunCount: 3
+        minNegativeCount: 2
+        minConfidence: medium
+        requireHumanReviewBeforeProposal: true
   tech_spec_patch:
     title: "기술 명세서 업데이트"
     stepNumber: "3"
@@ -132,6 +195,69 @@ phases:
       nextByResult:
         approved: implementation
         needs_revision: implementation_plan_patch
+    feedback:
+      enabled: true
+      kind: prompt_evolution_signal
+      feedbackThreshold: 90
+      thresholdMode: greater_or_equal
+      required: true
+      onFailure: record_failure
+      sourcePhaseId: implementation_plan_validate
+      evaluatedArtifactPhaseId: implementation_plan_create
+      evolutionTargetPhaseId: implementation_plan_create
+      scoreSource:
+        artifactRole: prompt_snapshot
+        preferredBlock: playspecFeedback
+        markdownFallback: true
+      approval:
+        threshold: 95
+        resultSource: completion_result
+      causeClassification:
+        required: true
+        allowed:
+          - artifact_quality_issue
+          - authoring_prompt_gap
+          - validation_prompt_gap
+          - workflow_policy_gap
+          - extractor_or_parser_error
+      targetPromptSnapshot:
+        required: true
+        hashAlgorithm: sha256
+      dedupe:
+        enabled: true
+        fields:
+          - targetType
+          - targetGuidanceSection
+          - causeCategory
+          - suspectedCause
+          - suggestedChangeFingerprint
+      evolution:
+        mode: thread_only
+        storageMode: thread_with_compact_history
+        targetFiles:
+          - implementation_plan_create.md
+      workflowSource:
+        kind: bundled_preset
+        root: src/preset/assets/workflows/mono-spec
+        rootPathKind: package_relative
+        packageName: playspec
+        presetId: default
+        version: 1
+      targetPromptTemplate:
+        path: implementation_plan_create.md
+        pathKind: workflow_relative
+        writable: false
+      compactHistoryPolicy:
+        maxEntries: 20
+        keepFirst: true
+        keepLatest: 10
+        summarizeOverflow: true
+      proposalReadinessPolicy:
+        mode: manual_only_initial
+        minRunCount: 3
+        minNegativeCount: 2
+        minConfidence: medium
+        requireHumanReviewBeforeProposal: true
   implementation_plan_patch:
     title: "구현 계획서 업데이트"
     stepNumber: "6"

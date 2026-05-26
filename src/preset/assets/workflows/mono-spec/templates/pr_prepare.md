@@ -17,6 +17,7 @@ Variables:
 
 Source of truth:
 - Current branch diff compared against `{{TARGET_BRANCH}}`.
+- `{{SPEC_FILE}}`
 - `{{PLAN_FILE}}`
 - `{{RESULT_FILE}}`
 
@@ -25,10 +26,20 @@ Scope rules:
 - Keep PR text reviewer-friendly and code-anchored.
 - Do not hide unresolved risks or skipped tests.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
-- Confirm the PR summary reflects active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior.
+- Do not write a summary-only PR body.
+- Make the motivation, problem, fix, validation, and residual risk clear enough that a reviewer can understand the PR at a glance.
+- Confirm the implementation summary reflects active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior.
+- If the diff does not support one of those chain links, call that out in risks/limitations instead of implying it is complete.
 
 Output requirements:
-- Write `{{PR_FILE}}`.
+- Write `{{PR_FILE}}` as the PR body source.
+- Use this PR body structure:
+  - Summary: 2-4 bullets with the concrete user-visible or reviewer-visible outcome.
+  - Why this PR: what triggered the work, the failing behavior or workflow gap, and why it matters now.
+  - Problem: the specific broken, missing, confusing, or risky behavior before this change.
+  - How it was fixed: code-anchored bullets naming the main files/functions and the behavioral path changed.
+  - Validation: exact commands run and their pass/fail result; include skipped or unavailable checks.
+  - Risks / follow-ups: unresolved risks, intentional non-goals, rollout notes, or `None`.
 - Update `{{RESULT_FILE}}` with final implementation notes, commands run, PR link, and any limitations.
 - State whether reusable agent guidance should be documented.
 - Push the branch, create the PR, then return to master.

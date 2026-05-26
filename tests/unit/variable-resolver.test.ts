@@ -136,6 +136,74 @@ describe('VariableResolver', () => {
     expect(vars.WORKFLOW_TYPE).toBe('multi-spec');
   });
 
+  it('does not allow task variables to override reserved engine metadata', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      id: 'actual_task',
+      title: 'Actual Task',
+      workflow: 'mono-spec',
+      variables: {
+        ...baseTask.variables,
+        TASK_ID: 'spoofed_task',
+        TASK_TITLE: 'Spoofed Task',
+        WORKFLOW_TYPE: 'spoofed-workflow',
+        PHASE_NUMBER: '99',
+        STEP_NUMBER: '98',
+        STEP_ID: 'wrong_step',
+        STEP_TITLE: 'Wrong Step',
+      },
+    };
+
+    const vars = resolver.resolve(
+      task,
+      'tech_spec_patch',
+      monoWorkflow,
+      monoWorkflow.phases.tech_spec_patch
+    );
+
+    expect(vars.TASK_ID).toBe('actual_task');
+    expect(vars.TASK_TITLE).toBe('Actual Task');
+    expect(vars.WORKFLOW_TYPE).toBe('mono-spec');
+    expect(vars.PHASE_NUMBER).toBe('3');
+    expect(vars.STEP_NUMBER).toBe('3');
+    expect(vars.STEP_ID).toBe('tech_spec_patch');
+    expect(vars.STEP_TITLE).toBe('기술 명세서 업데이트');
+  });
+
+  it('resolves defaults from derived reserved metadata instead of spoofed task variables', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'reserved-defaults',
+      mode: 'linear',
+      phaseOrder: ['review'],
+      variables: {
+        PHASE_REPORT: { default: 'reports/phase-{{PHASE_NUMBER}}/{{STEP_ID}}.md' },
+        NORMAL_OVERRIDE: { default: 'default-value' },
+      },
+      phases: {
+        review: {
+          title: 'Review',
+          stepNumber: '4',
+          stepTitle: 'Review Step',
+          template: 'review.md',
+        },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        PHASE_NUMBER: '99',
+        STEP_ID: 'spoofed',
+        NORMAL_OVERRIDE: 'task-value',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'review', workflow, workflow.phases.review);
+
+    expect(vars.PHASE_REPORT).toBe('reports/phase-4/review.md');
+    expect(vars.NORMAL_OVERRIDE).toBe('task-value');
+  });
+
   it('derives PHASE_SPEC_FILE correctly', () => {
     const vars = resolver.resolve(baseTask, '3', multiWorkflow, multiWorkflow.phases['3']);
     expect(vars.PHASE_SPEC_FILE).toBe(
@@ -171,6 +239,60 @@ describe('VariableResolver', () => {
     expect(vars.IMPLEMENTATION_RESULT_FILE).toBe('docs/features/feature_name/result.md');
     expect(vars.TEST_RESULT_FILE).toBe('docs/features/feature_name/result.md');
     expect(vars.PR_BODY_FILE).toBe('docs/features/feature_name/pr.md');
+  });
+
+  it('uses workflow TARGET_BRANCH defaults before the resolver fallback', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'custom-target-branch',
+      mode: 'linear',
+      phaseOrder: ['review'],
+      variables: {
+        TARGET_BRANCH: { default: 'origin/main' },
+      },
+      phases: {
+        review: {
+          title: 'Review',
+          template: 'review.md',
+          requiredVariables: ['TARGET_BRANCH'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'review', workflow, workflow.phases.review);
+
+    expect(vars.TARGET_BRANCH).toBe('origin/main');
+  });
+
+  it('keeps explicit non-empty task TARGET_BRANCH above declaration defaults', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'task-target-branch',
+      mode: 'linear',
+      phaseOrder: ['review'],
+      variables: {
+        TARGET_BRANCH: { default: 'origin/main' },
+      },
+      phases: {
+        review: {
+          title: 'Review',
+          template: 'review.md',
+          requiredVariables: ['TARGET_BRANCH'],
+          variables: {
+            TARGET_BRANCH: { default: 'upstream/trunk' },
+          },
+        },
+      },
+    };
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        ...baseTask.variables,
+        TARGET_BRANCH: 'fork/release',
+      },
+    };
+
+    const vars = resolver.resolve(task, 'review', workflow, workflow.phases.review);
+
+    expect(vars.TARGET_BRANCH).toBe('fork/release');
   });
 
   it('resolves non-mono path variables from workflow declarations', () => {

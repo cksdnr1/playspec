@@ -347,6 +347,79 @@ review:
 `;
 }
 
+function feedbackThreadYaml(id = 'feedback_thread_cli'): string {
+  return `id: ${id}
+createdAt: 2026-05-25T00:00:00.000Z
+updatedAt: 2026-05-25T00:00:01.000Z
+dedupeKey:
+  version: 1
+  workflowId: mono-spec
+  feedbackKind: prompt_evolution_signal
+  sourcePhaseId: tech_spec_validate
+  evaluatedArtifactPhaseId: tech_spec_draft
+  evolutionTargetPhaseId: tech_spec_draft
+  causeCategory: authoring_prompt_gap
+  fields:
+    artifactRole: spec
+dedupeKeyHash: ${'c'.repeat(64)}
+sourcePhaseId: tech_spec_validate
+evaluatedArtifactPhaseId: tech_spec_draft
+evolutionTargetPhaseId: tech_spec_draft
+workflowSource:
+  kind: project_local
+  root: .playspec/workflows/mono-spec
+  rootPathKind: workspace_relative
+targetPromptTemplate:
+  path: tech_spec_draft.md
+  pathKind: workflow_relative
+  writable: true
+targetWritable: true
+targetPath: .playspec/workflows/mono-spec/templates/tech_spec_draft.md
+compactHistoryPolicy:
+  maxEntries: 3
+  keepFirst: true
+  keepLatest: 2
+  summarizeOverflow: true
+proposalReadinessPolicy:
+  mode: manual_only_initial
+  minRunCount: 2
+  minNegativeCount: 1
+  minConfidence: medium
+  requireHumanReviewBeforeProposal: true
+mutationStrategy: manual_review_only
+trend:
+  totalEvents: 1
+  positiveCount: 0
+  negativeCount: 1
+  neutralCount: 0
+  parseFailureCount: 0
+  direction: declining
+  confidence: medium
+  readinessState: ready_for_review
+  lastEventAt: 2026-05-25T00:00:01.000Z
+events:
+  - eventId: event_cli_1
+    taskId: task_cli
+    phaseId: tech_spec_validate
+    createdAt: 2026-05-25T00:00:01.000Z
+    approvalResult: needs_revision
+    feedbackResult: negative
+    score: 72
+    causeClassification:
+      selected: authoring_prompt_gap
+      confidence: medium
+    summary: CLI validation feedback summary.
+    promptSnapshot:
+      algorithm: sha256
+      hash: ${'d'.repeat(64)}
+      renderedByteLength: 120
+      targetPhaseId: tech_spec_draft
+      templatePath: tech_spec_draft.md
+      templatePathKind: workflow_relative
+      createdAt: 2026-05-25T00:00:01.000Z
+`;
+}
+
 describe('CLI placeholder', () => {
   it('formats prompt copy success with PRIMARY status when known', () => {
     expect(formatPromptCopySuccess({ method: 'native clipboard', primaryOk: true })).toEqual([
@@ -432,6 +505,57 @@ describe('CLI placeholder', () => {
     expect(result.stdout).toContain('No source documents found.');
   });
 
+  it('rejects migrate --plan task mutations for completed tasks before changing task YAML', async () => {
+    const taskId = await createActiveTask('Migrate Completed Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planPath = path.join(workspace.dir, 'completed-migration-plan.yaml');
+    await writeTextFile(
+      planPath,
+      `id: migration_completed_guard
+createdAt: 2026-05-25T00:00:00.000Z
+mode: dry-run
+sourceRoot: docs
+targetTaskId: ${taskId}
+sourceFiles:
+  - docs/total_spec.md
+targetFiles:
+  - .playspec/tasks/active/${taskId}/task.yaml
+actions:
+  - actionId: action_001
+    type: add_context_ref
+    targetPath: .playspec/tasks/active/${taskId}/task.yaml
+    sourcePaths:
+      - docs/total_spec.md
+    reason: Add total spec as context
+    evidence: External plan proposes a task context mutation
+    riskLevel: medium
+    preview: "+ contextRefs"
+    backupRequired: true
+    requiresReview: false
+    contextRef:
+      path: docs/total_spec.md
+      role: planning-context
+      source: migration_completed_guard
+statePromotions: []
+riskLevel: medium
+requiresReview: false
+summary: 1 action proposed
+warnings: []
+`
+    );
+
+    const result = await runCli(['migrate', '--task', taskId, '--plan', planPath, '--mode', 'auto'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+  });
+
   it('registers the Phase 7 harness command surface', async () => {
     const result = await runCli(['harness', '--help'], workspace.dir);
     const output = result.stdout + result.stderr;
@@ -479,6 +603,7 @@ describe('CLI placeholder', () => {
     expect(output).toContain('show');
     expect(output).toContain('update');
     expect(output).toContain('append-evidence');
+    expect(output).toContain('append-thread-evidence');
     expect(output).toContain('skip');
     expect(output).toContain('diff');
     expect(output).toContain('apply');
@@ -850,6 +975,53 @@ describe('CLI placeholder', () => {
     ))).resolves.toBeUndefined();
     expect(shown.stdout).toContain('Evidence:     1');
     expect(shown.stdout).toContain('docs/evidence/review.md | append-evidence | Review evidence added.');
+  });
+
+  it('appends feedback thread evidence to an explicit proposal from the CLI', async () => {
+    const proposalPath = path.join(workspace.dir, 'proposal.yaml');
+    const threadPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'feedback',
+      'threads',
+      'feedback_thread_cli.yaml'
+    );
+    await writeTextFile(proposalPath, proposalYaml('proposal_cli_thread'));
+    await writeTextFile(threadPath, feedbackThreadYaml());
+    await runCli(['evolution', 'propose', '--file', proposalPath], workspace.dir);
+
+    const appended = await runCli([
+      'evolution',
+      'append-thread-evidence',
+      'proposal_cli_thread',
+      'feedback_thread_cli',
+    ], workspace.dir);
+
+    expect(appended.exitCode).toBe(0);
+    expect(appended.stdout).toContain('Thread evidence appended: proposal_cli_thread');
+    expect(appended.stdout).toContain('Revision: 2');
+    expect(appended.stdout).toContain('Thread ID: feedback_thread_cli');
+    expect(appended.stdout).toContain('Evidence file: .playspec/evolution/feedback/threads/feedback_thread_cli.yaml');
+    expect(appended.stdout).toContain('Feedback thread feedback_thread_cli for tech_spec_validate -> tech_spec_draft.');
+
+    const storedProposal = parseYaml(await readTextFile(path.join(
+      workspace.dir,
+      '.playspec',
+      'evolution',
+      'proposals',
+      'proposal_cli_thread',
+      'proposal.yaml'
+    ))) as {
+      evidenceRefs: { path: string; note: string; source: string }[];
+    };
+    expect(storedProposal.evidenceRefs).toEqual([
+      expect.objectContaining({
+        path: '.playspec/evolution/feedback/threads/feedback_thread_cli.yaml',
+        source: 'append-evidence',
+      }),
+    ]);
+    expect(storedProposal.evidenceRefs[0]?.note).toContain('CLI validation feedback summary.');
   });
 
   it('rejects CLI update and evidence append for skipped proposals', async () => {
@@ -1730,19 +1902,25 @@ phases:
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${firstTaskId}\n`);
   });
 
-  it('rejects specs --task for completed tasks before printing relevant file paths', async () => {
-    const taskId = await createActiveTask('Specs Explicit Completed Task', 'mono-spec');
-    const specPath = `docs/features/${taskId}/spec.md`;
-    await writeTextFile(path.join(workspace.dir, specPath), '# Completed Spec\n');
-    await new YamlTaskStore(workspace.dir).updateTask(taskId, { status: 'completed' });
+  it('rejects specs --task for completed tasks before listing relevant files', async () => {
+    await createActiveTask('Specs Completed Guard Active Task', 'mono-spec');
+    const completedTaskId = await createAdditionalActiveTask('Specs Completed Guard Done Task', 'mono-spec');
+    const completedSpec = `docs/features/${completedTaskId}/spec.md`;
+    await writeTextFile(path.join(workspace.dir, completedSpec), '# Completed Spec\n');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
 
-    const result = await runCli(['specs', '--task', taskId, '--path-only'], workspace.dir, {
+    const result = await runCli(['specs', '--task', completedTaskId, '--path-only'], workspace.dir, {
       env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(`Task "${taskId}" is not active`);
-    expect(result.stdout).not.toContain(specPath);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(result.stdout).not.toContain(completedSpec);
   });
 
   it('reports missing specs paths on stderr while keeping --path-only stdout script-safe', async () => {

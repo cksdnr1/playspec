@@ -2,6 +2,25 @@ export type EvolutionProposalStatus = 'pending' | 'refining' | 'skipped' | 'appl
 export type EvolutionRiskLevel = 'low' | 'medium' | 'high';
 export type EvolutionReviewStatus = 'unreviewed' | 'needs_review' | 'reviewed';
 export type HumanEditObservationStatus = 'recorded' | 'ignored' | 'superseded';
+export type FeedbackApprovalResult = 'approved' | 'needs_revision' | 'failed' | 'skipped';
+export type FeedbackSignalResult = 'positive' | 'negative' | 'neutral' | 'parse_failed';
+export type FeedbackCauseCategory =
+  | 'artifact_quality_issue'
+  | 'authoring_prompt_gap'
+  | 'validation_prompt_gap'
+  | 'workflow_policy_gap'
+  | 'extractor_or_parser_error';
+export type FeedbackConfidence = 'low' | 'medium' | 'high';
+export type FeedbackTrendDirection = 'improving' | 'declining' | 'stable' | 'unknown';
+export type FeedbackProposalReadinessState = 'not_ready' | 'ready_for_review' | 'proposal_candidate';
+export type FeedbackMutationStrategy = 'manual_review_only';
+export type FeedbackPathKind =
+  | 'workspace_relative'
+  | 'workflow_relative'
+  | 'user_home_relative'
+  | 'package_relative';
+export type ValidationFeedbackExtractionMethod = 'machine_readable_block' | 'markdown_fallback';
+export type ValidationFeedbackPromptTargetType = 'workflow_prompt_template';
 
 export interface EvolutionArtifactReference {
   path: string;
@@ -191,6 +210,213 @@ export interface HumanEditObservation {
   beforeRef?: string;
   afterRef?: string;
   statusReason?: string;
+}
+
+export interface FeedbackWorkflowSource {
+  kind: 'project_local' | 'user_global' | 'bundled_preset' | 'external';
+  root: string;
+  rootPathKind: FeedbackPathKind;
+  packageName?: string;
+  presetId?: string;
+  version?: string | number;
+}
+
+export interface FeedbackTargetPromptTemplate {
+  path: string;
+  pathKind: FeedbackPathKind;
+  writable: boolean;
+}
+
+export interface FeedbackPromptSnapshot {
+  algorithm: 'sha256';
+  hash: string;
+  renderedByteLength: number;
+  targetPhaseId: string;
+  templatePath: string;
+  templatePathKind: FeedbackPathKind;
+  createdAt: string;
+  workflowVersion?: string | number;
+}
+
+export interface FeedbackDedupeKey {
+  version: 1;
+  workflowId: string;
+  feedbackKind: 'prompt_evolution_signal';
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  causeCategory: FeedbackCauseCategory;
+  fields: Record<string, string>;
+}
+
+export interface FeedbackHistoryOverflowSummary {
+  omittedEventCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  parseFailureCount: number;
+  firstOmittedAt?: string;
+  lastOmittedAt?: string;
+}
+
+export interface FeedbackCompactHistoryPolicy {
+  maxEntries: number;
+  keepFirst: boolean;
+  keepLatest: number;
+  summarizeOverflow: boolean;
+}
+
+export interface FeedbackProposalReadinessPolicy {
+  mode: 'manual_only_initial';
+  minRunCount: number;
+  minNegativeCount: number;
+  minConfidence: FeedbackConfidence;
+  requireHumanReviewBeforeProposal: boolean;
+}
+
+export interface FeedbackCauseClassification {
+  selected: FeedbackCauseCategory;
+  confidence: FeedbackConfidence;
+  summary?: string;
+}
+
+export interface ValidationFeedbackPromptEvolution {
+  targetType: ValidationFeedbackPromptTargetType;
+  guidance?: string;
+}
+
+export interface ValidationFeedbackThresholdResult {
+  threshold: number;
+}
+
+export interface ValidationFeedbackExtractionInput {
+  task: import('#core/types.js').TaskRecord;
+  workflow: import('#core/types.js').ResolvedWorkflow;
+  feedbackConfig: import('#core/types.js').PhaseFeedbackConfig;
+  phaseId: string;
+  artifactContent: string;
+  artifactPath?: string;
+  completionResult?: FeedbackApprovalResult;
+  createdAt?: string;
+}
+
+export interface ValidationFeedbackExtraction {
+  method: ValidationFeedbackExtractionMethod;
+  confidence: FeedbackConfidence;
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  score?: number;
+  approval: ValidationFeedbackThresholdResult & { result: FeedbackApprovalResult };
+  feedback: ValidationFeedbackThresholdResult & { result: FeedbackSignalResult };
+  causeClassification: FeedbackCauseClassification;
+  promptEvolution: ValidationFeedbackPromptEvolution;
+  workflowSource: FeedbackWorkflowSource;
+  targetPromptTemplate: FeedbackTargetPromptTemplate;
+  targetWritable: boolean;
+  targetPath: string;
+  summary: string;
+  rawObservationRef?: string;
+  dedupeFieldValues?: Record<string, string>;
+}
+
+export interface FeedbackThreadEvent {
+  eventId: string;
+  taskId: string;
+  phaseId: string;
+  createdAt: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  score?: number;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  promptSnapshot: FeedbackPromptSnapshot;
+  rawObservationRef?: string;
+}
+
+export interface FeedbackTrendState {
+  totalEvents: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  parseFailureCount: number;
+  direction: FeedbackTrendDirection;
+  confidence: FeedbackConfidence;
+  readinessState: FeedbackProposalReadinessState;
+  lastEventAt?: string;
+}
+
+export interface FeedbackThread {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  dedupeKey: FeedbackDedupeKey;
+  dedupeKeyHash: string;
+  sourcePhaseId: string;
+  evaluatedArtifactPhaseId: string;
+  evolutionTargetPhaseId: string;
+  workflowSource: FeedbackWorkflowSource;
+  targetPromptTemplate: FeedbackTargetPromptTemplate;
+  targetWritable: boolean;
+  targetPath: string;
+  compactHistoryPolicy: FeedbackCompactHistoryPolicy;
+  proposalReadinessPolicy: FeedbackProposalReadinessPolicy;
+  mutationStrategy: FeedbackMutationStrategy;
+  trend: FeedbackTrendState;
+  events: FeedbackThreadEvent[];
+  historyOverflowSummary?: FeedbackHistoryOverflowSummary;
+}
+
+export interface FeedbackRawObservationEvent {
+  id: string;
+  threadId: string;
+  taskId: string;
+  phaseId: string;
+  createdAt: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  score?: number;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  raw?: unknown;
+}
+
+export interface FeedbackThreadUpdateInput {
+  task: import('#core/types.js').TaskRecord;
+  workflow: import('#core/types.js').ResolvedWorkflow;
+  feedbackConfig: import('#core/types.js').PhaseFeedbackConfig;
+  evolutionTargetPhaseId?: string;
+  phaseId: string;
+  approvalResult: FeedbackApprovalResult;
+  feedbackResult: FeedbackSignalResult;
+  causeClassification: FeedbackCauseClassification;
+  summary: string;
+  score?: number;
+  rawObservationRef?: string;
+  createdAt?: string;
+  dedupeFieldValues?: Record<string, string>;
+}
+
+export interface FeedbackThreadUpdateResult {
+  thread: FeedbackThread;
+  threadPath: string;
+  created: boolean;
+}
+
+export interface AppendFeedbackThreadEvidenceInput {
+  proposalId: string;
+  threadId: string;
+}
+
+export interface AppendFeedbackThreadEvidenceResult {
+  proposal: EvolutionProposal;
+  proposalPath: string;
+  validationPath: string;
+  revisionPath: string;
+  threadId: string;
+  threadPath: string;
+  evidencePath: string;
+  evidenceNote: string;
 }
 
 export type EvolutionContextGenerationSource = 'prompt' | 'next' | 'complete' | 'mcp';

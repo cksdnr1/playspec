@@ -34,6 +34,15 @@ By default, each task writes reports below a task-specific directory:
 - `docs/issues/scope-create/{{TASK_ID}}/candidate_issues.md`
 - `docs/issues/scope-create/{{TASK_ID}}/created_issues.md`
 
+Artifact path variables:
+
+- `OUTPUT_DIR`: report directory. Defaults to `docs/issues/scope-create/{{TASK_ID}}`.
+- `DISCOVERY_FILE`: discovery report path. Defaults to `{{OUTPUT_DIR}}/discovery.md`.
+- `CANDIDATE_ISSUES_FILE`: candidate issue draft report path. Defaults to `{{OUTPUT_DIR}}/candidate_issues.md`.
+- `CREATED_ISSUES_FILE`: final created issue report path. Defaults to `{{OUTPUT_DIR}}/created_issues.md`.
+
+These files are workflow report artifacts, not implementation edits to the target repository. The creation phase may write the declared report artifacts while still prohibiting code changes, branches, commits, and pull requests in the target repository.
+
 This keeps repeated scoped discovery runs from overwriting earlier reports in the same checkout. If automation needs a stable shared location, pass `OUTPUT_DIR` explicitly. If individual files need custom names or locations, pass `DISCOVERY_FILE`, `CANDIDATE_ISSUES_FILE`, or `CREATED_ISSUES_FILE` explicitly.
 
 ## Run Example

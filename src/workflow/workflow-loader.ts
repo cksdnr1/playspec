@@ -166,11 +166,33 @@ export class WorkflowLoader {
       if (!phase) {
         throw new Error(`Workflow ${definition.id} phaseOrder references missing phase "${phaseId}".`);
       }
+      this.validateFeedbackPhaseReferences(definition, phaseId);
       const templatePath = this.resolveTemplatePath(templateDir, phase.template);
       try {
         await access(templatePath);
       } catch {
         throw new TemplateNotFoundError(templatePath);
+      }
+    }
+  }
+
+  private validateFeedbackPhaseReferences(definition: WorkflowDefinition, phaseId: string): void {
+    const feedback = definition.phases[phaseId]?.feedback;
+    if (!feedback) {
+      return;
+    }
+
+    const references = [
+      ['sourcePhaseId', feedback.sourcePhaseId],
+      ['evaluatedArtifactPhaseId', feedback.evaluatedArtifactPhaseId],
+      ['evolutionTargetPhaseId', feedback.evolutionTargetPhaseId],
+    ] as const;
+
+    for (const [field, referencedPhaseId] of references) {
+      if (!definition.phases[referencedPhaseId]) {
+        throw new Error(
+          `Workflow ${definition.id} phase "${phaseId}" feedback.${field} references missing phase "${referencedPhaseId}".`
+        );
       }
     }
   }

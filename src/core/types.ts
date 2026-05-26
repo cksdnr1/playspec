@@ -127,6 +127,113 @@ export interface PhaseDefinition {
   nextByResult?: Record<string, PhaseId>;
   eventTypes?: Record<string, string>;
   maxVisits?: number;
+  feedback?: PhaseFeedbackConfig;
+}
+
+export type PhaseFeedbackKind = 'prompt_evolution_signal';
+export type PhaseFeedbackThresholdMode = 'greater_or_equal';
+export type PhaseFeedbackFailurePolicy = 'fail_completion' | 'warn_and_continue' | 'record_failure';
+export type PhaseFeedbackApprovalResultSource = 'completion_result';
+export type PhaseFeedbackCauseCategory =
+  | 'artifact_quality_issue'
+  | 'authoring_prompt_gap'
+  | 'validation_prompt_gap'
+  | 'workflow_policy_gap'
+  | 'extractor_or_parser_error';
+export type PhaseFeedbackHashAlgorithm = 'sha256';
+export type PhaseFeedbackEvolutionMode = 'thread_only';
+export type PhaseFeedbackStorageMode = 'thread_with_compact_history';
+export type PhaseFeedbackWorkflowSourceKind = 'project_local' | 'user_global' | 'bundled_preset' | 'external';
+export type PhaseFeedbackPathKind =
+  | 'workspace_relative'
+  | 'workflow_relative'
+  | 'user_home_relative'
+  | 'package_relative';
+export type PhaseFeedbackProposalReadinessMode = 'manual_only_initial';
+export type PhaseFeedbackConfidence = 'low' | 'medium' | 'high';
+
+export interface PhaseFeedbackConfig {
+  enabled: boolean;
+  kind: PhaseFeedbackKind;
+  feedbackThreshold: number;
+  thresholdMode: PhaseFeedbackThresholdMode;
+  required: boolean;
+  onFailure: PhaseFeedbackFailurePolicy;
+  sourcePhaseId: PhaseId;
+  evaluatedArtifactPhaseId: PhaseId;
+  evolutionTargetPhaseId: PhaseId;
+  scoreSource: PhaseFeedbackScoreSource;
+  approval: PhaseFeedbackApproval;
+  causeClassification: PhaseFeedbackCauseClassification;
+  targetPromptSnapshot: PhaseFeedbackTargetPromptSnapshot;
+  dedupe: PhaseFeedbackDedupe;
+  evolution: PhaseFeedbackEvolution;
+  workflowSource: PhaseFeedbackWorkflowSource;
+  targetPromptTemplate: PhaseFeedbackTargetPromptTemplate;
+  compactHistoryPolicy: PhaseFeedbackCompactHistoryPolicy;
+  proposalReadinessPolicy: PhaseFeedbackProposalReadinessPolicy;
+}
+
+export interface PhaseFeedbackScoreSource {
+  artifactRole: string;
+  preferredBlock?: string;
+  markdownFallback: boolean;
+}
+
+export interface PhaseFeedbackApproval {
+  threshold: number;
+  resultSource: PhaseFeedbackApprovalResultSource;
+}
+
+export interface PhaseFeedbackCauseClassification {
+  required: boolean;
+  allowed: PhaseFeedbackCauseCategory[];
+}
+
+export interface PhaseFeedbackTargetPromptSnapshot {
+  required: boolean;
+  hashAlgorithm: PhaseFeedbackHashAlgorithm;
+}
+
+export interface PhaseFeedbackDedupe {
+  enabled: boolean;
+  fields: string[];
+}
+
+export interface PhaseFeedbackEvolution {
+  mode: PhaseFeedbackEvolutionMode;
+  storageMode: PhaseFeedbackStorageMode;
+  targetFiles: string[];
+}
+
+export interface PhaseFeedbackWorkflowSource {
+  kind: PhaseFeedbackWorkflowSourceKind;
+  root: string;
+  rootPathKind: PhaseFeedbackPathKind;
+  packageName?: string;
+  presetId?: string;
+  version?: string | number;
+}
+
+export interface PhaseFeedbackTargetPromptTemplate {
+  path: string;
+  pathKind: PhaseFeedbackPathKind;
+  writable: boolean;
+}
+
+export interface PhaseFeedbackCompactHistoryPolicy {
+  maxEntries: number;
+  keepFirst: boolean;
+  keepLatest: number;
+  summarizeOverflow: boolean;
+}
+
+export interface PhaseFeedbackProposalReadinessPolicy {
+  mode: PhaseFeedbackProposalReadinessMode;
+  minRunCount: number;
+  minNegativeCount: number;
+  minConfidence: PhaseFeedbackConfidence;
+  requireHumanReviewBeforeProposal: boolean;
 }
 
 export interface WorkflowDefinition {
@@ -285,6 +392,30 @@ export interface CompletePhaseOptions {
   contextMode?: PromptContextMode;
 }
 
+export type CompletionFeedbackPolicy = PhaseFeedbackFailurePolicy;
+export type CompletionFeedbackFailureStage = 'missing_artifact' | 'extraction' | 'thread_update';
+
+export interface CompletionFeedbackSuccess {
+  status: 'captured';
+  threadId: string;
+  threadPath: string;
+  created: boolean;
+  approvalResult: string;
+  feedbackResult: string;
+  dedupeKeyHash: string;
+  score?: number;
+}
+
+export interface CompletionFeedbackFailure {
+  status: 'failed';
+  policy: CompletionFeedbackPolicy;
+  stage: CompletionFeedbackFailureStage;
+  message: string;
+  feedbackResult: 'parse_failed';
+}
+
+export type CompletionFeedbackResult = CompletionFeedbackSuccess | CompletionFeedbackFailure;
+
 export interface CompletionResult {
   taskId: TaskId;
   completedPhase: PhaseId;
@@ -295,6 +426,7 @@ export interface CompletionResult {
   reviewFile?: string;
   evolutionContextSnapshotFile?: string;
   completionEvent?: CompletionEvent;
+  feedback?: CompletionFeedbackResult;
 }
 
 export interface CompletionEvent {
@@ -314,6 +446,7 @@ export interface CompletionEvent {
   snapshotFiles: string[];
   reviewFile?: string;
   rollbackSafePointId?: string;
+  feedback?: CompletionFeedbackResult;
   markdownFile: string;
 }
 

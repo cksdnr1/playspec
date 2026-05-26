@@ -113,6 +113,16 @@ export async function runComplete(
   if (completionResult.evolutionContextSnapshotFile) {
     console.log(`Evolution context snapshot: ${completionResult.evolutionContextSnapshotFile}`);
   }
+  if (completionResult.feedback) {
+    if (completionResult.feedback.status === 'captured') {
+      console.log(`Feedback thread: ${completionResult.feedback.threadPath}`);
+      console.log(`Feedback result: ${completionResult.feedback.feedbackResult}`);
+    } else {
+      console.log(
+        `Feedback capture failed (${completionResult.feedback.policy}/${completionResult.feedback.stage}): ${completionResult.feedback.message}`
+      );
+    }
+  }
 
   if (completionResult.nextPhase) {
     console.log('');

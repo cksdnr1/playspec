@@ -11,7 +11,7 @@
 
 Create GitHub issues only for the accepted candidates from `{{CANDIDATE_ISSUES_FILE}}`.
 
-Do not implement code in the target repository. Do not edit files in the target repository. Do not create branches, commits, or pull requests.
+Do not implement code in the target repository. Do not edit files in the target repository except declared workflow report artifacts: `{{DISCOVERY_FILE}}`, `{{CANDIDATE_ISSUES_FILE}}`, and `{{CREATED_ISSUES_FILE}}`. Do not create branches, commits, or pull requests.
 
 Writing `{{DISCOVERY_FILE}}`, `{{CANDIDATE_ISSUES_FILE}}`, or `{{CREATED_ISSUES_FILE}}` is not enough when candidates qualify. Those files are evidence and reporting artifacts. The final output of this phase is actual GitHub issues created with `gh issue create`.
 

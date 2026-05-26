@@ -13,10 +13,43 @@ export const HumanEditObservationIdSchema = z
   .max(128)
   .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Human edit observation ID must be filesystem-safe.');
 
+export const FeedbackThreadIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Feedback thread ID must be filesystem-safe.');
+
+export const FeedbackPathSegmentSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'Feedback path segment must be filesystem-safe.');
+
 export const EvolutionProposalStatusSchema = z.enum(['pending', 'refining', 'skipped', 'applied', 'failed']);
 export const HumanEditObservationStatusSchema = z.enum(['recorded', 'ignored', 'superseded']);
 export const EvolutionRiskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const EvolutionReviewStatusSchema = z.enum(['unreviewed', 'needs_review', 'reviewed']);
+export const FeedbackApprovalResultSchema = z.enum(['approved', 'needs_revision', 'failed', 'skipped']);
+export const FeedbackSignalResultSchema = z.enum(['positive', 'negative', 'neutral', 'parse_failed']);
+export const FeedbackCauseCategorySchema = z.enum([
+  'artifact_quality_issue',
+  'authoring_prompt_gap',
+  'validation_prompt_gap',
+  'workflow_policy_gap',
+  'extractor_or_parser_error',
+]);
+export const FeedbackConfidenceSchema = z.enum(['low', 'medium', 'high']);
+export const FeedbackTrendDirectionSchema = z.enum(['improving', 'declining', 'stable', 'unknown']);
+export const FeedbackProposalReadinessStateSchema = z.enum(['not_ready', 'ready_for_review', 'proposal_candidate']);
+export const FeedbackMutationStrategySchema = z.enum(['manual_review_only']);
+export const ValidationFeedbackExtractionMethodSchema = z.enum(['machine_readable_block', 'markdown_fallback']);
+export const ValidationFeedbackPromptTargetTypeSchema = z.enum(['workflow_prompt_template']);
+export const FeedbackPathKindSchema = z.enum([
+  'workspace_relative',
+  'workflow_relative',
+  'user_home_relative',
+  'package_relative',
+]);
 
 export const WorkspaceRelativePathSchema = z.string().superRefine((value, ctx) => {
   if (value.trim() === '') {
@@ -153,6 +186,205 @@ export const HumanEditObservationSchema = z.object({
   beforeRef: WorkspaceRelativePathSchema.optional(),
   afterRef: WorkspaceRelativePathSchema.optional(),
   statusReason: z.string().optional(),
+});
+
+export const FeedbackWorkflowSourceSchema = z.object({
+  kind: z.enum(['project_local', 'user_global', 'bundled_preset', 'external']),
+  root: z.string().min(1),
+  rootPathKind: FeedbackPathKindSchema,
+  packageName: z.string().min(1).optional(),
+  presetId: z.string().min(1).optional(),
+  version: z.union([z.string(), z.number()]).optional(),
+});
+
+export const FeedbackTargetPromptTemplateSchema = z.object({
+  path: z.string().min(1),
+  pathKind: FeedbackPathKindSchema,
+  writable: z.boolean(),
+});
+
+export const FeedbackPromptSnapshotSchema = z.object({
+  algorithm: z.literal('sha256'),
+  hash: z.string().regex(/^[a-f0-9]{64}$/, 'Prompt snapshot hash must be a lowercase SHA-256 hex digest.'),
+  renderedByteLength: z.number().int().nonnegative(),
+  targetPhaseId: z.string().min(1),
+  templatePath: z.string().min(1),
+  templatePathKind: FeedbackPathKindSchema,
+  createdAt: z.string(),
+  workflowVersion: z.union([z.string(), z.number()]).optional(),
+});
+
+export const FeedbackDedupeKeySchema = z.object({
+  version: z.literal(1),
+  workflowId: z.string().min(1),
+  feedbackKind: z.literal('prompt_evolution_signal'),
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  causeCategory: FeedbackCauseCategorySchema,
+  fields: z.record(z.string()),
+});
+
+export const FeedbackHistoryOverflowSummarySchema = z.object({
+  omittedEventCount: z.number().int().nonnegative(),
+  positiveCount: z.number().int().nonnegative(),
+  negativeCount: z.number().int().nonnegative(),
+  neutralCount: z.number().int().nonnegative(),
+  parseFailureCount: z.number().int().nonnegative(),
+  firstOmittedAt: z.string().optional(),
+  lastOmittedAt: z.string().optional(),
+});
+
+export const FeedbackCompactHistoryPolicySchema = z.object({
+  maxEntries: z.number().int().positive(),
+  keepFirst: z.boolean(),
+  keepLatest: z.number().int().nonnegative(),
+  summarizeOverflow: z.boolean(),
+}).refine((policy) => policy.keepLatest <= policy.maxEntries, {
+  message: 'keepLatest must be less than or equal to maxEntries',
+  path: ['keepLatest'],
+});
+
+export const FeedbackProposalReadinessPolicySchema = z.object({
+  mode: z.enum(['manual_only_initial']),
+  minRunCount: z.number().int().positive(),
+  minNegativeCount: z.number().int().nonnegative(),
+  minConfidence: FeedbackConfidenceSchema,
+  requireHumanReviewBeforeProposal: z.boolean(),
+});
+
+export const FeedbackCauseClassificationSchema = z.object({
+  selected: FeedbackCauseCategorySchema,
+  confidence: FeedbackConfidenceSchema,
+  summary: z.string().min(1).optional(),
+});
+
+const ValidationFeedbackScoreSchema = z.number().min(0).max(100);
+
+export const ValidationFeedbackBlockSchema = z.object({
+  sourcePhaseId: z.string().min(1).optional(),
+  evaluatedArtifactPhaseId: z.string().min(1).optional(),
+  evolutionTargetPhaseId: z.string().min(1).optional(),
+  score: ValidationFeedbackScoreSchema,
+  approval: z
+    .object({
+      threshold: ValidationFeedbackScoreSchema.optional(),
+      result: FeedbackApprovalResultSchema.optional(),
+    })
+    .optional(),
+  feedback: z
+    .object({
+      threshold: ValidationFeedbackScoreSchema.optional(),
+      result: FeedbackSignalResultSchema.optional(),
+    })
+    .optional(),
+  cause: z.object({
+    category: FeedbackCauseCategorySchema,
+    confidence: FeedbackConfidenceSchema,
+    summary: z.string().min(1).optional(),
+  }),
+  promptEvolution: z
+    .object({
+      targetType: ValidationFeedbackPromptTargetTypeSchema.default('workflow_prompt_template'),
+      guidance: z.string().min(1).optional(),
+    })
+    .optional(),
+  workflowSource: FeedbackWorkflowSourceSchema.optional(),
+  target: FeedbackTargetPromptTemplateSchema.optional(),
+  targetWritable: z.boolean().optional(),
+  targetPath: z.string().min(1).optional(),
+  summary: z.string().min(1).optional(),
+  dedupeFieldValues: z.record(z.string()).optional(),
+});
+
+export const ValidationFeedbackExtractionSchema = z.object({
+  method: ValidationFeedbackExtractionMethodSchema,
+  confidence: FeedbackConfidenceSchema,
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  score: ValidationFeedbackScoreSchema.optional(),
+  approval: z.object({
+    threshold: ValidationFeedbackScoreSchema,
+    result: FeedbackApprovalResultSchema,
+  }),
+  feedback: z.object({
+    threshold: ValidationFeedbackScoreSchema,
+    result: FeedbackSignalResultSchema,
+  }),
+  causeClassification: FeedbackCauseClassificationSchema,
+  promptEvolution: z.object({
+    targetType: ValidationFeedbackPromptTargetTypeSchema,
+    guidance: z.string().min(1).optional(),
+  }),
+  workflowSource: FeedbackWorkflowSourceSchema,
+  targetPromptTemplate: FeedbackTargetPromptTemplateSchema,
+  targetWritable: z.boolean(),
+  targetPath: z.string().min(1),
+  summary: z.string().min(1),
+  rawObservationRef: WorkspaceRelativePathSchema.optional(),
+  dedupeFieldValues: z.record(z.string()).optional(),
+});
+
+export const FeedbackThreadEventSchema = z.object({
+  eventId: z.string().min(1),
+  taskId: z.string().min(1),
+  phaseId: z.string().min(1),
+  createdAt: z.string(),
+  approvalResult: FeedbackApprovalResultSchema,
+  feedbackResult: FeedbackSignalResultSchema,
+  score: z.number().min(0).max(100).optional(),
+  causeClassification: FeedbackCauseClassificationSchema,
+  summary: z.string().min(1),
+  promptSnapshot: FeedbackPromptSnapshotSchema,
+  rawObservationRef: WorkspaceRelativePathSchema.optional(),
+});
+
+export const FeedbackTrendStateSchema = z.object({
+  totalEvents: z.number().int().nonnegative(),
+  positiveCount: z.number().int().nonnegative(),
+  negativeCount: z.number().int().nonnegative(),
+  neutralCount: z.number().int().nonnegative(),
+  parseFailureCount: z.number().int().nonnegative(),
+  direction: FeedbackTrendDirectionSchema,
+  confidence: FeedbackConfidenceSchema,
+  readinessState: FeedbackProposalReadinessStateSchema,
+  lastEventAt: z.string().optional(),
+});
+
+export const FeedbackThreadSchema = z.object({
+  id: FeedbackThreadIdSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  dedupeKey: FeedbackDedupeKeySchema,
+  dedupeKeyHash: z.string().regex(/^[a-f0-9]{64}$/, 'Dedupe key hash must be a lowercase SHA-256 hex digest.'),
+  sourcePhaseId: z.string().min(1),
+  evaluatedArtifactPhaseId: z.string().min(1),
+  evolutionTargetPhaseId: z.string().min(1),
+  workflowSource: FeedbackWorkflowSourceSchema,
+  targetPromptTemplate: FeedbackTargetPromptTemplateSchema,
+  targetWritable: z.boolean(),
+  targetPath: z.string().min(1),
+  compactHistoryPolicy: FeedbackCompactHistoryPolicySchema,
+  proposalReadinessPolicy: FeedbackProposalReadinessPolicySchema,
+  mutationStrategy: FeedbackMutationStrategySchema,
+  trend: FeedbackTrendStateSchema,
+  events: z.array(FeedbackThreadEventSchema),
+  historyOverflowSummary: FeedbackHistoryOverflowSummarySchema.optional(),
+});
+
+export const FeedbackRawObservationEventSchema = z.object({
+  id: z.string().min(1),
+  threadId: FeedbackThreadIdSchema,
+  taskId: FeedbackPathSegmentSchema,
+  phaseId: FeedbackPathSegmentSchema,
+  createdAt: z.string(),
+  approvalResult: FeedbackApprovalResultSchema,
+  feedbackResult: FeedbackSignalResultSchema,
+  score: z.number().min(0).max(100).optional(),
+  causeClassification: FeedbackCauseClassificationSchema,
+  summary: z.string().min(1),
+  raw: z.unknown().optional(),
 });
 
 export const EvolutionValidationStatusSchema = z.enum(['valid', 'invalid']);

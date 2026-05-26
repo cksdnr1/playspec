@@ -7,6 +7,7 @@ import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
+import { TaskNotActiveError } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath, getMigrationPlansDir, getMigrationReportsDir } from '#utils/paths.js';
 import { MigrationRunner, MigrationValidationError, ArchiveRequiresFlagError } from '#migration/migration-runner.js';
@@ -416,6 +417,70 @@ describe('MigrationRunner — auto mode', () => {
 
     const taskAfter = await store.getTask(taskId);
     expect(taskAfter.contextRefs?.some((r) => r.path === 'docs/total_spec.md')).toBe(true);
+  });
+});
+
+describe('MigrationRunner — active task guard', () => {
+  it('rejects completed target tasks before applying generated add_context_ref actions', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readFile(taskYamlPath, 'utf-8');
+    const plan = makePlan({ mode: 'auto', requiresReview: false });
+
+    const runner = new MigrationRunner(workspace.dir, store);
+
+    await expect(runner.run(plan)).rejects.toThrow(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readFile(taskYamlPath, 'utf-8')).resolves.toBe(before);
+  });
+
+  it('rejects completed target tasks before applying external update_task_state actions', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readFile(taskYamlPath, 'utf-8');
+    const plan = makePlan(
+      { mode: 'auto', requiresReview: false },
+      [
+        {
+          actionId: 'action_001',
+          type: 'update_task_state',
+          targetPath: `.playspec/tasks/active/${taskId}/task.yaml`,
+          sourcePaths: ['docs/phase_plan.md'],
+          reason: 'Update title',
+          evidence: 'External plan proposes a task title update',
+          riskLevel: 'low',
+          preview: '- title: Migration Test Task\n+ title: Changed',
+          backupRequired: true,
+          requiresReview: false,
+          fieldPath: 'title',
+          previousValue: TASK_TITLE,
+          proposedValue: 'Changed',
+        },
+      ]
+    );
+
+    const runner = new MigrationRunner(workspace.dir, store);
+
+    await expect(runner.run(plan)).rejects.toThrow(TaskNotActiveError);
+    await expect(readFile(taskYamlPath, 'utf-8')).resolves.toBe(before);
+  });
+
+  it('allows dry-run task mutation plans for completed target tasks without changing task YAML', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readFile(taskYamlPath, 'utf-8');
+    const plan = makePlan({ mode: 'dry-run', requiresReview: false });
+
+    const runner = new MigrationRunner(workspace.dir, store);
+    const { reportPath } = await runner.run(plan);
+
+    const reportContent = await readFile(reportPath, 'utf-8');
+    const report = parseYaml(reportContent) as { actionReports: { status: string; reason?: string }[] };
+    expect(report.actionReports[0]?.status).toBe('skipped');
+    expect(report.actionReports[0]?.reason).toBe('dry-run mode');
+    await expect(readFile(taskYamlPath, 'utf-8')).resolves.toBe(before);
   });
 });
 

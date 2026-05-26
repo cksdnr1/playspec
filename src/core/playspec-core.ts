@@ -33,6 +33,11 @@ import { GitState, statusEntryPathList } from '#core/git-state.js';
 import { StateDesyncDetector } from '#core/state-desync-detector.js';
 import { RollbackManager } from '#core/rollback-manager.js';
 import { EvolutionContextReader } from '#evolution/context-reader.js';
+import { FeedbackThreadUpdater } from '#evolution/feedback-thread-updater.js';
+import {
+  ValidationFeedbackExtractionError,
+  ValidationFeedbackExtractor,
+} from '#evolution/validation-feedback-extractor.js';
 import { DEFAULT_PROMPT_CONTEXT_MODE, writePromptArtifactMetadata } from '#core/prompt-metadata.js';
 import { assertRequiredVariables } from '#core/required-variables.js';
 import type {
@@ -42,6 +47,8 @@ import type {
   WorkflowDefinition,
   ResolvedWorkflow,
   CompletionResult,
+  CompletionFeedbackFailureStage,
+  CompletionFeedbackResult,
   EvidenceResult,
   SnapshotResult,
   DesyncCheckResult,
@@ -57,6 +64,7 @@ import type {
   HarnessRecord,
   TaskLinkType,
   TaskLinkMutationResult,
+  PhaseFeedbackFailurePolicy,
 } from '#core/types.js';
 import { getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
@@ -74,6 +82,8 @@ export class PlaySpecCore {
   private readonly rollbackManager: RollbackManager;
   private readonly evolutionContextReader: EvolutionContextReader;
   private readonly completionLedgerStore: CompletionLedgerStore;
+  private readonly validationFeedbackExtractor: ValidationFeedbackExtractor;
+  private readonly feedbackThreadUpdater: FeedbackThreadUpdater;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -88,6 +98,8 @@ export class PlaySpecCore {
     this.rollbackManager = new RollbackManager(workspaceRoot, taskStore, this.gitState);
     this.evolutionContextReader = new EvolutionContextReader(workspaceRoot);
     this.completionLedgerStore = new CompletionLedgerStore(workspaceRoot);
+    this.validationFeedbackExtractor = new ValidationFeedbackExtractor(workspaceRoot);
+    this.feedbackThreadUpdater = new FeedbackThreadUpdater(workspaceRoot);
   }
 
   async renderNextPrompt(taskId: string, options: PromptRenderOptions = {}): Promise<string> {
@@ -293,6 +305,15 @@ export class PlaySpecCore {
       const reviewFile = options.withReview
         ? await this.writeReview(task, phaseId, validationTemplate)
         : undefined;
+      const feedback = await this.captureValidationFeedback({
+        task,
+        workflow,
+        definition,
+        phaseId,
+        result,
+        reviewFile,
+        snapshotFiles,
+      });
 
       const completedAt = new Date().toISOString();
       const currentGitHead = await this.gitState.getCurrentHead();
@@ -315,6 +336,7 @@ export class PlaySpecCore {
         evidenceFiles,
         snapshotFiles,
         reviewFile,
+        feedback,
         rollbackSafePoint,
       });
       const updatedTask = await this.taskStore.completePhase(
@@ -352,6 +374,7 @@ export class PlaySpecCore {
         reviewFile,
         evolutionContextSnapshotFile,
         completionEvent,
+        ...(feedback !== undefined ? { feedback } : {}),
       };
     });
   }
@@ -732,6 +755,152 @@ export class PlaySpecCore {
     return `_visit${visitCount}`;
   }
 
+  private async captureValidationFeedback(input: {
+    task: TaskRecord;
+    workflow: ResolvedWorkflow;
+    definition: PhaseDefinition;
+    phaseId: string;
+    result: string | undefined;
+    reviewFile?: string;
+    snapshotFiles: string[];
+  }): Promise<CompletionFeedbackResult | undefined> {
+    const feedbackConfig = input.definition.feedback;
+    if (!feedbackConfig?.enabled) {
+      return undefined;
+    }
+
+    try {
+      const artifact = this.resolveFeedbackArtifact(feedbackConfig.scoreSource.artifactRole, {
+        reviewFile: input.reviewFile,
+        snapshotFiles: input.snapshotFiles,
+      });
+      if (!artifact) {
+        return this.handleFeedbackCaptureFailure(
+          feedbackConfig.onFailure,
+          'missing_artifact',
+          `Feedback is enabled for phase "${input.phaseId}", but no ${feedbackConfig.scoreSource.artifactRole} artifact was produced.`
+        );
+      }
+
+      let artifactContent: string;
+      try {
+        artifactContent = await readTextFile(path.join(this.getAbsoluteTaskRoot(input.task), artifact));
+      } catch (error) {
+        return this.handleFeedbackCaptureFailure(
+          feedbackConfig.onFailure,
+          'missing_artifact',
+          `Could not read feedback artifact "${artifact}": ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      const extraction = this.validationFeedbackExtractor.extract({
+        task: input.task,
+        workflow: input.workflow,
+        feedbackConfig,
+        phaseId: input.phaseId,
+        artifactContent,
+        artifactPath: path.join(input.task.paths.taskRoot, artifact),
+        completionResult: this.normalizeFeedbackApprovalResult(input.result),
+      });
+
+      try {
+        const update = await this.feedbackThreadUpdater.update({
+          task: input.task,
+          workflow: input.workflow,
+          feedbackConfig,
+          evolutionTargetPhaseId: extraction.evolutionTargetPhaseId,
+          phaseId: input.phaseId,
+          approvalResult: extraction.approval.result,
+          feedbackResult: extraction.feedback.result,
+          causeClassification: extraction.causeClassification,
+          summary: extraction.summary,
+          ...(extraction.score !== undefined ? { score: extraction.score } : {}),
+          ...(extraction.rawObservationRef !== undefined ? { rawObservationRef: extraction.rawObservationRef } : {}),
+          ...(extraction.dedupeFieldValues !== undefined ? { dedupeFieldValues: extraction.dedupeFieldValues } : {}),
+        });
+
+        return {
+          status: 'captured',
+          threadId: update.thread.id,
+          threadPath: this.toWorkspaceRelativePath(update.threadPath),
+          created: update.created,
+          approvalResult: extraction.approval.result,
+          feedbackResult: extraction.feedback.result,
+          dedupeKeyHash: update.thread.dedupeKeyHash,
+          ...(extraction.score !== undefined ? { score: extraction.score } : {}),
+        };
+      } catch (error) {
+        return this.handleFeedbackCaptureFailure(
+          feedbackConfig.onFailure,
+          'thread_update',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    } catch (error) {
+      if (error instanceof ValidationFeedbackExtractionError) {
+        return this.handleFeedbackCaptureFailure(feedbackConfig.onFailure, 'extraction', error.message);
+      }
+      throw error;
+    }
+  }
+
+  private resolveFeedbackArtifact(
+    artifactRole: string,
+    artifacts: { reviewFile?: string; snapshotFiles: string[] }
+  ): string | undefined {
+    const normalizedRole = artifactRole.toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalizedRole.includes('review')) {
+      return artifacts.reviewFile;
+    }
+    if (normalizedRole.includes('prompt') || normalizedRole.includes('snapshot')) {
+      return artifacts.snapshotFiles.find((file) => file.endsWith('_prompt.md'));
+    }
+    if (normalizedRole === 'completion_markdown') {
+      return undefined;
+    }
+
+    const byBasename = [...artifacts.snapshotFiles, ...(artifacts.reviewFile ? [artifacts.reviewFile] : [])].find(
+      (file) => path.basename(file, path.extname(file)) === artifactRole
+    );
+    return byBasename;
+  }
+
+  private handleFeedbackCaptureFailure(
+    policy: PhaseFeedbackFailurePolicy,
+    stage: CompletionFeedbackFailureStage,
+    message: string
+  ): CompletionFeedbackResult {
+    if (policy === 'fail_completion') {
+      throw new ValidationFeedbackExtractionError(message);
+    }
+    return {
+      status: 'failed',
+      policy,
+      stage,
+      message,
+      feedbackResult: 'parse_failed',
+    };
+  }
+
+  private normalizeFeedbackApprovalResult(result: string | undefined) {
+    if (
+      result === 'approved' ||
+      result === 'needs_revision' ||
+      result === 'failed' ||
+      result === 'skipped'
+    ) {
+      return result;
+    }
+    return undefined;
+  }
+
+  private toWorkspaceRelativePath(filePath: string): string {
+    if (!path.isAbsolute(filePath)) {
+      return filePath;
+    }
+    return path.relative(this.workspaceRoot, filePath);
+  }
+
   private async writeCompletionEvent(input: {
     task: TaskRecord;
     definition: PhaseDefinition;
@@ -744,6 +913,7 @@ export class PlaySpecCore {
     evidenceFiles: string[];
     snapshotFiles: string[];
     reviewFile?: string;
+    feedback?: CompletionFeedbackResult;
     rollbackSafePoint: RollbackSafePoint;
   }): Promise<CompletionEvent> {
     const existing = await this.completionLedgerStore.listEvents(input.task.id);
@@ -772,6 +942,7 @@ export class PlaySpecCore {
       markdownFile,
       ...(input.result !== undefined ? { result: input.result } : {}),
       ...(input.reviewFile !== undefined ? { reviewFile: input.reviewFile } : {}),
+      ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
     };
     const markdown = this.renderCompletionMarkdown(input.task, event);
     return this.completionLedgerStore.appendEvent(input.task, event, markdown);
@@ -824,6 +995,7 @@ export class PlaySpecCore {
     const evidence = event.evidenceFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
     const snapshots = event.snapshotFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
     const review = event.reviewFile ? `- ${displayPath(event.reviewFile)}` : '- none';
+    const feedback = event.feedback ? `\n## Feedback\n\n${this.renderCompletionFeedback(event.feedback)}\n` : '';
     return `# Completion ${event.id}: ${event.phase}
 
 - Task: ${event.taskId}
@@ -849,11 +1021,35 @@ ${snapshots}
 ## Review
 
 ${review}
+${feedback}
 
 ## Rollback Notes
 
 Use the rollback safe point above for state rollback context. This markdown is an audit/evidence artifact and should not itself mutate task state.
 `;
+  }
+
+  private renderCompletionFeedback(feedback: CompletionFeedbackResult): string {
+    if (feedback.status === 'captured') {
+      return [
+        `- Status: captured`,
+        `- Thread: ${feedback.threadId}`,
+        `- Thread path: ${feedback.threadPath}`,
+        `- Created: ${feedback.created}`,
+        `- Approval result: ${feedback.approvalResult}`,
+        `- Feedback result: ${feedback.feedbackResult}`,
+        `- Dedupe key hash: ${feedback.dedupeKeyHash}`,
+        ...(feedback.score !== undefined ? [`- Score: ${feedback.score}`] : []),
+      ].join('\n');
+    }
+
+    return [
+      `- Status: failed`,
+      `- Policy: ${feedback.policy}`,
+      `- Stage: ${feedback.stage}`,
+      `- Feedback result: ${feedback.feedbackResult}`,
+      `- Message: ${feedback.message}`,
+    ].join('\n');
   }
 
   private getAbsoluteTaskRoot(task: TaskRecord): string {

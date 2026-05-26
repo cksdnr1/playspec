@@ -1,4 +1,5 @@
 import { execa } from 'execa';
+import { TextDecoder } from 'node:util';
 
 export interface GitStatusEntry {
   code: string;
@@ -74,12 +75,130 @@ export function parsePorcelain(output: string): GitStatusEntry[] {
     .map((line) => {
       const code = line.slice(0, 2);
       const rawPath = line.slice(3);
-      if (rawPath.includes(' -> ')) {
-        const [originalPath, nextPath] = rawPath.split(' -> ');
+      const renamePaths = parseRenamePorcelainPaths(rawPath);
+      if (renamePaths) {
+        const [originalPath, nextPath] = renamePaths;
         return { code, path: nextPath, originalPath };
       }
-      return { code, path: rawPath };
+      return { code, path: decodePorcelainPath(rawPath) };
     });
+}
+
+function parseRenamePorcelainPaths(rawPath: string): [string, string] | null {
+  const first = parsePorcelainPathToken(rawPath);
+  if (!first) {
+    return null;
+  }
+
+  const separator = ' -> ';
+  if (!rawPath.slice(first.consumed).startsWith(separator)) {
+    return null;
+  }
+
+  const secondRaw = rawPath.slice(first.consumed + separator.length);
+  const second = parsePorcelainPathToken(secondRaw);
+  if (!second || second.consumed !== secondRaw.length) {
+    return null;
+  }
+
+  return [first.path, second.path];
+}
+
+function decodePorcelainPath(rawPath: string): string {
+  const parsed = parsePorcelainPathToken(rawPath);
+  return parsed && parsed.consumed === rawPath.length ? parsed.path : rawPath;
+}
+
+function parsePorcelainPathToken(rawPath: string): { path: string; consumed: number } | null {
+  if (!rawPath.startsWith('"')) {
+    const separatorIndex = rawPath.indexOf(' -> ');
+    return {
+      path: separatorIndex === -1 ? rawPath : rawPath.slice(0, separatorIndex),
+      consumed: separatorIndex === -1 ? rawPath.length : separatorIndex,
+    };
+  }
+
+  const decoder = new TextDecoder();
+  let path = '';
+  let octalBytes: number[] = [];
+  const flushOctalBytes = () => {
+    if (octalBytes.length === 0) {
+      return;
+    }
+    path += decoder.decode(new Uint8Array(octalBytes));
+    octalBytes = [];
+  };
+
+  for (let index = 1; index < rawPath.length; index += 1) {
+    const character = rawPath[index];
+    if (character === '"') {
+      flushOctalBytes();
+      return { path, consumed: index + 1 };
+    }
+
+    if (character !== '\\') {
+      flushOctalBytes();
+      path += character;
+      continue;
+    }
+
+    const next = rawPath[index + 1];
+    if (next === undefined) {
+      return null;
+    }
+
+    if (isOctalDigit(next)) {
+      let octal = next;
+      let offset = 2;
+      while (offset <= 3 && isOctalDigit(rawPath[index + offset])) {
+        octal += rawPath[index + offset];
+        offset += 1;
+      }
+      octalBytes.push(Number.parseInt(octal, 8));
+      index += octal.length;
+      continue;
+    }
+
+    const decoded = decodeCStyleEscape(next);
+    if (decoded === null) {
+      return null;
+    }
+
+    flushOctalBytes();
+    path += decoded;
+    index += 1;
+  }
+
+  return null;
+}
+
+function decodeCStyleEscape(character: string): string | null {
+  switch (character) {
+    case 'a':
+      return '\x07';
+    case 'b':
+      return '\b';
+    case 'f':
+      return '\f';
+    case 'n':
+      return '\n';
+    case 'r':
+      return '\r';
+    case 't':
+      return '\t';
+    case 'v':
+      return '\v';
+    case '\\':
+      return '\\';
+    case '"':
+      return '"';
+    default:
+      return null;
+  }
+}
+
+function isOctalDigit(character: string | undefined): boolean {
+  return character !== undefined && character >= '0' && character <= '7';
 }
 
 export function statusEntryPathList(entries: GitStatusEntry[]): string {

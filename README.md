@@ -63,6 +63,18 @@ playspec --help
 playspec-mcp
 ```
 
+## Offline Bundle
+
+`playspec_offline.tar.gz` is a prebuilt bundle for disconnected environments. It includes `dist/` and `node_modules/`, so it can run without fetching packages after extraction.
+
+```bash
+mkdir -p /opt/playspec
+tar -xzf playspec_offline.tar.gz -C /opt/playspec
+ln -sf /opt/playspec/dist/cli/index.js ~/.local/bin/playspec
+ln -sf /opt/playspec/dist/mcp/index.js ~/.local/bin/playspec-mcp
+playspec --help
+```
+
 ## Core CLI Commands
 
 ### Workspace And Tasks
@@ -179,6 +191,17 @@ The default preset includes:
 - `total-plan` — larger planning workflow for work that should be split before implementation.
 
 Only the `default` preset is present in this repository.
+
+### Validation Feedback Signals
+
+Some validation phases can record prompt evolution feedback without changing workflow files. Keep the two thresholds separate:
+
+- Approval threshold controls the workflow gate result, such as whether `playspec complete --result approved` may route forward.
+- Feedback threshold controls whether the validation outcome is stored as a positive or negative prompt evolution signal.
+
+For `mono-spec`, validation approval remains `95/100`, while the prompt feedback signal threshold is `90/100`. A score can therefore be below approval but still be positive feedback.
+
+Feedback threads are stored as workspace evidence under `.playspec/evolution/feedback/threads/`. That storage path is different from the workflow prompt target source, which may resolve to a project workflow, user workflow, bundled preset, or external workflow root. Bundled preset and external targets are read-only signal targets; copy, export, or override the workflow into `.playspec/workflows/` before making prompt edits. See `docs/evolution-feedback.md` and `docs/workflows/feedback-config.md`.
 
 ## Advanced Commands
 
