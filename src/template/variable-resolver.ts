@@ -232,11 +232,23 @@ function getDemandedVariableNames(
     demanded.add(name);
   }
 
-  for (const name of definition?.outputs ?? []) {
-    demanded.add(name);
+  for (const output of definition?.outputs ?? []) {
+    demanded.add(output);
+    for (const name of extractPlaceholderNames(output)) {
+      demanded.add(name);
+    }
   }
 
   return demanded;
+}
+
+function extractPlaceholderNames(template: string): string[] {
+  const names: string[] = [];
+  template.replace(DEFAULT_PLACEHOLDER_REGEX, (_token, body: string) => {
+    names.push(extractPlaceholderName(body));
+    return '';
+  });
+  return names;
 }
 
 function renderDefault(
@@ -244,9 +256,12 @@ function renderDefault(
   lookup: (name: string) => string
 ): string {
   return template.replace(DEFAULT_PLACEHOLDER_REGEX, (_token, body: string) => {
-    const dependency = body.trim().split(/\s+/)[0] ?? body.trim();
-    return lookup(dependency);
+    return lookup(extractPlaceholderName(body));
   });
+}
+
+function extractPlaceholderName(body: string): string {
+  return body.trim().split(/\s+/)[0] ?? body.trim();
 }
 
 function resolveContextVariables(task: TaskRecord): Pick<
