@@ -514,6 +514,9 @@ phases:
     expect(workflow.variables['ISSUE_LABEL']?.default).toBe('agent-validation');
     expect(workflow.variables['OUTPUT_DIR']?.default).toBe('docs/issues/scope-create/{{TASK_ID}}');
     expect(workflow.variables['OUTPUT_DIR']?.default).not.toBe('docs/issues/scope-create');
+    expect(workflow.variables['DISCOVERY_FILE']?.default).toBe('{{OUTPUT_DIR}}/discovery.md');
+    expect(workflow.variables['CANDIDATE_ISSUES_FILE']?.default).toBe('{{OUTPUT_DIR}}/candidate_issues.md');
+    expect(workflow.variables['CREATED_ISSUES_FILE']?.default).toBe('{{OUTPUT_DIR}}/created_issues.md');
     expect(workflow.artifacts['discovery']?.path).toBe('{{DISCOVERY_FILE}}');
     expect(workflow.artifacts['candidates']?.path).toBe('{{CANDIDATE_ISSUES_FILE}}');
     expect(workflow.artifacts['createdIssues']?.path).toBe('{{CREATED_ISSUES_FILE}}');
@@ -571,9 +574,31 @@ phases:
     expect(discovery).toContain('Duplicate Search');
     expect(discovery).toContain('Prefer zero issues over broad or speculative issues');
     expect(creation).toContain('Do not implement code in the target repository');
+    expect(creation).toContain('Do not edit files in the target repository except declared workflow report artifacts');
+    expect(creation).toContain('`{{DISCOVERY_FILE}}`, `{{CANDIDATE_ISSUES_FILE}}`, and `{{CREATED_ISSUES_FILE}}`');
     expect(creation).toContain('Create at most `{{MAX_ISSUES}}` issues');
     expect(creation).toContain('gh issue create --repo {{TARGET_REPOSITORY}} --label {{ISSUE_LABEL}}');
     expect(creation).toContain('Skip the candidate if the duplicate search now finds');
+    expect(creation).toContain('Write `{{CREATED_ISSUES_FILE}}`');
+  });
+
+  it('documents issue-scope-create artifact path variables and defaults', async () => {
+    const docs = await readFile(path.join(process.cwd(), 'docs', 'workflows', 'issue-scope-create.md'), 'utf8');
+
+    for (const variable of [
+      'OUTPUT_DIR',
+      'DISCOVERY_FILE',
+      'CANDIDATE_ISSUES_FILE',
+      'CREATED_ISSUES_FILE',
+    ]) {
+      expect(docs).toContain(`\`${variable}\``);
+    }
+
+    expect(docs).toContain('docs/issues/scope-create/{{TASK_ID}}');
+    expect(docs).toContain('{{OUTPUT_DIR}}/discovery.md');
+    expect(docs).toContain('{{OUTPUT_DIR}}/candidate_issues.md');
+    expect(docs).toContain('{{OUTPUT_DIR}}/created_issues.md');
+    expect(docs).toContain('workflow report artifacts');
   });
 
   it('falls back to built-in assets for an unaccepted stale project shadow', async () => {
