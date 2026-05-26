@@ -63,6 +63,18 @@ playspec --help
 playspec-mcp
 ```
 
+## Offline Bundle
+
+`playspec_offline.tar.gz` is a prebuilt bundle for disconnected environments. It includes `dist/` and `node_modules/`, so it can run without fetching packages after extraction.
+
+```bash
+mkdir -p /opt/playspec
+tar -xzf playspec_offline.tar.gz -C /opt/playspec
+ln -sf /opt/playspec/dist/cli/index.js ~/.local/bin/playspec
+ln -sf /opt/playspec/dist/mcp/index.js ~/.local/bin/playspec-mcp
+playspec --help
+```
+
 ## Core CLI Commands
 
 ### Workspace And Tasks
