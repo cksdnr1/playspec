@@ -2445,6 +2445,33 @@ phases:
     expect(result.stdout).toContain('Untracked files: src/untracked.ts');
   });
 
+  it('falls back to rollback safe point Git head when state sync is missing', async () => {
+    const taskId = await createActiveTask('CLI Rollback Baseline Desync Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask(taskId);
+    const safePointGitHead = task.rollback?.lastSafePoint?.gitHead;
+    expect(safePointGitHead).toMatch(/^[0-9a-f]{40}$/);
+    await store.updateTask(taskId, { stateSync: undefined });
+
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+    await execa('git', ['add', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'source change'], { cwd: workspace.dir });
+    const currentHead = (await execa('git', ['rev-parse', 'HEAD'], { cwd: workspace.dir })).stdout;
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Task: ${taskId}`);
+    expect(result.stdout).toContain('Severity: high');
+    expect(result.stdout).toContain(`Last known Git HEAD: ${safePointGitHead}`);
+    expect(result.stdout).toContain(`Current Git HEAD: ${currentHead}`);
+    expect(result.stdout).toContain('Git HEAD changed since the last safe point.');
+  });
+
   it('rejects HEAD-based completed tasks through desync-check', async () => {
     const taskId = await createActiveTask('CLI Completed Desync Head Task');
     const store = new YamlTaskStore(workspace.dir);
