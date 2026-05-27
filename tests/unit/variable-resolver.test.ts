@@ -224,6 +224,25 @@ describe('VariableResolver', () => {
     expect(vars.FEATURE_SLUG).toBe('feature_name');
   });
 
+  it('falls back to slugified title before resolving defaults when FEATURE_SLUG is empty', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        FEATURE_SLUG: '',
+      },
+    };
+
+    const vars = resolver.resolve(task, '3', multiWorkflow, multiWorkflow.phases['3']);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.PHASE_SPEC_FILE).toBe(
+      'docs/feature_name/feature_name_phase3_implementation_spec.md'
+    );
+    expect(vars.PHASE_HANDOFF_FILE).toBe(
+      'docs/feature_name/feature_name_phase3_handoff.md'
+    );
+  });
+
   it('resolves mono-spec standard file variables', () => {
     const monoTask: TaskRecord = { ...baseTask, workflow: 'mono-spec' };
     const vars = resolver.resolve(monoTask, 'safe_refactor', monoWorkflow, monoWorkflow.phases.safe_refactor);

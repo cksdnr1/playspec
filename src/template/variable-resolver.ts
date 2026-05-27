@@ -44,8 +44,7 @@ export class VariableResolver {
     workflow?: WorkflowDefinition,
     definition?: PhaseDefinition
   ): ResolvedVariables {
-    const featureSlug =
-      task.variables['FEATURE_SLUG'] ?? slugify(task.title);
+    const featureSlug = resolveFeatureSlug(task);
 
     const stepNumber = definition?.stepNumber ?? phaseId;
     const stepId = phaseId;
@@ -85,7 +84,9 @@ export class VariableResolver {
       PROJECT_DOC_ROOT: projectDocRoot,
     };
 
-    const taskVariables = filterReservedEngineVariables(task.variables);
+    const taskVariables = filterEmptyFeatureSlug(
+      filterReservedEngineVariables(task.variables)
+    );
     const declarations = mergeVariableDeclarations(workflow?.variables, definition?.variables);
     const resolvedDefaults = resolveDeclaredDefaults(
       workflow?.id ?? task.workflow,
@@ -117,12 +118,30 @@ const RESERVED_ENGINE_VARIABLES = new Set([
   'STEP_TITLE',
 ]);
 
+function resolveFeatureSlug(task: TaskRecord): string {
+  const featureSlug = task.variables['FEATURE_SLUG'];
+  return featureSlug === '' || featureSlug === undefined
+    ? slugify(task.title)
+    : featureSlug;
+}
+
 function filterReservedEngineVariables(
   taskVariables: Record<string, string>
 ): Record<string, string> {
   return Object.fromEntries(
     Object.entries(taskVariables).filter(([name]) => !RESERVED_ENGINE_VARIABLES.has(name))
   );
+}
+
+function filterEmptyFeatureSlug(
+  taskVariables: Record<string, string>
+): Record<string, string> {
+  if (taskVariables.FEATURE_SLUG !== '') {
+    return taskVariables;
+  }
+
+  const { FEATURE_SLUG: _featureSlug, ...remainingVariables } = taskVariables;
+  return remainingVariables;
 }
 
 const DEFAULT_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
