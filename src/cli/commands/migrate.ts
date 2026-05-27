@@ -2,7 +2,7 @@ import { access, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import chalk from 'chalk';
-import { WorkspaceNotInitializedError } from '#core/errors.js';
+import { TaskNotActiveError, WorkspaceNotInitializedError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { readTextFile } from '#utils/fs.js';
@@ -47,6 +47,9 @@ export async function runMigrate(
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(options.task);
+  if (task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
+  }
 
   // Load or generate migration plan
   let plan: MigrationPlan;
