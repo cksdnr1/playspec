@@ -11,7 +11,10 @@ export class StateDesyncDetector {
   constructor(private readonly gitState: GitState) {}
 
   async run(task: TaskRecord): Promise<DesyncCheckResult> {
-    const lastKnownGitHead = task.stateSync?.lastKnownGitHead ?? null;
+    const lastKnownGitHead =
+      task.stateSync?.lastKnownGitHead
+      ?? task.rollback?.lastSafePoint?.gitHead
+      ?? null;
     if (!lastKnownGitHead && !task.rollback?.lastSafePoint) {
       return {
         taskId: task.id,
