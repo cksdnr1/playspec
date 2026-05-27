@@ -34,7 +34,7 @@ export class GitState {
     const [head, branchStatus, porcelain] = await Promise.all([
       this.getCurrentHead(),
       this.run(['status', '--short', '--branch', '--untracked-files=all']),
-      this.run(['status', '--porcelain', '--untracked-files=all']),
+      this.run(['status', '--porcelain=v1', '-z', '--untracked-files=all']),
     ]);
 
     return {
@@ -68,6 +68,10 @@ export class GitState {
 }
 
 export function parsePorcelain(output: string): GitStatusEntry[] {
+  if (output.includes('\0')) {
+    return parseNulPorcelain(output);
+  }
+
   return output
     .split('\n')
     .map((line) => line.trimEnd())
@@ -75,16 +79,58 @@ export function parsePorcelain(output: string): GitStatusEntry[] {
     .map((line) => {
       const code = line.slice(0, 2);
       const rawPath = line.slice(3);
-      const renamePaths = parseRenamePorcelainPaths(rawPath);
-      if (renamePaths) {
-        const [originalPath, nextPath] = renamePaths;
-        return { code, path: nextPath, originalPath };
+      if (isRenameOrCopyStatus(code)) {
+        const renamePaths = parseRenamePorcelainPaths(rawPath);
+        if (renamePaths) {
+          const [originalPath, nextPath] = renamePaths;
+          return { code, path: nextPath, originalPath };
+        }
       }
       return { code, path: decodePorcelainPath(rawPath) };
     });
 }
 
+function parseNulPorcelain(output: string): GitStatusEntry[] {
+  const fields = output.split('\0').filter((field) => field.length > 0);
+  const entries: GitStatusEntry[] = [];
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    const code = field.slice(0, 2);
+    const path = field.slice(3);
+
+    if (isRenameOrCopyStatus(code)) {
+      const originalPath = fields[index + 1];
+      if (originalPath !== undefined) {
+        entries.push({ code, path, originalPath });
+        index += 1;
+        continue;
+      }
+    }
+
+    entries.push({ code, path });
+  }
+
+  return entries;
+}
+
+function isRenameOrCopyStatus(code: string): boolean {
+  return code.includes('R') || code.includes('C');
+}
+
 function parseRenamePorcelainPaths(rawPath: string): [string, string] | null {
+  if (!rawPath.startsWith('"')) {
+    const separatorIndex = rawPath.indexOf(' -> ');
+    if (separatorIndex === -1) {
+      return null;
+    }
+
+    return [
+      rawPath.slice(0, separatorIndex),
+      rawPath.slice(separatorIndex + ' -> '.length),
+    ];
+  }
+
   const first = parsePorcelainPathToken(rawPath);
   if (!first) {
     return null;
@@ -111,10 +157,9 @@ function decodePorcelainPath(rawPath: string): string {
 
 function parsePorcelainPathToken(rawPath: string): { path: string; consumed: number } | null {
   if (!rawPath.startsWith('"')) {
-    const separatorIndex = rawPath.indexOf(' -> ');
     return {
-      path: separatorIndex === -1 ? rawPath : rawPath.slice(0, separatorIndex),
-      consumed: separatorIndex === -1 ? rawPath.length : separatorIndex,
+      path: rawPath,
+      consumed: rawPath.length,
     };
   }
 
