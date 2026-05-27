@@ -307,6 +307,20 @@ describe('McpSessionStore', () => {
     expect(result).toBeNull();
   });
 
+  it.each([
+    ['slash path separator', '../mcp.codex'],
+    ['backslash path separator', '..\\mcp.codex'],
+    ['colon', 'mcp:codex'],
+    ['empty string', ''],
+    ['null byte', 'mcp.codex\0suffix'],
+    ['control character', 'mcp.codex\nsuffix'],
+    ['over 256 characters', 'a'.repeat(257)],
+  ])('rejects malformed sessionId when loading a session with %s', async (_reason, sessionId) => {
+    await initWorkspaceWithTask('Feature X');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await expect(sessionStore.loadSession(sessionId)).rejects.toBeInstanceOf(McpInvalidSessionIdError);
+  });
+
   it('creates a session file with setSessionTask', async () => {
     const { taskId } = await initWorkspaceWithTask('Feature X');
     const sessionStore = new McpSessionStore(workspace.dir);
@@ -521,6 +535,34 @@ describe('resolveMcpTaskId', () => {
 describe('buildMcpServer', () => {
   it('instantiates McpServer without throwing', () => {
     expect(() => buildMcpServer(workspace.dir)).not.toThrow();
+  });
+
+  it('returns null session and task for a valid nonexistent MCP session lookup', async () => {
+    await initWorkspaceWithTask('MCP Missing Session Lookup');
+    const handler = getRegisteredToolHandler('playspec_get_session_task');
+
+    const result = await handler({ sessionId: 'mcp.nonexistent' });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['session']).toBeNull();
+    expect(body['task']).toBeNull();
+  });
+
+  it.each([
+    ['slash path separator', '../mcp.codex'],
+    ['colon', 'mcp:codex'],
+    ['control character', 'mcp.codex\nsuffix'],
+  ])('rejects malformed playspec_get_session_task sessionId with %s', async (_reason, sessionId) => {
+    await initWorkspaceWithTask('MCP Unsafe Session Lookup');
+    const handler = getRegisteredToolHandler('playspec_get_session_task');
+
+    const result = await handler({ sessionId });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Invalid MCP sessionId.');
+    expect(result.content[0].text).toContain('path separators');
+    expect(result.content[0].text).toContain('control characters');
   });
 
   it('retrieves a same-workspace task with diagnostics', async () => {
