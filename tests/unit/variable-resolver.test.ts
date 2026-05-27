@@ -224,6 +224,25 @@ describe('VariableResolver', () => {
     expect(vars.FEATURE_SLUG).toBe('feature_name');
   });
 
+  it('falls back to slugified title before resolving defaults when FEATURE_SLUG is empty', () => {
+    const task: TaskRecord = {
+      ...baseTask,
+      variables: {
+        FEATURE_SLUG: '',
+      },
+    };
+
+    const vars = resolver.resolve(task, '3', multiWorkflow, multiWorkflow.phases['3']);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.PHASE_SPEC_FILE).toBe(
+      'docs/feature_name/feature_name_phase3_implementation_spec.md'
+    );
+    expect(vars.PHASE_HANDOFF_FILE).toBe(
+      'docs/feature_name/feature_name_phase3_handoff.md'
+    );
+  });
+
   it('resolves mono-spec standard file variables', () => {
     const monoTask: TaskRecord = { ...baseTask, workflow: 'mono-spec' };
     const vars = resolver.resolve(monoTask, 'safe_refactor', monoWorkflow, monoWorkflow.phases.safe_refactor);
@@ -717,6 +736,111 @@ describe('VariableResolver', () => {
     );
   });
 
+  it('resolves a default for a variable referenced only by an output placeholder', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'output-placeholder-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+        ARTIFACT_FILE: {
+          required: false,
+          default: 'docs/{{FEATURE_SLUG}}/artifact.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          outputs: ['{{ARTIFACT_FILE}}'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.ARTIFACT_FILE).toBe('docs/feature_name/artifact.md');
+  });
+
+  it('throws for an unknown default reference demanded only by an output placeholder', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'bad-output-placeholder-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        ARTIFACT_FILE: {
+          required: false,
+          default: 'docs/{{MISSING_KEY}}/artifact.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          outputs: ['{{ARTIFACT_FILE}}'],
+        },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      UnknownVariableDefaultError
+    );
+  });
+
+  it('does not demand a declaration from a literal output path with no placeholders', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'literal-output-path',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        ARTIFACT_FILE: {
+          required: false,
+          default: 'docs/{{MISSING_KEY}}/artifact.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          outputs: ['docs/static/artifact.md'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.ARTIFACT_FILE).toBeUndefined();
+  });
+
+  it('demands every placeholder in one output path', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'multi-output-placeholder-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        ARTIFACT_DIR: {
+          required: false,
+          default: 'docs/artifacts',
+        },
+        ARTIFACT_FILE: {
+          required: false,
+          default: '{{MISSING_FILE_NAME}}.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          outputs: ['{{ARTIFACT_DIR}}/{{ARTIFACT_FILE}}'],
+        },
+      },
+    };
+
+    expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
+      UnknownVariableDefaultError
+    );
+  });
+
   it('does not report declared but unset required default dependencies as unknown', () => {
     const workflow: WorkflowDefinition = {
       id: 'missing-required-default-dependency',
@@ -758,5 +882,36 @@ describe('VariableResolver', () => {
     expect(() => resolver.resolve(baseTask, 'start', workflow, workflow.phases.start)).toThrow(
       CircularVariableDefaultError
     );
+  });
+
+  it('does not fail an active phase for an unused workflow default cycle', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'unused-cycle',
+      mode: 'linear',
+      phaseOrder: ['start', 'future'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+        A: { default: '{{B}}' },
+        B: { default: '{{A}}' },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['FEATURE_SLUG'],
+        },
+        future: {
+          title: 'Future',
+          template: 'future.md',
+          requiredVariables: ['A'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.A).toBeUndefined();
+    expect(vars.B).toBeUndefined();
   });
 });

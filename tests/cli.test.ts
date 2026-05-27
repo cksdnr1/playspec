@@ -12,7 +12,7 @@ import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { slugify } from '#utils/slug.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
-import { getHeadPath } from '#utils/paths.js';
+import { getHeadPath, getMigrationPlansDir, getMigrationReportsDir } from '#utils/paths.js';
 import { formatPromptCopySuccess } from '#utils/clipboard-message.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -145,6 +145,50 @@ async function createAdditionalActiveTask(title: string, workflow = 'multi-spec'
     workflow,
   });
   return taskId;
+}
+
+async function expectNoMigrationArtifacts(planId: string) {
+  await expect(access(path.join(getMigrationPlansDir(workspace.dir), `${planId}.yaml`))).rejects.toThrow();
+  await expect(access(path.join(getMigrationReportsDir(workspace.dir), `${planId}_report.yaml`))).rejects.toThrow();
+}
+
+async function writeDryRunContextMigrationPlan(taskId: string, planId: string): Promise<string> {
+  const planPath = path.join(workspace.dir, `${planId}.yaml`);
+  await writeTextFile(
+    planPath,
+    `id: ${planId}
+createdAt: 2026-05-25T00:00:00.000Z
+mode: dry-run
+sourceRoot: docs
+targetTaskId: ${taskId}
+sourceFiles:
+  - docs/total_spec.md
+targetFiles:
+  - .playspec/tasks/active/${taskId}/task.yaml
+actions:
+  - actionId: action_001
+    type: add_context_ref
+    targetPath: .playspec/tasks/active/${taskId}/task.yaml
+    sourcePaths:
+      - docs/total_spec.md
+    reason: Add total spec as context
+    evidence: External plan proposes a task context mutation
+    riskLevel: medium
+    preview: "+ contextRefs"
+    backupRequired: true
+    requiresReview: false
+    contextRef:
+      path: docs/total_spec.md
+      role: planning-context
+      source: ${planId}
+statePromotions: []
+riskLevel: medium
+requiresReview: false
+summary: 1 action proposed
+warnings: []
+`
+  );
+  return planPath;
 }
 
 async function createMonoSpecTasks(titles: string[]): Promise<void> {
@@ -503,6 +547,44 @@ describe('CLI placeholder', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
     expect(result.stdout).toContain('No source documents found.');
+  });
+
+  it('rejects migrate for a completed HEAD task before writing dry-run migration artifacts', async () => {
+    const taskId = await createActiveTask('Migrate Completed Head Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planId = 'migration_completed_head_guard';
+    const planPath = await writeDryRunContextMigrationPlan(taskId, planId);
+
+    const result = await runCli(['migrate', '--plan', planPath, '--mode', 'dry-run'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+    await expectNoMigrationArtifacts(planId);
+  });
+
+  it('rejects migrate --task for a completed task before writing dry-run migration artifacts', async () => {
+    const taskId = await createActiveTask('Migrate Completed Explicit Guard Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, { status: 'completed' });
+
+    const taskYamlPath = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'task.yaml');
+    const before = await readTextFile(taskYamlPath);
+    const planId = 'migration_completed_explicit_guard';
+    const planPath = await writeDryRunContextMigrationPlan(taskId, planId);
+
+    const result = await runCli(['migrate', '--task', taskId, '--plan', planPath, '--mode', 'dry-run'], workspace.dir);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Warning: `playspec migrate` is deprecated. Migration is hidden from the primary CLI workflow.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    await expect(readTextFile(taskYamlPath)).resolves.toBe(before);
+    await expectNoMigrationArtifacts(planId);
   });
 
   it('rejects migrate --plan task mutations for completed tasks before changing task YAML', async () => {
@@ -1728,6 +1810,39 @@ phases:
     expect(currentTask.stdout).toContain(`${contextPath} (planning-context, source: manual_task)`);
   });
 
+  it('rejects current-task when HEAD points at a completed task', async () => {
+    const taskId = await createActiveTask('Current Task Completed Head Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects deprecated current when HEAD points at a completed task', async () => {
+    const taskId = await createActiveTask('Current Deprecated Completed Head Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['current'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Warning: `playspec current` is deprecated.');
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
   it('renders a manually linked context file in next prompt variables', async () => {
     const taskId = await createActiveTask('Manual Context Prompt Task', 'mono-spec');
     const contextPath = 'cross_project_cli_import_alias_bug.md';
@@ -2391,6 +2506,41 @@ phases:
     ).rejects.toThrow();
   });
 
+  it('rejects HEAD-based completed tasks through complete before printing context', async () => {
+    const taskId = await createActiveTask('Complete Completed Head Guard Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['complete'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toContain('Task: Complete Completed Head Guard Task');
+    expect(result.stdout).not.toContain(`Task ID:  ${taskId}`);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects explicit completed tasks through complete --task before printing context', async () => {
+    await createActiveTask('Complete Completed Explicit Guard Active Task', 'mono-spec');
+    const completedTaskId = await createAdditionalActiveTask('Complete Completed Explicit Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['complete', '--task', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toContain('Task: Complete Completed Explicit Guard Done Task');
+    expect(result.stdout).not.toContain(`Task ID:  ${completedTaskId}`);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
   it('creates evidence and snapshot artifacts via the CLI without phase mutation', async () => {
     const taskId = await createActiveTask('CLI Artifact Task');
     await initGitRepo();
@@ -2457,6 +2607,33 @@ phases:
     expect(result.stdout).toContain('Severity: medium');
     expect(result.stdout).toContain('Untracked files: src/quote"file.ts');
     expect(result.stdout).not.toContain('"src/quote\\"file.ts"');
+  });
+
+  it('falls back to rollback safe point Git head when state sync is missing', async () => {
+    const taskId = await createActiveTask('CLI Rollback Baseline Desync Task');
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.getTask(taskId);
+    const safePointGitHead = task.rollback?.lastSafePoint?.gitHead;
+    expect(safePointGitHead).toMatch(/^[0-9a-f]{40}$/);
+    await store.updateTask(taskId, { stateSync: undefined });
+
+    await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 2;\n');
+    await execa('git', ['add', 'src/app.ts'], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'source change'], { cwd: workspace.dir });
+    const currentHead = (await execa('git', ['rev-parse', 'HEAD'], { cwd: workspace.dir })).stdout;
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`Task: ${taskId}`);
+    expect(result.stdout).toContain('Severity: high');
+    expect(result.stdout).toContain(`Last known Git HEAD: ${safePointGitHead}`);
+    expect(result.stdout).toContain(`Current Git HEAD: ${currentHead}`);
+    expect(result.stdout).toContain('Git HEAD changed since the last safe point.');
   });
 
   it('rejects HEAD-based completed tasks through desync-check', async () => {
@@ -3117,6 +3294,73 @@ phases:
     expect(result.stdout).not.toMatch(/^Phase:/m);
     expect(result.stdout).toContain('ID:');
     expect(result.stdout).toContain('Workflow:');
+  });
+
+  it('rejects completed HEAD for status before printing task detail or suggestions', async () => {
+    const completedTaskId = await createActiveTask('CLI Status Completed Head Task');
+    const childTaskId = await createAdditionalActiveTask('CLI Status Completed Head Child', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+      links: [],
+    });
+    await store.updateTask(childTaskId, {
+      links: [{ type: 'parent', targetTaskId: completedTaskId, createdAt: '2025-01-01T00:00:00.000Z' }],
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${completedTaskId}\n`);
+
+    const result = await runCli(['status'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(result.stdout).not.toContain('ID:');
+    expect(result.stdout).not.toContain('Suggested next:');
+    expect(result.stdout).not.toContain(childTaskId);
+  });
+
+  it('rejects completed HEAD for status --quiet before printing task detail or suggestions', async () => {
+    const completedTaskId = await createActiveTask('CLI Status Quiet Completed Head Task');
+    const childTaskId = await createAdditionalActiveTask('CLI Status Quiet Completed Head Child', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+      links: [],
+    });
+    await store.updateTask(childTaskId, {
+      links: [{ type: 'parent', targetTaskId: completedTaskId, createdAt: '2025-01-01T00:00:00.000Z' }],
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${completedTaskId}\n`);
+
+    const result = await runCli(['status', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(result.stdout).not.toContain('ID:');
+    expect(result.stdout).not.toContain('Suggested next:');
+    expect(result.stdout).not.toContain(childTaskId);
+  });
+
+  it('keeps explicit status inspection available for completed tasks', async () => {
+    const activeTaskId = await createActiveTask('CLI Status Explicit Active Task');
+    const completedTaskId = await createAdditionalActiveTask('CLI Status Explicit Completed Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${activeTaskId}\n`);
+
+    const result = await runCli(['status', completedTaskId, '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`ID:       ${completedTaskId}`);
+    expect(result.stdout).toContain('Status:   completed');
   });
 
   it('--quiet does not suppress high desync warning on next', async () => {

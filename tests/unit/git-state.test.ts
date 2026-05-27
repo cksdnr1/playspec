@@ -9,6 +9,12 @@ describe('parsePorcelain', () => {
     ]);
   });
 
+  it('preserves ordinary unquoted paths containing the rename display delimiter', () => {
+    expect(parsePorcelain('?? docs/source -> target.md')).toEqual([
+      { code: '??', path: 'docs/source -> target.md' },
+    ]);
+  });
+
   it('decodes quoted porcelain path escapes', () => {
     expect(parsePorcelain('?? "docs/name\\twithtab.md"')).toEqual([
       { code: '??', path: 'docs/name\twithtab.md' },
@@ -30,6 +36,24 @@ describe('parsePorcelain', () => {
   it('decodes quoted rename source and destination fields', () => {
     expect(parsePorcelain('R  "docs/old\\tname.md" -> "docs/new\\tname.md"')).toEqual([
       { code: 'R ', originalPath: 'docs/old\tname.md', path: 'docs/new\tname.md' },
+    ]);
+  });
+
+  it('preserves NUL-delimited paths containing the rename display delimiter', () => {
+    expect(parsePorcelain('?? docs/source -> target.md\0')).toEqual([
+      { code: '??', path: 'docs/source -> target.md' },
+    ]);
+  });
+
+  it('preserves NUL-delimited paths with spaces and shell-sensitive characters', () => {
+    expect(parsePorcelain(' M docs/name with $shell chars & spaces.md\0')).toEqual([
+      { code: ' M', path: 'docs/name with $shell chars & spaces.md' },
+    ]);
+  });
+
+  it('preserves NUL-delimited rename source and destination fields', () => {
+    expect(parsePorcelain('R  src/new-name.ts\0src/old-name.ts\0')).toEqual([
+      { code: 'R ', originalPath: 'src/old-name.ts', path: 'src/new-name.ts' },
     ]);
   });
 

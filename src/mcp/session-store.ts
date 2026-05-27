@@ -14,6 +14,7 @@ export class McpSessionStore {
   }
 
   async loadSession(sessionId: string): Promise<SessionRecord | null> {
+    assertValidMcpSessionId(sessionId);
     try {
       const content = await readTextFile(this.sessionPath(sessionId));
       const raw = parseYaml(content) as unknown;

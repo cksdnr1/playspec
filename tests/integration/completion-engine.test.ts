@@ -355,6 +355,42 @@ describe('Phase 2 completion engine', () => {
     expect(markdown).not.toContain('## Feedback');
   });
 
+  it('normalizes completion markdown artifact display paths to POSIX separators', async () => {
+    const { store, taskId } = await initWorkspaceWithTask('windows_style_task');
+    const task = await store.getTask(taskId);
+    const windowsStyleTaskRoot = ['.playspec', 'tasks', 'active', taskId].join('\\');
+    await store.updateTask(taskId, {
+      paths: {
+        ...task.paths,
+        taskRoot: windowsStyleTaskRoot,
+      },
+    });
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { withReview: true });
+    const markdown = await readFile(
+      path.join(workspace.dir, windowsStyleTaskRoot, 'completions', '0001-1.md'),
+      'utf-8'
+    );
+
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/evidence/phase1_git_status.txt`);
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/snapshots/phase1_before_complete.yaml`);
+    expect(markdown).toContain(`- .playspec/tasks/active/${taskId}/reviews/phase1_review.yaml`);
+    expect(markdown).not.toMatch(/\.playspec\\tasks\\active/);
+    expect(result.completionEvent).toMatchObject({
+      evidenceFiles: [
+        'evidence/phase1_git_status.txt',
+        'evidence/phase1_git_diff_stat.txt',
+        'evidence/phase1_changed_files.txt',
+      ],
+      snapshotFiles: [
+        'snapshots/phase1_before_complete.yaml',
+        'snapshots/phase1_prompt.md',
+      ],
+      reviewFile: 'reviews/phase1_review.yaml',
+    });
+  });
+
   it('captures validation feedback and records thread references during completion', async () => {
     const { store, taskId } = await initWorkspaceWithFeedbackTask();
     const core = new PlaySpecCore(workspace.dir, store);
@@ -624,6 +660,34 @@ describe('Phase 2 completion engine', () => {
 
     expect(changedFiles.split('\n')).toContain('src/old-name.ts -> src/new-name.ts');
     expect(changedFiles.split('\n')).not.toContain('src/new-name.ts');
+  });
+
+  it('preserves non-renamed paths containing the rename delimiter in changed-files evidence', async () => {
+    const { store, taskId } = await initWorkspaceWithTask();
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'source -> target.md'),
+      'literal delimiter path\n'
+    );
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    await core.collectEvidence(taskId);
+
+    const changedFiles = await readFile(
+      path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        taskId,
+        'evidence',
+        'phase1_manual_changed_files.txt'
+      ),
+      'utf-8'
+    );
+
+    expect(changedFiles.split('\n')).toContain('docs/source -> target.md');
+    expect(changedFiles.split('\n')).not.toContain('docs/source');
+    expect(changedFiles.split('\n')).not.toContain('target.md');
   });
 
   it('marks the task completed on the final workflow phase', async () => {
