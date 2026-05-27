@@ -2595,6 +2595,20 @@ phases:
     expect(result.stdout).toContain('Untracked files: src/untracked.ts');
   });
 
+  it('reports exact quoted-character untracked paths through desync-check', async () => {
+    await createActiveTask('CLI Quoted Untracked Desync Task');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await writeTextFile(path.join(workspace.dir, 'src', 'quote"file.ts'), 'export const value = 1;\n');
+
+    const result = await runCli(['desync-check'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Severity: medium');
+    expect(result.stdout).toContain('Untracked files: src/quote"file.ts');
+    expect(result.stdout).not.toContain('"src/quote\\"file.ts"');
+  });
+
   it('falls back to rollback safe point Git head when state sync is missing', async () => {
     const taskId = await createActiveTask('CLI Rollback Baseline Desync Task');
     await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');
@@ -2810,6 +2824,30 @@ phases:
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Git rollback is blocked');
     expect(result.stderr).toContain('Untracked files conflict with rollback target files and will not be deleted.');
+  });
+
+  it('compares exact quoted-character paths for rollback untracked conflicts', async () => {
+    await createActiveTask('CLI Quoted Untracked Rollback Task');
+    const quotedPath = 'src/quote"file.ts';
+    const sourcePath = path.join(workspace.dir, quotedPath);
+    await writeTextFile(sourcePath, 'export const value = 1;\n');
+    await initGitRepo();
+    await runCli(['complete'], workspace.dir);
+    await execa('git', ['rm', quotedPath], { cwd: workspace.dir });
+    await execa('git', ['commit', '-m', 'delete quoted tracked file after safe point'], { cwd: workspace.dir });
+    await writeTextFile(sourcePath, 'export const value = 2;\n');
+
+    const preview = await runCli(['rollback', '--git-only'], workspace.dir);
+    const confirmed = await runCli(['rollback', '--git-only', '--confirm'], workspace.dir);
+
+    expect(preview.exitCode).toBe(0);
+    expect(preview.stdout).toContain('Deleted files: src/quote"file.ts');
+    expect(preview.stdout).toContain('Untracked files: src/quote"file.ts');
+    expect(preview.stdout).toContain('Untracked files conflict with rollback target files and will not be deleted.');
+    expect(preview.stdout).not.toContain('"src/quote\\"file.ts"');
+    expect(confirmed.exitCode).toBe(1);
+    expect(confirmed.stderr).toContain('Git rollback is blocked');
+    expect(confirmed.stderr).toContain('Untracked files conflict with rollback target files and will not be deleted.');
   });
 
   it('executes confirmed git rollback when safety gates pass', async () => {
