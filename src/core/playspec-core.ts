@@ -991,7 +991,7 @@ export class PlaySpecCore {
 
   private renderCompletionMarkdown(task: TaskRecord, event: CompletionEvent): string {
     const displayPath = (taskRootRelativePath: string) =>
-      path.join(task.paths.taskRoot, taskRootRelativePath);
+      path.join(task.paths.taskRoot, taskRootRelativePath).replace(/\\/g, '/');
     const evidence = event.evidenceFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
     const snapshots = event.snapshotFiles.map((file) => `- ${displayPath(file)}`).join('\n') || '- none';
     const review = event.reviewFile ? `- ${displayPath(event.reviewFile)}` : '- none';
