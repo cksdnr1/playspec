@@ -39,5 +39,5 @@
 
 ## PR Notes
 
-- Draft PR: pending creation during PR preparation.
+- Draft PR: https://github.com/cksdnr1/playspec/pull/260
 - Reusable agent guidance: no new reusable guidance is needed; this is a narrow resolver regression fix.
