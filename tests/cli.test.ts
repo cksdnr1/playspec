@@ -3258,6 +3258,73 @@ phases:
     expect(result.stdout).toContain('Workflow:');
   });
 
+  it('rejects completed HEAD for status before printing task detail or suggestions', async () => {
+    const completedTaskId = await createActiveTask('CLI Status Completed Head Task');
+    const childTaskId = await createAdditionalActiveTask('CLI Status Completed Head Child', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+      links: [],
+    });
+    await store.updateTask(childTaskId, {
+      links: [{ type: 'parent', targetTaskId: completedTaskId, createdAt: '2025-01-01T00:00:00.000Z' }],
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${completedTaskId}\n`);
+
+    const result = await runCli(['status'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(result.stdout).not.toContain('ID:');
+    expect(result.stdout).not.toContain('Suggested next:');
+    expect(result.stdout).not.toContain(childTaskId);
+  });
+
+  it('rejects completed HEAD for status --quiet before printing task detail or suggestions', async () => {
+    const completedTaskId = await createActiveTask('CLI Status Quiet Completed Head Task');
+    const childTaskId = await createAdditionalActiveTask('CLI Status Quiet Completed Head Child', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+      links: [],
+    });
+    await store.updateTask(childTaskId, {
+      links: [{ type: 'parent', targetTaskId: completedTaskId, createdAt: '2025-01-01T00:00:00.000Z' }],
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${completedTaskId}\n`);
+
+    const result = await runCli(['status', '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+    expect(result.stdout).not.toContain('ID:');
+    expect(result.stdout).not.toContain('Suggested next:');
+    expect(result.stdout).not.toContain(childTaskId);
+  });
+
+  it('keeps explicit status inspection available for completed tasks', async () => {
+    const activeTaskId = await createActiveTask('CLI Status Explicit Active Task');
+    const completedTaskId = await createAdditionalActiveTask('CLI Status Explicit Completed Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+    await writeTextFile(getHeadPath(workspace.dir), `${activeTaskId}\n`);
+
+    const result = await runCli(['status', completedTaskId, '--quiet'], workspace.dir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`ID:       ${completedTaskId}`);
+    expect(result.stdout).toContain('Status:   completed');
+  });
+
   it('--quiet does not suppress high desync warning on next', async () => {
     await createActiveTask('CLI Quiet Desync Task');
     await writeTextFile(path.join(workspace.dir, 'src', 'app.ts'), 'export const value = 1;\n');

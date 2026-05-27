@@ -1,6 +1,7 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
+import { TaskNotActiveError } from '#core/errors.js';
 import { formatContextHeader } from '../context-header.js';
 import type { TaskLinkType, TaskRecord } from '#core/types.js';
 
@@ -13,6 +14,11 @@ export async function runStatus(
   const task = taskIdOption
     ? await store.getTask((await new TaskIdResolver(store).resolve(taskIdOption)).taskId)
     : await new ActiveTaskResolver(workspaceRoot, store).resolveTask();
+
+  if (!taskIdOption && task.status !== 'active') {
+    throw new TaskNotActiveError(task.id, task.status);
+  }
+
   const allTasks = await loadActiveAndCompletedTasks(store);
 
   if (!quiet) {
