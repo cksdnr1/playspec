@@ -759,4 +759,35 @@ describe('VariableResolver', () => {
       CircularVariableDefaultError
     );
   });
+
+  it('does not fail an active phase for an unused workflow default cycle', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'unused-cycle',
+      mode: 'linear',
+      phaseOrder: ['start', 'future'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+        A: { default: '{{B}}' },
+        B: { default: '{{A}}' },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['FEATURE_SLUG'],
+        },
+        future: {
+          title: 'Future',
+          template: 'future.md',
+          requiredVariables: ['A'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.A).toBeUndefined();
+    expect(vars.B).toBeUndefined();
+  });
 });
