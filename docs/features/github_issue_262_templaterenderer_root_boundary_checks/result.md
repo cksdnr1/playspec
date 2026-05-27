@@ -40,3 +40,8 @@ Post-review verification:
 
 - `pnpm test tests/unit/template-renderer.test.ts`: passed, 9 tests.
 - `pnpm build`: passed.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/263
+- Reusable agent guidance: no new guidance needed; the issue was handled by the existing mono-spec workflow and repo path-guard conventions.
