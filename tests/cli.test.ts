@@ -2506,6 +2506,41 @@ phases:
     ).rejects.toThrow();
   });
 
+  it('rejects HEAD-based completed tasks through complete before printing context', async () => {
+    const taskId = await createActiveTask('Complete Completed Head Guard Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(taskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['complete'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toContain('Task: Complete Completed Head Guard Task');
+    expect(result.stdout).not.toContain(`Task ID:  ${taskId}`);
+    expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects explicit completed tasks through complete --task before printing context', async () => {
+    await createActiveTask('Complete Completed Explicit Guard Active Task', 'mono-spec');
+    const completedTaskId = await createAdditionalActiveTask('Complete Completed Explicit Guard Done Task', 'mono-spec');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.updateTask(completedTaskId, {
+      status: 'completed',
+      currentPhase: null,
+    });
+
+    const result = await runCli(['complete', '--task', completedTaskId], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toContain('Task: Complete Completed Explicit Guard Done Task');
+    expect(result.stdout).not.toContain(`Task ID:  ${completedTaskId}`);
+    expect(result.stderr).toContain(`Task "${completedTaskId}" is not active (status: completed).`);
+    expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
   it('creates evidence and snapshot artifacts via the CLI without phase mutation', async () => {
     const taskId = await createActiveTask('CLI Artifact Task');
     await initGitRepo();
