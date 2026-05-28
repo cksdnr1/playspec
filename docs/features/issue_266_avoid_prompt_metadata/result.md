@@ -55,4 +55,4 @@ Failures encountered and fixed:
 
 - PR body source written to `docs/features/issue_266_avoid_prompt_metadata/pr.md`.
 - Reusable agent guidance: no AGENTS.md or workflow guidance update is needed because the change is a localized parser/test fix, not a recurring operator rule.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/267
