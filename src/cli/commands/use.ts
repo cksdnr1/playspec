@@ -1,5 +1,5 @@
 import type { TaskSummary } from '#core/types.js';
-import { PlaySpecError, TaskNotActiveError, TaskNotFoundError } from '#core/errors.js';
+import { PlaySpecError, TaskNotActiveError, TaskNotFoundError, UnsafeTaskIdError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
@@ -48,7 +48,7 @@ async function setHeadToTask(workspaceRoot: string, store: TaskStore, taskId: st
   try {
     task = await store.getTask(taskId);
   } catch (err) {
-    if (err instanceof TaskNotFoundError) {
+    if (err instanceof TaskNotFoundError || err instanceof UnsafeTaskIdError) {
       await throwUseSuggestionError(store, taskId, err);
     }
     throw err;
@@ -96,7 +96,11 @@ async function selectTask(items: { value: TaskSummary; label: string }[]): Promi
   });
 }
 
-async function throwUseSuggestionError(store: TaskStore, input: string, originalError: TaskNotFoundError): Promise<never> {
+async function throwUseSuggestionError(
+  store: TaskStore,
+  input: string,
+  originalError: TaskNotFoundError | UnsafeTaskIdError
+): Promise<never> {
   const tasks = await store.listActiveTasks();
   const matches = findTaskSuggestions(input, tasks);
 

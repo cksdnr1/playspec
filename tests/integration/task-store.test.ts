@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
-import { TaskNotFoundError } from '#core/errors.js';
+import { TaskNotFoundError, UnsafeTaskIdError } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
@@ -47,6 +47,54 @@ describe('YamlTaskStore', () => {
   it('throws TaskNotFoundError for unknown task', async () => {
     const store = new YamlTaskStore(workspace.dir);
     await expect(store.getTask('nonexistent')).rejects.toThrow(TaskNotFoundError);
+  });
+
+  it('rejects traversal-style active task IDs before storage lookup', async () => {
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'outside', 'task.yaml'),
+      `id: ../outside
+title: Outside Task
+workflow: mono-spec
+status: active
+workflowMode: linear
+currentPhase: null
+createdAt: "2026-05-28T00:00:00.000Z"
+updatedAt: "2026-05-28T00:00:00.000Z"
+paths:
+  taskRoot: .playspec/tasks/outside
+  projectDocRoot: docs/features/outside
+variables:
+  FEATURE_SLUG: outside
+phaseHistory: []
+`
+    );
+    const store = new YamlTaskStore(workspace.dir);
+
+    await expect(store.getTask('../outside')).rejects.toThrow(UnsafeTaskIdError);
+  });
+
+  it('rejects traversal-style archived task IDs before storage lookup', async () => {
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'tasks', 'outside', 'task.yaml'),
+      `id: ../outside
+title: Outside Archived Task
+workflow: mono-spec
+status: archived
+workflowMode: linear
+currentPhase: null
+createdAt: "2026-05-28T00:00:00.000Z"
+updatedAt: "2026-05-28T00:00:00.000Z"
+paths:
+  taskRoot: .playspec/tasks/outside
+  projectDocRoot: docs/features/outside
+variables:
+  FEATURE_SLUG: outside
+phaseHistory: []
+`
+    );
+    const store = new YamlTaskStore(workspace.dir);
+
+    await expect(store.getArchivedTask('../outside')).rejects.toThrow(UnsafeTaskIdError);
   });
 
   it('lists active tasks', async () => {

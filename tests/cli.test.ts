@@ -1612,6 +1612,36 @@ phases:
     expect(after.updatedAt).toBe(before.updatedAt);
   });
 
+  it('rejects explicit use <taskId> with unsafe path-like input before reading task YAML', async () => {
+    const activeTaskId = await createActiveTask('Use Unsafe Active Task');
+    const traversalTaskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'outside');
+    await writeTextFile(
+      path.join(traversalTaskRoot, 'task.yaml'),
+      `id: ../outside
+title: Traversal Task
+workflow: mono-spec
+status: active
+workflowMode: linear
+currentPhase: null
+createdAt: "2026-05-28T00:00:00.000Z"
+updatedAt: "2026-05-28T00:00:00.000Z"
+paths:
+  taskRoot: .playspec/tasks/outside
+  projectDocRoot: docs/features/outside
+variables:
+  FEATURE_SLUG: outside
+phaseHistory: []
+`
+    );
+
+    const result = await runCli(['use', '../outside'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Unsafe task ID: ../outside');
+    expect(result.stderr).toContain('playspec use <TASK_ID>');
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
+  });
+
   it('rejects explicit use <taskId> for completed tasks without changing HEAD', async () => {
     const activeTaskId = await createActiveTask('Use Completed Guard Active Task');
     const completedTaskId = await createAdditionalActiveTask('Use Completed Guard Done Task', 'mono-spec');
@@ -1824,6 +1854,18 @@ phases:
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(`Task "${taskId}" is not active (status: completed).`);
     expect(result.stderr).toContain('Switch HEAD to an active task with `playspec use <TASK_ID>`');
+  });
+
+  it('rejects current-task when HEAD contains unsafe path-like content', async () => {
+    await createActiveTask('Current Task Unsafe Head Task', 'mono-spec');
+    await writeTextFile(getHeadPath(workspace.dir), '../outside\n');
+
+    const result = await runCli(['current-task'], workspace.dir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Unsafe task ID: ../outside');
+    expect(result.stderr).toContain('playspec use <TASK_ID>');
   });
 
   it('rejects deprecated current when HEAD points at a completed task', async () => {
