@@ -31,3 +31,8 @@
 
 - No safe local refactor was applied after implementation. The diff is already limited to the typed error, storage guard, and focused tests.
 - `git diff --check` passed.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/269
+- Reusable agent guidance: no new reusable guidance is needed.
