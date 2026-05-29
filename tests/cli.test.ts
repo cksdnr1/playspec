@@ -3568,6 +3568,178 @@ phases:
     expect(task.variables['OUT_OF_SCOPE_RULES']).toBe('Do not implement code.');
   });
 
+  it('rejects duplicate active task creation before mutating task state, source, or HEAD', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const first = await runCli([
+      'create',
+      'Duplicate Safety Task',
+      '--stdin',
+      '--var',
+      'ORIGINAL=first',
+    ], workspace.dir, { input: 'Original source\n' });
+    expect(first.exitCode).toBe(0);
+
+    const taskPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'duplicate_safety_task',
+      'task.yaml'
+    );
+    const memoryPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'duplicate_safety_task',
+      'memory.yaml'
+    );
+    const sourcePath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'duplicate_safety_task',
+      'sources',
+      'source_problem.md'
+    );
+
+    const store = new YamlTaskStore(workspace.dir);
+    const existingTask = await store.getTask('duplicate_safety_task');
+    await store.saveTask({
+      ...existingTask,
+      phaseHistory: [
+        {
+          phase: 'tech_spec_draft',
+          status: 'completed',
+          completedAt: '2026-05-29T00:00:00.000Z',
+        },
+      ],
+      stateSync: {
+        lastKnownGitHead: 'abc123',
+        lastCompletedAt: '2026-05-29T00:00:00.000Z',
+      },
+      rollback: {
+        lastSafePoint: {
+          id: 'safe-point-1',
+          createdAt: '2026-05-29T00:00:00.000Z',
+          phase: 'tech_spec_draft',
+          gitHead: 'abc123',
+          taskSnapshotFile: 'snapshots/task.yaml',
+        },
+      },
+      variables: {
+        ...existingTask.variables,
+        ORIGINAL: 'first',
+      },
+    });
+    await writeTextFile(memoryPath, 'notes: keep me\n');
+
+    const originalTaskYaml = await readTextFile(taskPath);
+    const originalMemoryYaml = await readTextFile(memoryPath);
+    const originalSource = await readTextFile(sourcePath);
+
+    const secondHead = await runCli(['create', 'Existing Head Holder'], workspace.dir);
+    expect(secondHead.exitCode).toBe(0);
+    const originalHead = await readTextFile(getHeadPath(workspace.dir));
+    expect(originalHead).toBe('existing_head_holder\n');
+
+    const duplicate = await runCli([
+      'create',
+      'Duplicate Safety Task',
+      '--stdin',
+      '--var',
+      'ORIGINAL=replaced',
+      '--var',
+      'NEW_VALUE=should_not_write',
+    ], workspace.dir, { input: 'Replacement source\n' });
+
+    expect(duplicate.exitCode).toBe(1);
+    expect(duplicate.stderr).toContain('Task already exists: duplicate_safety_task');
+    expect(duplicate.stderr).toContain('Choose a different task title');
+    expect(await readTextFile(taskPath)).toBe(originalTaskYaml);
+    expect(await readTextFile(memoryPath)).toBe(originalMemoryYaml);
+    expect(await readTextFile(sourcePath)).toBe(originalSource);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe(originalHead);
+
+    const storedTask = parseYaml(await readTextFile(taskPath)) as {
+      updatedAt: string;
+      variables: Record<string, string>;
+      phaseHistory: unknown[];
+      stateSync: { lastKnownGitHead: string | null; lastCompletedAt: string | null };
+      rollback: { lastSafePoint: { id: string } | null };
+    };
+    expect(storedTask.variables.ORIGINAL).toBe('first');
+    expect(storedTask.variables.NEW_VALUE).toBeUndefined();
+    expect(storedTask.phaseHistory).toHaveLength(1);
+    expect(storedTask.stateSync.lastKnownGitHead).toBe('abc123');
+    expect(storedTask.rollback.lastSafePoint?.id).toBe('safe-point-1');
+
+    const different = await runCli(['create', 'Different Safety Task'], workspace.dir);
+    expect(different.exitCode).toBe(0);
+    expect(await readTextFile(getHeadPath(workspace.dir))).toBe('different_safety_task\n');
+  });
+
+  it('rejects duplicate YamlTaskStore.createTask calls before overwriting task files', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const store = new YamlTaskStore(workspace.dir);
+    const first = await store.createTask({
+      id: 'storage_duplicate_task',
+      title: 'Storage Duplicate Task',
+      workflow: 'mono-spec',
+      variables: {
+        ORIGINAL: 'first',
+      },
+    });
+    await store.saveTask({
+      ...first,
+      phaseHistory: [
+        {
+          phase: 'tech_spec_draft',
+          status: 'completed',
+          completedAt: '2026-05-29T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const taskPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'storage_duplicate_task',
+      'task.yaml'
+    );
+    const memoryPath = path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'storage_duplicate_task',
+      'memory.yaml'
+    );
+    await writeTextFile(memoryPath, 'notes: keep me\n');
+    const originalTaskYaml = await readTextFile(taskPath);
+    const originalMemoryYaml = await readTextFile(memoryPath);
+
+    await expect(store.createTask({
+      id: 'storage_duplicate_task',
+      title: 'Storage Duplicate Task',
+      workflow: 'mono-spec',
+      variables: {
+        ORIGINAL: 'replaced',
+      },
+    })).rejects.toThrow('Task already exists: storage_duplicate_task');
+
+    expect(await readTextFile(taskPath)).toBe(originalTaskYaml);
+    expect(await readTextFile(memoryPath)).toBe(originalMemoryYaml);
+  });
+
   it('stores workflow variables when creating a phase-execution task', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
