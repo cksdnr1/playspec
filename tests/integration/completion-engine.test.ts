@@ -305,10 +305,22 @@ describe('Phase 2 completion engine', () => {
     const ledger = parseYaml(await readFile(
       path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions', 'index.yaml'),
       'utf-8'
-    )) as { taskId: string; events: Array<{ id: string; type: string; markdownFile: string; rollbackSafePointId: string }> };
+    )) as {
+      taskId: string;
+      events: Array<{
+        id: string;
+        type: string;
+        markdownFile: string;
+        rollbackSafePointId: string;
+        evidenceFiles: string[];
+        snapshotFiles: string[];
+        reviewFile?: string;
+      }>;
+    };
     const completionFiles = await readdir(
       path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'completions')
     );
+    const updatedTask = await store.getTask(taskId);
 
     expect(result.completionEvent).toMatchObject({
       id: '0001',
@@ -330,12 +342,30 @@ describe('Phase 2 completion engine', () => {
       reviewFile: 'reviews/phase1_review.yaml',
     });
     expect(result.feedback).toBeUndefined();
+    expect(updatedTask.phaseHistory).toContainEqual(
+      expect.objectContaining({
+        phase: '1',
+        evidenceFiles: result.evidenceFiles,
+        snapshotFiles: result.snapshotFiles,
+        reviewFile: result.reviewFile,
+      })
+    );
+    expect(updatedTask.rollback?.lastSafePoint).toEqual(
+      expect.objectContaining({
+        id: result.completionEvent?.rollbackSafePointId,
+        taskSnapshotFile: result.snapshotFiles[0],
+        promptSnapshotFile: result.snapshotFiles[1],
+      })
+    );
     expect(ledger.taskId).toBe(taskId);
     expect(ledger.events).toHaveLength(1);
     expect(ledger.events[0]).toMatchObject({
       id: '0001',
       type: 'phase_completed',
       markdownFile: 'completions/0001-1.md',
+      evidenceFiles: result.evidenceFiles,
+      snapshotFiles: result.snapshotFiles,
+      reviewFile: result.reviewFile,
     });
     expect(ledger.events[0]).not.toHaveProperty('feedback');
     expect(ledger.events[0]?.rollbackSafePointId).toBe(result.completionEvent?.rollbackSafePointId);
