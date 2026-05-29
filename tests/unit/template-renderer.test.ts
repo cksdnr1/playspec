@@ -46,6 +46,23 @@ describe('TemplateRenderer', () => {
     expect(result).toContain('After');
   });
 
+  it('discovers placeholders from the active template and expanded includes', async () => {
+    await writeTemplate(workspace, 'rules/report.md', 'Report: {{REPORT_FILE}}');
+    await writeTemplate(
+      workspace,
+      'test/with-placeholders.md',
+      'Task: {{TASK_TITLE}}\n{{include:rules/report.md}}\n{{#if ENABLED}}yes{{/if}}'
+    );
+    const renderer = new TemplateRenderer(workspace.dir);
+
+    const names = await renderer.discoverPlaceholderNames(
+      'test/with-placeholders.md',
+      templateRoot(workspace)
+    );
+
+    expect(names).toEqual(['TASK_TITLE', 'REPORT_FILE']);
+  });
+
   it('throws CircularIncludeError on circular includes', async () => {
     await writeTemplate(workspace, 'test/a.md', '{{include:test/b.md}}');
     await writeTemplate(workspace, 'test/b.md', '{{include:test/a.md}}');

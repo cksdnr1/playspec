@@ -594,7 +594,17 @@ export class PlaySpecCore {
     options: PromptRenderOptions = {}
   ): Promise<string> {
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
-    const variables = this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition);
+    const renderedTemplateVariables = await this.templateRenderer.discoverPlaceholderNames(
+      definition.template,
+      workflow.templateDir
+    );
+    const variables = this.resolveAndAssertRequiredVariables(
+      task,
+      workflow,
+      phaseId,
+      definition,
+      renderedTemplateVariables
+    );
     const basePrompt = this.appendLinkedTaskContext(
       await this.templateRenderer.render(definition.template, variables, workflow.templateDir),
       task
@@ -628,9 +638,12 @@ export class PlaySpecCore {
     task: TaskRecord,
     workflow: ResolvedWorkflow,
     phaseId: string,
-    definition: PhaseDefinition
+    definition: PhaseDefinition,
+    additionalDemandedVariables?: Iterable<string>
   ): Record<string, string> {
-    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition);
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition, {
+      additionalDemandedVariables,
+    });
     const declarations = mergeVariableDeclarations(workflow.definition.variables, definition.variables);
     assertRequiredVariables(workflow.id, phaseId, definition, declarations, variables);
     return variables;

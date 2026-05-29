@@ -787,6 +787,32 @@ describe('VariableResolver', () => {
     );
   });
 
+  it('throws for an unknown default reference demanded by the active rendered template', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'bad-rendered-template-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        REPORT_FILE: {
+          required: false,
+          default: 'docs/{{MISSING_KEY}}/report.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+        },
+      },
+    };
+
+    expect(() =>
+      resolver.resolve(baseTask, 'start', workflow, workflow.phases.start, {
+        additionalDemandedVariables: ['REPORT_FILE'],
+      })
+    ).toThrow(UnknownVariableDefaultError);
+  });
+
   it('does not demand a declaration from a literal output path with no placeholders', () => {
     const workflow: WorkflowDefinition = {
       id: 'literal-output-path',
@@ -810,6 +836,33 @@ describe('VariableResolver', () => {
     const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
 
     expect(vars.ARTIFACT_FILE).toBeUndefined();
+  });
+
+  it('does not block on an unused workflow default with an unknown dependency', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'unused-workflow-default',
+      mode: 'linear',
+      phaseOrder: ['start'],
+      variables: {
+        FEATURE_SLUG: { required: true },
+        UNUSED_REPORT: {
+          required: false,
+          default: 'docs/{{MISSING_KEY}}/report.md',
+        },
+      },
+      phases: {
+        start: {
+          title: 'Start',
+          template: 'start.md',
+          requiredVariables: ['FEATURE_SLUG'],
+        },
+      },
+    };
+
+    const vars = resolver.resolve(baseTask, 'start', workflow, workflow.phases.start);
+
+    expect(vars.FEATURE_SLUG).toBe('feature_name');
+    expect(vars.UNUSED_REPORT).toBeUndefined();
   });
 
   it('demands every placeholder in one output path', () => {

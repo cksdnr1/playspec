@@ -9,7 +9,11 @@ import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
-import { MissingRequiredVariablesError, TaskNotActiveError } from '#core/errors.js';
+import {
+  MissingRequiredVariablesError,
+  TaskNotActiveError,
+  UnknownVariableDefaultError,
+} from '#core/errors.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
@@ -312,6 +316,55 @@ describe('init → create → next (end-to-end)', () => {
     expect(prompt).toContain('My Task');
     // PHASE_NUMBER should be resolved to 3
     expect(prompt).toMatch(/Phase 3/);
+  });
+
+  it('reports unknown dependencies for defaults demanded only by active template placeholders', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const workflowDir = path.join(workspace.dir, '.playspec/workflows/rendered-default');
+    await mkdir(path.join(workflowDir, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(workflowDir, 'workflow.yaml'),
+      `id: rendered-default
+mode: linear
+variables:
+  REPORT_FILE:
+    required: false
+    default: "docs/{{MISSING_KEY}}/report.md"
+  UNUSED_FILE:
+    required: false
+    default: "docs/{{ALSO_MISSING}}/unused.md"
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(
+      path.join(workflowDir, 'templates/start.md'),
+      'Report path: {{REPORT_FILE}}\n',
+      'utf8'
+    );
+
+    const taskId = 'rendered_default_task';
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Rendered Default Task',
+      workflow: 'rendered-default',
+    });
+
+    const core = new PlaySpecCore(workspace.dir, store);
+    const render = core.renderNextPrompt(taskId);
+
+    await expect(render).rejects.toThrow(UnknownVariableDefaultError);
+    await expect(render).rejects.toThrow(
+      'Unknown variable MISSING_KEY used in default for REPORT_FILE'
+    );
   });
 
   it('core prompt render helpers reject completed tasks', async () => {

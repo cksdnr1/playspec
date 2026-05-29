@@ -12,6 +12,11 @@ import {
 const INCLUDE_REGEX = /\{\{include:([^}]+)\}\}/g;
 const UNRESOLVED_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
 
+interface TemplatePlaceholder {
+  name: string;
+  token: string;
+}
+
 export class TemplateRenderer {
   constructor(private readonly workspaceRoot: string) {}
 
@@ -34,11 +39,8 @@ export class TemplateRenderer {
     return resolvedTemplatePath;
   }
 
-  private findMissingTemplateVariables(
-    content: string,
-    variables: Record<string, string>
-  ): string[] {
-    const placeholders = new Set<string>();
+  private findTemplatePlaceholders(content: string): TemplatePlaceholder[] {
+    const placeholders: TemplatePlaceholder[] = [];
 
     for (const match of content.matchAll(UNRESOLVED_PLACEHOLDER_REGEX)) {
       const token = match[0];
@@ -57,8 +59,29 @@ export class TemplateRenderer {
       }
 
       const variableName = body.split(/\s+/)[0] ?? body;
-      if (!(variableName in variables)) {
-        placeholders.add(token);
+      placeholders.push({ name: variableName, token });
+    }
+
+    return placeholders;
+  }
+
+  private findTemplatePlaceholderNames(content: string): string[] {
+    return [
+      ...new Set(
+        this.findTemplatePlaceholders(content).map((placeholder) => placeholder.name)
+      ),
+    ];
+  }
+
+  private findMissingTemplateVariables(
+    content: string,
+    variables: Record<string, string>
+  ): string[] {
+    const placeholders = new Set<string>();
+
+    for (const placeholder of this.findTemplatePlaceholders(content)) {
+      if (!(placeholder.name in variables)) {
+        placeholders.add(placeholder.token);
       }
     }
 
@@ -110,6 +133,29 @@ export class TemplateRenderer {
     }
 
     return result;
+  }
+
+  async discoverPlaceholderNames(
+    templatePath: string,
+    templateRoot: string
+  ): Promise<string[]> {
+    const fullTemplatePath = this.resolveTemplatePath(templateRoot, templatePath);
+
+    let content: string;
+    try {
+      content = await readTextFile(fullTemplatePath);
+    } catch {
+      throw new TemplateNotFoundError(fullTemplatePath);
+    }
+
+    const expanded = await this.expandIncludes(
+      content,
+      fullTemplatePath,
+      [fullTemplatePath],
+      templateRoot
+    );
+
+    return this.findTemplatePlaceholderNames(expanded);
   }
 
   async render(
