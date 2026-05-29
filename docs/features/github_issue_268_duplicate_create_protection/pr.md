@@ -21,6 +21,16 @@ Before this change, `.playspec/tasks/active/<taskId>` could already exist and `Y
 - `src/storage/yaml-task-store.ts`: added a pre-write active task root existence check at the start of `YamlTaskStore.createTask()`.
 - `tests/cli.test.ts`: added CLI regression coverage for duplicate `playspec create` with replacement `--var` values and source input, plus storage-level coverage for direct duplicate `YamlTaskStore.createTask()` calls.
 
+## Changed Files
+
+- `src/core/errors.ts`
+- `src/storage/yaml-task-store.ts`
+- `tests/cli.test.ts`
+- `docs/features/github_issue_268_duplicate_create_protection/spec.md`
+- `docs/features/github_issue_268_duplicate_create_protection/plan.md`
+- `docs/features/github_issue_268_duplicate_create_protection/result.md`
+- `docs/features/github_issue_268_duplicate_create_protection/pr.md`
+
 ## Validation
 
 - `pnpm test -- tests/cli.test.ts` failed before the guard on the new duplicate storage expectation.
@@ -31,9 +41,26 @@ Before this change, `.playspec/tasks/active/<taskId>` could already exist and `Y
 
 Skipped checks: none.
 
+## Tests Run
+
+- `pnpm test -- tests/cli.test.ts` (expected failing-first run before implementation)
+- `pnpm test -- tests/cli.test.ts` (passed, 208 tests)
+- `pnpm build` (passed)
+- `pnpm test` (passed, 32 test files / 649 tests)
+- `git diff --check` (passed)
+
+## PlaySpec Task ID
+
+`github_issue_268_duplicate_create_protection`
+
 ## Risks / Follow-Ups
 
 - This is pre-write duplicate protection, not a cross-process exclusive create lock. A future atomic mkdir/lock hardening can be considered if concurrent same-ID creates are reported.
 - Scripts that intentionally reused duplicate `playspec create` as an implicit reset will now fail; that is intentional for this safety hardening.
+
+## Risk Notes
+
+- No archive behavior, task ID generation, suffixing, or reset flow changes are included.
+- Residual concurrency risk is intentionally documented as a follow-up, not solved in this scope.
 
 Reusable agent guidance: no new reusable guidance is needed.
