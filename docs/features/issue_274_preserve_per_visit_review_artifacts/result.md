@@ -34,3 +34,5 @@ No additional refactor was applied. The code diff is already limited to passing 
 Reusable agent guidance: no new repository guidance is needed. The existing AGENTS.md rules and mono-spec workflow were sufficient for this scoped completion artifact fix.
 
 PR body source written to `docs/features/issue_274_preserve_per_visit_review_artifacts/pr.md`.
+
+PR: https://github.com/cksdnr1/playspec/pull/275
