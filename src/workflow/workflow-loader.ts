@@ -102,6 +102,10 @@ export class WorkflowLoader {
   }
 
   async validateWorkflowDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {
+    for (const phaseId of new Set([...definition.phaseOrder, ...Object.keys(definition.phases)])) {
+      assertSafeWorkflowPhaseId(definition.id, phaseId);
+    }
+
     for (const phaseId of definition.phaseOrder) {
       const phase = definition.phases[phaseId];
       if (!phase) {
@@ -304,5 +308,21 @@ export class WorkflowLoader {
       templateDir: path.join(resolvedRootDir, 'templates'),
       source: 'user',
     };
+  }
+}
+
+const SAFE_WORKFLOW_PHASE_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+function assertSafeWorkflowPhaseId(workflowId: string, phaseId: string): void {
+  if (
+    phaseId.length === 0 ||
+    phaseId === '.' ||
+    phaseId === '..' ||
+    !SAFE_WORKFLOW_PHASE_ID_PATTERN.test(phaseId)
+  ) {
+    throw new Error(
+      `Workflow ${workflowId} phase id "${phaseId}" is not safe for artifact filenames. ` +
+        'Use only ASCII letters, digits, ".", "_", and "-", and do not use "." or "..".'
+    );
   }
 }
