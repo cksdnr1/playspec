@@ -35,6 +35,10 @@ export interface ResolvedVariables {
   [key: string]: string;
 }
 
+export interface VariableResolverOptions {
+  additionalDemandedVariables?: Iterable<string>;
+}
+
 const TARGET_BRANCH_FALLBACK = 'origin/master';
 
 export class VariableResolver {
@@ -42,7 +46,8 @@ export class VariableResolver {
     task: TaskRecord,
     phaseId: string,
     workflow?: WorkflowDefinition,
-    definition?: PhaseDefinition
+    definition?: PhaseDefinition,
+    options: VariableResolverOptions = {}
   ): ResolvedVariables {
     const featureSlug = resolveFeatureSlug(task);
 
@@ -93,7 +98,7 @@ export class VariableResolver {
       engineVariables,
       declarations,
       taskVariables,
-      getDemandedVariableNames(declarations, definition)
+      getDemandedVariableNames(declarations, definition, options.additionalDemandedVariables)
     );
     const nonEmptyTaskVariables = Object.fromEntries(
       Object.entries(taskVariables).filter(([, value]) => value !== '')
@@ -236,7 +241,8 @@ export function mergeVariableDeclarations(
 
 function getDemandedVariableNames(
   declarations: Record<string, VariableDeclaration>,
-  definition?: PhaseDefinition
+  definition?: PhaseDefinition,
+  additionalDemandedVariables: Iterable<string> = []
 ): Set<string> {
   const demanded = new Set<string>();
 
@@ -261,6 +267,10 @@ function getDemandedVariableNames(
     for (const name of extractPlaceholderNames(output)) {
       demanded.add(name);
     }
+  }
+
+  for (const name of additionalDemandedVariables) {
+    demanded.add(name);
   }
 
   return demanded;
