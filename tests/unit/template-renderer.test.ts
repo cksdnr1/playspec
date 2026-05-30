@@ -46,6 +46,33 @@ describe('TemplateRenderer', () => {
     expect(result).toContain('After');
   });
 
+  it('renders an in-root template with a basename that begins with ..', async () => {
+    await writeTemplate(workspace, '..allowed.md', 'Allowed template');
+    const renderer = new TemplateRenderer(workspace.dir);
+    const result = await renderer.render('..allowed.md', {}, templateRoot(workspace));
+    expect(result).toBe('Allowed template');
+  });
+
+  it('expands in-root includes with names or segments that begin with ..', async () => {
+    await writeTemplate(workspace, '..allowed.md', 'Allowed root include');
+    await writeTemplate(workspace, 'partials/..allowed.md', 'Allowed segment include');
+    await writeTemplate(
+      workspace,
+      'test/with-dot-prefix-includes.md',
+      'Before\n{{include:..allowed.md}}\n{{include:partials/..allowed.md}}\nAfter'
+    );
+
+    const renderer = new TemplateRenderer(workspace.dir);
+    const result = await renderer.render(
+      'test/with-dot-prefix-includes.md',
+      {},
+      templateRoot(workspace)
+    );
+
+    expect(result).toContain('Allowed root include');
+    expect(result).toContain('Allowed segment include');
+  });
+
   it('throws CircularIncludeError on circular includes', async () => {
     await writeTemplate(workspace, 'test/a.md', '{{include:test/b.md}}');
     await writeTemplate(workspace, 'test/b.md', '{{include:test/a.md}}');
