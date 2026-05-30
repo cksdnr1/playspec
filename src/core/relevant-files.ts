@@ -62,6 +62,8 @@ const BACKTICK_PATH_REGEX = /`([^`\n]+)`/g;
 const WORKFLOW_PATH_PLACEHOLDER_REGEX = /\{\{\s*([A-Z0-9_]+)\s*\}\}/g;
 const WORKFLOW_PATH_PLACEHOLDER_DETECT_REGEX = /\{\{\s*[A-Z0-9_]+\s*\}\}/;
 const WHOLE_WORKFLOW_PATH_PLACEHOLDER_REGEX = /^\{\{\s*([A-Z0-9_]+)\s*\}\}$/;
+const RENDERED_PROMPT_PATH_REGEX = /^[A-Za-z0-9._@/+~-]+$/;
+const FILE_EXTENSION_REGEX = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const PLACEHOLDER_VALUES = new Set([
   '(none)',
   '(not provided)',
@@ -121,7 +123,7 @@ export async function discoverRelevantFiles(
 
   for (const requiredName of input.definition.requiredVariables ?? []) {
     const value = variables[requiredName];
-    if (value && isPotentialPathValue(value)) {
+    if (value && PATH_VARIABLE_REGEX.test(requiredName) && isPotentialPathValue(value)) {
       rawCandidates.push({
         value,
         source: 'workflow',
@@ -160,7 +162,7 @@ export async function discoverRelevantFiles(
       variables,
       input.templateDir
     );
-    for (const parsed of parseBacktickedPaths(rendered)) {
+    for (const parsed of parseRenderedPromptBacktickedPaths(rendered)) {
       rawCandidates.push({
         value: parsed,
         source: 'rendered-prompt',
@@ -310,6 +312,24 @@ function parseBacktickedPaths(value: string): string[] {
     }
   }
   return paths;
+}
+
+function parseRenderedPromptBacktickedPaths(value: string): string[] {
+  const paths: string[] = [];
+  for (const match of value.matchAll(BACKTICK_PATH_REGEX)) {
+    const candidate = match[1].trim();
+    if (isRenderedPromptPathCandidate(candidate)) {
+      paths.push(candidate);
+    }
+  }
+  return paths;
+}
+
+function isRenderedPromptPathCandidate(value: string): boolean {
+  if (!isPotentialPathValue(value)) return false;
+  if (/\s|,/.test(value)) return false;
+  if (!RENDERED_PROMPT_PATH_REGEX.test(value)) return false;
+  return FILE_EXTENSION_REGEX.test(value);
 }
 
 function resolveWorkflowPathValue(

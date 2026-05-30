@@ -2098,6 +2098,51 @@ phaseHistory: []
     expect(result.stderr).toContain(planPath);
   });
 
+  it('does not report issue-scope-create prompt metadata as missing specs paths', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const title = 'Hourly issue discovery: cksdnr1/playspec (20260528T221959Z)';
+    const taskId = 'hourly_issue_discovery_cksdnr1_playspec_20260528t221959z';
+    const outputDir = `docs/issues/scope-create/${taskId}`;
+    const discoveryFile = `${outputDir}/discovery.md`;
+    const candidateIssuesFile = `${outputDir}/candidate_issues.md`;
+    const createdIssuesFile = `${outputDir}/created_issues.md`;
+    const focusArea = 'src/core, src/template, src/workflow, docs/features, tests/integration';
+
+    const create = await runCli([
+      'create',
+      title,
+      '--workflow',
+      'issue-scope-create',
+      '--var',
+      'TARGET_REPOSITORY=cksdnr1/playspec',
+      '--var',
+      'ISSUE_SCOPE=hourly issue discovery',
+      '--var',
+      `FOCUS_AREA=${focusArea}`,
+      '--var',
+      'OUT_OF_SCOPE_RULES=Do not implement code.',
+      '--var',
+      'DUPLICATE_SEARCH_QUERY=repo:cksdnr1/playspec metadata paths',
+      '--stdin',
+    ], workspace.dir, { input: 'Issue source\n' });
+
+    expect(create.exitCode).toBe(0);
+
+    const result = await runCli(['specs', '--path-only', '--show-missing'], workspace.dir, {
+      env: { PLAY_SPEC_NON_INTERACTIVE: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('Missing expected files:');
+    expect(result.stderr).toContain(discoveryFile);
+    expect(result.stderr).toContain(candidateIssuesFile);
+    expect(result.stderr).toContain(createdIssuesFile);
+    expect(result.stderr).not.toContain('cksdnr1/playspec');
+    expect(result.stderr).not.toContain(title);
+    expect(result.stderr).not.toContain(focusArea);
+  });
+
   it('rejects plain non-interactive specs with an output-mode hint', async () => {
     const taskId = await createActiveTask('Specs Non Interactive Task', 'mono-spec');
     await writeTextFile(path.join(workspace.dir, `docs/features/${taskId}/spec.md`), '# Spec\n');

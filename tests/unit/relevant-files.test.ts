@@ -136,6 +136,90 @@ describe('discoverRelevantFiles', () => {
     expect(result.candidates.filter((candidate) => candidate.path === 'docs/context.md')).toHaveLength(1);
   });
 
+  it('ignores issue-scope-create prompt metadata while keeping rendered artifact paths', async () => {
+    const outputDir = 'docs/issues/scope-create/hourly_issue_discovery_cksdnr1_playspec_20260528t221959z';
+    const discoveryFile = `${outputDir}/discovery.md`;
+    const candidatesFile = `${outputDir}/candidate_issues.md`;
+    const createdIssuesFile = `${outputDir}/created_issues.md`;
+    const issueScopeWorkflow: WorkflowDefinition = {
+      id: 'issue-scope-create',
+      mode: 'linear',
+      phaseOrder: ['scoped_issue_discovery'],
+      variables: {
+        TARGET_REPOSITORY: { required: true },
+        ISSUE_SCOPE: { required: true },
+        FOCUS_AREA: { required: true },
+        OUT_OF_SCOPE_RULES: { required: true },
+        DUPLICATE_SEARCH_QUERY: { required: true },
+        OUTPUT_DIR: { default: 'docs/issues/scope-create/{{TASK_ID}}' },
+        DISCOVERY_FILE: { default: '{{OUTPUT_DIR}}/discovery.md' },
+        CANDIDATE_ISSUES_FILE: { default: '{{OUTPUT_DIR}}/candidate_issues.md' },
+        CREATED_ISSUES_FILE: { default: '{{OUTPUT_DIR}}/created_issues.md' },
+      },
+      artifacts: {
+        discovery: { path: '{{DISCOVERY_FILE}}' },
+        candidates: { path: '{{CANDIDATE_ISSUES_FILE}}' },
+        createdIssues: { path: '{{CREATED_ISSUES_FILE}}' },
+      },
+      phases: {
+        scoped_issue_discovery: {
+          title: 'Scoped issue discovery',
+          template: 'issue-scope-create.md',
+          requiredVariables: [
+            'TARGET_REPOSITORY',
+            'ISSUE_SCOPE',
+            'FOCUS_AREA',
+            'DISCOVERY_FILE',
+            'CANDIDATE_ISSUES_FILE',
+            'CREATED_ISSUES_FILE',
+          ],
+          outputs: ['{{DISCOVERY_FILE}}', '{{CANDIDATE_ISSUES_FILE}}'],
+        },
+      },
+    };
+    await writeTemplate([
+      '**Target repository:** `{{TARGET_REPOSITORY}}`',
+      '**Task:** `{{TASK_TITLE}}`',
+      '**Focus area:** `{{FOCUS_AREA}}`',
+      'Write `{{DISCOVERY_FILE}}`, `{{CANDIDATE_ISSUES_FILE}}`, and `{{CREATED_ISSUES_FILE}}`.',
+      'Also inspect `docs/features/feature_x/spec.md`.',
+    ].join('\n'), 'issue-scope-create.md');
+
+    const result = await discoverRelevantFiles({
+      workspaceRoot: workspace.dir,
+      task: task({
+        id: 'hourly_issue_discovery_cksdnr1_playspec_20260528t221959z',
+        title: 'Hourly issue discovery: cksdnr1/playspec (20260528T221959Z)',
+        workflow: 'issue-scope-create',
+        currentPhase: 'scoped_issue_discovery',
+        paths: {
+          taskRoot: '.playspec/tasks/active/hourly_issue_discovery_cksdnr1_playspec_20260528t221959z',
+          projectDocRoot: outputDir,
+        },
+        variables: {
+          TARGET_REPOSITORY: 'cksdnr1/playspec',
+          ISSUE_SCOPE: 'hourly discovery',
+          FOCUS_AREA: 'src/core, src/template, src/workflow, docs/features, tests/integration',
+          OUT_OF_SCOPE_RULES: 'Do not implement code.',
+          DUPLICATE_SEARCH_QUERY: 'repo:cksdnr1/playspec metadata paths',
+        },
+      }),
+      workflow: issueScopeWorkflow,
+      templateDir: templateRoot(),
+      phaseId: 'scoped_issue_discovery',
+      definition: issueScopeWorkflow.phases.scoped_issue_discovery,
+    });
+
+    const paths = result.candidates.map((candidate) => candidate.path);
+    expect(paths).toContain(discoveryFile);
+    expect(paths).toContain(candidatesFile);
+    expect(paths).toContain(createdIssuesFile);
+    expect(paths).toContain('docs/features/feature_x/spec.md');
+    expect(paths).not.toContain('cksdnr1/playspec');
+    expect(paths).not.toContain('Hourly issue discovery: cksdnr1/playspec (20260528T221959Z)');
+    expect(paths).not.toContain('src/core, src/template, src/workflow, docs/features, tests/integration');
+  });
+
   it('warns and skips workflow paths with unresolved embedded placeholders', async () => {
     await writeTemplate('No rendered paths.');
     const unresolvedWorkflow = workflow();
