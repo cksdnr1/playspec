@@ -563,11 +563,17 @@ export class PlaySpecCore {
     const { phaseId } = this.phaseResolver.resolveCurrentPhase(task, workflow);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
-    return withWriteLock(taskRoot, async () => ({
-      taskId: task.id,
-      phaseId,
-      evidenceFiles: await this.writeEvidence(task, phaseId, '_manual'),
-    }));
+    return withWriteLock(taskRoot, async () => {
+      const manualSuffix = await this.resolveAvailableManualSuffix(task, (suffix) =>
+        this.buildEvidenceFiles(phaseId, suffix)
+      );
+
+      return {
+        taskId: task.id,
+        phaseId,
+        evidenceFiles: await this.writeEvidence(task, phaseId, manualSuffix),
+      };
+    });
   }
 
   async createSnapshot(taskId: string): Promise<SnapshotResult> {
@@ -579,11 +585,25 @@ export class PlaySpecCore {
     const promptSnapshot = await this.renderResolvedPhase(task, workflow, phaseId, definition);
     const taskRoot = this.getAbsoluteTaskRoot(task);
 
-    return withWriteLock(taskRoot, async () => ({
-      taskId: task.id,
-      phaseId,
-      snapshotFiles: await this.writeSnapshots(task, phaseId, promptSnapshot, 'manual'),
-    }));
+    return withWriteLock(taskRoot, async () => {
+      const manualSuffix = await this.resolveAvailableManualSuffix(task, (suffix) => [
+        this.buildManualSnapshotFile(phaseId, suffix),
+      ]);
+
+      return {
+        taskId: task.id,
+        phaseId,
+        snapshotFiles: await this.writeSnapshots(
+          task,
+          phaseId,
+          promptSnapshot,
+          'manual',
+          DEFAULT_PROMPT_CONTEXT_MODE,
+          '',
+          manualSuffix
+        ),
+      };
+    });
   }
 
   private async renderResolvedPhase(
@@ -1164,12 +1184,13 @@ Use the rollback safe point above for state rollback context. This markdown is a
     prompt: string,
     mode: 'completion' | 'manual',
     contextMode: PromptContextMode = DEFAULT_PROMPT_CONTEXT_MODE,
-    completionSuffix = ''
+    completionSuffix = '',
+    manualSuffix = '_manual'
   ): Promise<string[]> {
     const taskSnapshotFile =
       mode === 'completion'
         ? `snapshots/phase${phaseId}${completionSuffix}_before_complete.yaml`
-        : `snapshots/phase${phaseId}_manual_task.yaml`;
+        : this.buildManualSnapshotFile(phaseId, manualSuffix);
 
     await writeTextFileAtomic(
       path.join(this.getAbsoluteTaskRoot(task), taskSnapshotFile),
@@ -1206,11 +1227,7 @@ Use the rollback safe point above for state rollback context. This markdown is a
         this.gitState.getDiffStat(),
       ]);
 
-      const evidenceFiles = [
-        `evidence/phase${phaseId}${suffix}_git_status.txt`,
-        `evidence/phase${phaseId}${suffix}_git_diff_stat.txt`,
-        `evidence/phase${phaseId}${suffix}_changed_files.txt`,
-      ];
+      const evidenceFiles = this.buildEvidenceFiles(phaseId, suffix);
 
       await writeTextFileAtomic(
         path.join(this.getAbsoluteTaskRoot(task), evidenceFiles[0]),
@@ -1232,6 +1249,49 @@ Use the rollback safe point above for state rollback context. This markdown is a
       }
       throw error;
     }
+  }
+
+  private buildEvidenceFiles(phaseId: string, suffix: string): string[] {
+    return [
+      `evidence/phase${phaseId}${suffix}_git_status.txt`,
+      `evidence/phase${phaseId}${suffix}_git_diff_stat.txt`,
+      `evidence/phase${phaseId}${suffix}_changed_files.txt`,
+    ];
+  }
+
+  private buildManualSnapshotFile(phaseId: string, suffix: string): string {
+    return `snapshots/phase${phaseId}${suffix}_task.yaml`;
+  }
+
+  private async resolveAvailableManualSuffix(
+    task: TaskRecord,
+    buildCandidatePaths: (suffix: string) => string[]
+  ): Promise<string> {
+    for (let index = 1; ; index += 1) {
+      const suffix = index === 1 ? '_manual' : `_manual${index}`;
+      const candidatePaths = buildCandidatePaths(suffix);
+      const hasCollision = await this.anyTaskArtifactExists(task, candidatePaths);
+      if (!hasCollision) {
+        return suffix;
+      }
+    }
+  }
+
+  private async anyTaskArtifactExists(task: TaskRecord, taskRelativePaths: string[]): Promise<boolean> {
+    const taskRoot = this.getAbsoluteTaskRoot(task);
+    for (const taskRelativePath of taskRelativePaths) {
+      try {
+        await access(path.join(taskRoot, taskRelativePath));
+        return true;
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return false;
   }
 
   private async writeReview(

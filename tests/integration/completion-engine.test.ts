@@ -645,22 +645,43 @@ describe('Phase 2 completion engine', () => {
     expect(result.stdout).toContain('Feedback result: negative');
   });
 
-  it('creates manual evidence and snapshot artifacts without phase mutation', async () => {
+  it('creates distinct manual evidence and snapshot artifacts without phase mutation', async () => {
     const { store, taskId } = await initWorkspaceWithTask();
     const core = new PlaySpecCore(workspace.dir, store);
+    const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
 
-    const evidence = await core.collectEvidence(taskId);
-    const snapshot = await core.createSnapshot(taskId);
+    const firstEvidence = await core.collectEvidence(taskId);
+    const secondEvidence = await core.collectEvidence(taskId);
+    const firstSnapshot = await core.createSnapshot(taskId);
+    const secondSnapshot = await core.createSnapshot(taskId);
     const task = await store.getTask(taskId);
 
-    expect(evidence.evidenceFiles).toEqual([
+    expect(firstEvidence.evidenceFiles).toEqual([
       'evidence/phase1_manual_git_status.txt',
       'evidence/phase1_manual_git_diff_stat.txt',
       'evidence/phase1_manual_changed_files.txt',
     ]);
-    expect(snapshot.snapshotFiles).toEqual([
+    expect(secondEvidence.evidenceFiles).toEqual([
+      'evidence/phase1_manual2_git_status.txt',
+      'evidence/phase1_manual2_git_diff_stat.txt',
+      'evidence/phase1_manual2_changed_files.txt',
+    ]);
+    expect(firstSnapshot.snapshotFiles).toEqual([
       'snapshots/phase1_manual_task.yaml',
     ]);
+    expect(secondSnapshot.snapshotFiles).toEqual([
+      'snapshots/phase1_manual2_task.yaml',
+    ]);
+    expect(secondEvidence.evidenceFiles).not.toEqual(firstEvidence.evidenceFiles);
+    expect(secondSnapshot.snapshotFiles).not.toEqual(firstSnapshot.snapshotFiles);
+
+    for (const evidenceFile of [...firstEvidence.evidenceFiles, ...secondEvidence.evidenceFiles]) {
+      await expect(readFile(path.join(taskRoot, evidenceFile), 'utf-8')).resolves.toEqual(expect.any(String));
+    }
+    for (const snapshotFile of [...firstSnapshot.snapshotFiles, ...secondSnapshot.snapshotFiles]) {
+      await expect(readFile(path.join(taskRoot, snapshotFile), 'utf-8')).resolves.toContain('Phase Two Task');
+    }
+
     expect(task.currentPhase).toBeNull();
     expect(task.phaseHistory).toEqual([]);
   });
