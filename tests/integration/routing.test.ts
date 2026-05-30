@@ -374,7 +374,7 @@ phases:
       const taskRoot = path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId);
 
       // First visit: validation -> spec_patch
-      await core.completePhase(taskId, { result: 'needs_patch' });
+      const firstResult = await core.completePhase(taskId, { result: 'needs_patch', withReview: true });
       const firstVisitTask = await store.getTask(taskId);
       const firstValidationEntry = firstVisitTask.phaseHistory.find((e) => e.phase === 'validation');
       const firstVisitFiles = [
@@ -384,12 +384,18 @@ phases:
       const firstVisitContents = await Promise.all(
         firstVisitFiles.map(async (file) => readFile(path.join(taskRoot, file), 'utf-8'))
       );
+      expect(firstResult.reviewFile).toBe('reviews/phasevalidation_review.yaml');
+      expect(firstValidationEntry?.reviewFile).toBe('reviews/phasevalidation_review.yaml');
+      const firstReviewContents = await readFile(
+        path.join(taskRoot, firstResult.reviewFile),
+        'utf-8'
+      );
 
       // Move back to validation manually (simulating routing loop)
       await store.updateTask(taskId, { currentPhase: 'validation' });
 
       // Second visit: validation -> implementation
-      await core.completePhase(taskId, { result: 'approved' });
+      const secondResult = await core.completePhase(taskId, { result: 'approved', withReview: true });
 
       const task = await store.getTask(taskId);
       const validationEntries = task.phaseHistory.filter((e) => e.phase === 'validation');
@@ -416,6 +422,10 @@ phases:
         'evidence/phasevalidation_visit2_git_diff_stat.txt',
         'evidence/phasevalidation_visit2_changed_files.txt',
       ]);
+      expect(secondResult.reviewFile).toBe('reviews/phasevalidation_visit2_review.yaml');
+      expect(validationEntries[0]?.reviewFile).toBe('reviews/phasevalidation_review.yaml');
+      expect(validationEntries[1]?.reviewFile).toBe('reviews/phasevalidation_visit2_review.yaml');
+      expect(validationEntries[0]?.reviewFile).not.toBe(validationEntries[1]?.reviewFile);
       expect(validationEntries[0]?.snapshotFiles).not.toEqual(validationEntries[1]?.snapshotFiles);
       expect(validationEntries[0]?.evidenceFiles).not.toEqual(validationEntries[1]?.evidenceFiles);
       expect(task.rollback?.lastSafePoint).toMatchObject({
@@ -431,9 +441,46 @@ phases:
       await Promise.all(
         allVisitFiles.map(async (file) => expect(access(path.join(taskRoot, file))).resolves.not.toThrow())
       );
+      await expect(access(path.join(taskRoot, 'reviews', 'phasevalidation_review.yaml'))).resolves.not.toThrow();
+      await expect(access(path.join(taskRoot, 'reviews', 'phasevalidation_visit2_review.yaml'))).resolves.not.toThrow();
+      await expect(
+        readFile(path.join(taskRoot, 'reviews', 'phasevalidation_review.yaml'), 'utf-8')
+      ).resolves.toBe(firstReviewContents);
       await expect(
         Promise.all(firstVisitFiles.map(async (file) => readFile(path.join(taskRoot, file), 'utf-8')))
       ).resolves.toEqual(firstVisitContents);
+
+      const ledger = parseYaml(await readFile(
+        path.join(taskRoot, 'completions', 'index.yaml'),
+        'utf-8'
+      )) as { events: Array<{ id: string; markdownFile: string; reviewFile?: string }> };
+      expect(ledger.events).toMatchObject([
+        {
+          id: '0001',
+          markdownFile: 'completions/0001-validation-needs_revision.md',
+          reviewFile: 'reviews/phasevalidation_review.yaml',
+        },
+        {
+          id: '0002',
+          markdownFile: 'completions/0002-validation-approved.md',
+          reviewFile: 'reviews/phasevalidation_visit2_review.yaml',
+        },
+      ]);
+
+      const firstCompletionMarkdown = await readFile(
+        path.join(taskRoot, 'completions', '0001-validation-needs_revision.md'),
+        'utf-8'
+      );
+      const secondCompletionMarkdown = await readFile(
+        path.join(taskRoot, 'completions', '0002-validation-approved.md'),
+        'utf-8'
+      );
+      expect(firstCompletionMarkdown).toContain(
+        `.playspec/tasks/active/${taskId}/reviews/phasevalidation_review.yaml`
+      );
+      expect(secondCompletionMarkdown).toContain(
+        `.playspec/tasks/active/${taskId}/reviews/phasevalidation_visit2_review.yaml`
+      );
     });
 
     it('throws LoopGuardError when maxVisits is exceeded', async () => {
