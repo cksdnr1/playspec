@@ -4,6 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
 import {
   ArchivedTaskAlreadyExistsError,
+  TaskAlreadyExistsError,
   TaskNotCompletedError,
   TaskNotFoundError,
 } from '#core/errors.js';
@@ -156,6 +157,11 @@ export class YamlTaskStore implements TaskStore {
   }
 
   async createTask(input: CreateTaskInput): Promise<TaskRecord> {
+    const absoluteTaskRoot = getActiveTaskRoot(this.workspaceRoot, input.id);
+    if (await pathExists(absoluteTaskRoot)) {
+      throw new TaskAlreadyExistsError(input.id);
+    }
+
     const now = new Date().toISOString();
     const taskRoot = path.join('.playspec', 'tasks', 'active', input.id);
     const projectDocRoot = path.join('docs', 'features', input.id);
@@ -191,7 +197,6 @@ export class YamlTaskStore implements TaskStore {
     };
 
     // Create task directory structure
-    const absoluteTaskRoot = getActiveTaskRoot(this.workspaceRoot, input.id);
     await mkdir(path.join(absoluteTaskRoot, 'outputs'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'reviews'), { recursive: true });
     await mkdir(path.join(absoluteTaskRoot, 'prompts'), { recursive: true });
