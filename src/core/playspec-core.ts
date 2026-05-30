@@ -303,7 +303,7 @@ export class PlaySpecCore {
       );
       const evidenceFiles = await this.writeEvidence(task, phaseId, completionArtifactSuffix);
       const reviewFile = options.withReview
-        ? await this.writeReview(task, phaseId, validationTemplate)
+        ? await this.writeReview(task, phaseId, validationTemplate, completionArtifactSuffix)
         : undefined;
       const feedback = await this.captureValidationFeedback({
         task,
@@ -1237,9 +1237,10 @@ Use the rollback safe point above for state rollback context. This markdown is a
   private async writeReview(
     task: TaskRecord,
     phaseId: string,
-    validationTemplate?: string
+    validationTemplate?: string,
+    completionSuffix = ''
   ): Promise<string> {
-    const reviewFile = `reviews/phase${phaseId}_review.yaml`;
+    const reviewFile = `reviews/phase${phaseId}${completionSuffix}_review.yaml`;
     const reviewRecord = {
       phase: phaseId,
       createdAt: new Date().toISOString(),

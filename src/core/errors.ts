@@ -25,6 +25,16 @@ export class TaskNotFoundError extends PlaySpecError {
   }
 }
 
+export class TaskAlreadyExistsError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Task already exists: ${taskId}`,
+      'Choose a different task title or inspect existing tasks with `playspec list-tasks`.'
+    );
+    this.name = 'TaskAlreadyExistsError';
+  }
+}
+
 export class TaskIdResolutionError extends PlaySpecError {
   constructor(input: string) {
     super(
@@ -32,6 +42,16 @@ export class TaskIdResolutionError extends PlaySpecError {
       'Check the task ID with `playspec list-tasks` and try again.'
     );
     this.name = 'TaskIdResolutionError';
+  }
+}
+
+export class UnsafeTaskIdError extends PlaySpecError {
+  constructor(taskId: string) {
+    super(
+      `Unsafe task ID: ${taskId}`,
+      'Use a single PlaySpec task ID segment. Run `playspec list-tasks`, then select an active task with `playspec use <TASK_ID>`.'
+    );
+    this.name = 'UnsafeTaskIdError';
   }
 }
 

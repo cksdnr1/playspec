@@ -3,6 +3,7 @@ import type { TaskRecord } from './types.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { readTextFile } from '#utils/fs.js';
 import { getHeadPath } from '#utils/paths.js';
+import { assertSafeTaskId } from '#utils/task-id.js';
 
 export class ActiveTaskResolver {
   constructor(
@@ -18,6 +19,7 @@ export class ActiveTaskResolver {
    */
   async resolveTask(taskId?: string): Promise<TaskRecord> {
     if (taskId) {
+      assertSafeTaskId(taskId);
       return this.taskStore.getTask(taskId);
     }
 
@@ -34,6 +36,7 @@ export class ActiveTaskResolver {
       throw new NoActiveTaskError();
     }
 
+    assertSafeTaskId(resolvedId);
     return this.taskStore.getTask(resolvedId);
   }
 }

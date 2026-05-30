@@ -254,6 +254,60 @@ phases:
     );
   });
 
+  it('rejects workflow phase IDs with path separators before artifact writers can use them', async () => {
+    const workflowRoot = path.join(workspace.dir, 'unsafe-workflow');
+    await mkdir(path.join(workflowRoot, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(workflowRoot, 'workflow.yaml'),
+      `id: unsafe-workflow
+description: Unsafe phase workflow
+mode: linear
+phaseOrder:
+  - bad/phase
+phases:
+  bad/phase:
+    title: Bad Phase
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(workflowRoot, 'templates', 'start.md'), '# Start\n', 'utf8');
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow(
+      'phase id "bad/phase" is not safe for artifact filenames'
+    );
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow(
+      'Use only ASCII letters, digits, ".", "_", and "-"'
+    );
+  });
+
+  it('rejects unused path traversal phase map keys during workflow validation', async () => {
+    const workflowRoot = path.join(workspace.dir, 'unsafe-unused-workflow');
+    await mkdir(path.join(workflowRoot, 'templates'), { recursive: true });
+    await writeFile(
+      path.join(workflowRoot, 'workflow.yaml'),
+      `id: unsafe-unused-workflow
+description: Unsafe unused phase workflow
+mode: linear
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+  "..":
+    title: Traversal Phase
+    template: start.md
+`,
+      'utf8'
+    );
+    await writeFile(path.join(workflowRoot, 'templates', 'start.md'), '# Start\n', 'utf8');
+
+    await expect(new WorkflowLoader(workspace.dir).resolveFromDirectory(workflowRoot)).rejects.toThrow(
+      'phase id ".." is not safe for artifact filenames'
+    );
+  });
+
   it('resolves workflow definitions from an explicit directory', async () => {
     const workflowRoot = path.join(workspace.dir, 'custom-workflow');
     await writeWorkflowInDirectory(workflowRoot, 'custom-workflow', 'Custom workflow');
