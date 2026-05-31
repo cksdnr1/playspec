@@ -25,7 +25,7 @@
     "#pack/*.js": "./dist/pack/*.js"
   },
   "scripts": {
-    "build": "tsc && tsc-alias && mkdir -p dist/preset/assets && cp -R src/preset/assets/. dist/preset/assets",
+    "build": "tsc && tsc-alias && rm -rf dist/preset/assets && mkdir -p dist/preset/assets && cp -R src/preset/assets/. dist/preset/assets",
     "prepack": "pnpm build",
     "test:package-artifact": "vitest run tests/integration/package-artifact.test.ts",
     "test": "vitest run",

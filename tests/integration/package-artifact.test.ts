@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { access, copyFile, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
@@ -10,6 +10,38 @@ const REPO_ROOT = path.resolve(TESTS_DIR, '../..');
 
 async function expectFileExists(filePath: string): Promise<void> {
   await expect(access(filePath)).resolves.not.toThrow();
+}
+
+async function expectFileMissing(filePath: string): Promise<void> {
+  await expect(access(filePath)).rejects.toThrow();
+}
+
+async function seedStalePresetAssets(): Promise<string[]> {
+  const staleWorkflowFile = path.join(
+    REPO_ROOT,
+    'dist/preset/assets/workflows/stale-workflow/workflow.yaml'
+  );
+  const staleTemplateFile = path.join(
+    REPO_ROOT,
+    'dist/preset/assets/workflows/mono-spec/templates/stale_template.md'
+  );
+
+  await mkdir(path.dirname(staleWorkflowFile), { recursive: true });
+  await mkdir(path.dirname(staleTemplateFile), { recursive: true });
+  await writeFile(staleWorkflowFile, 'id: stale-workflow\nname: Stale Workflow\nphases: []\n');
+  await writeFile(staleTemplateFile, '# stale template\n');
+
+  return [staleWorkflowFile, staleTemplateFile];
+}
+
+async function cleanupSeededStalePresetAssets(): Promise<void> {
+  await rm(path.join(REPO_ROOT, 'dist/preset/assets/workflows/stale-workflow'), {
+    recursive: true,
+    force: true,
+  });
+  await rm(path.join(REPO_ROOT, 'dist/preset/assets/workflows/mono-spec/templates/stale_template.md'), {
+    force: true,
+  });
 }
 
 async function packRepository(packDir: string): Promise<string> {
@@ -31,9 +63,14 @@ describe('package artifact', () => {
   it('packs installable compiled bins and preset workflow assets', async () => {
     const packWorkspace = await createTempWorkspace();
     const consumerWorkspace = await createTempWorkspace();
+    const staleRepoAssetPaths = await seedStalePresetAssets();
 
     try {
       const tarball = await packRepository(packWorkspace.dir);
+      for (const stalePath of staleRepoAssetPaths) {
+        await expectFileMissing(stalePath);
+      }
+
       const packageJson = JSON.parse(
         await readFile(path.join(REPO_ROOT, 'package.json'), 'utf8')
       ) as { dependencies?: Record<string, string> };
@@ -82,6 +119,15 @@ describe('package artifact', () => {
         await expectFileExists(path.join(installedPackageRoot, expectedFile));
       }
 
+      const unexpectedInstalledFiles = [
+        'dist/preset/assets/workflows/stale-workflow/workflow.yaml',
+        'dist/preset/assets/workflows/mono-spec/templates/stale_template.md',
+      ];
+
+      for (const unexpectedFile of unexpectedInstalledFiles) {
+        await expectFileMissing(path.join(installedPackageRoot, unexpectedFile));
+      }
+
       const binPath = path.join(consumerWorkspace.dir, 'node_modules', '.bin', 'playspec');
       const mcpBinPath = path.join(installedPackageRoot, 'dist/mcp/index.js');
       const userWorkflowRoot = path.join(consumerWorkspace.dir, 'user-workflows');
@@ -110,6 +156,7 @@ describe('package artifact', () => {
       expect(mcpResult.stderr).not.toContain('ERR_PACKAGE_IMPORT_NOT_DEFINED');
       expect(mcpResult.stderr).not.toContain('Package import specifier');
     } finally {
+      await cleanupSeededStalePresetAssets();
       await Promise.all([packWorkspace.cleanup(), consumerWorkspace.cleanup()]);
     }
   }, 60_000);
