@@ -104,6 +104,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     const taskId = await resolveMcpTaskId(args, scoped.sessionStore, scoped.taskIdResolver);
     return { ...scoped, taskId };
   };
+  const getScopedEvolutionContext = (args: { workspaceRoot?: string }) => {
+    const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+    return {
+      workspaceRoot: effectiveWorkspaceRoot,
+      proposalStore: new EvolutionProposalStore(effectiveWorkspaceRoot),
+      applyRunner: new EvolutionApplyRunner(effectiveWorkspaceRoot),
+    };
+  };
 
   server.tool(
     'playspec_list_tasks',
@@ -732,9 +740,11 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_list_evolution_proposals',
     'List stored evolution proposals',
-    async () => {
+    { workspaceRoot: z.string().optional() },
+    async (args) => {
       try {
-        return ok({ proposals: await proposalStore.listProposals() });
+        const scoped = getScopedEvolutionContext(args);
+        return ok({ proposals: await scoped.proposalStore.listProposals() });
       } catch (e) {
         return err(e);
       }
@@ -744,11 +754,15 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_get_evolution_proposal',
     'Get a stored evolution proposal and validation report when present',
-    { proposalId: z.string() },
+    { proposalId: z.string(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        const proposal = await proposalStore.loadProposal(args.proposalId);
-        return ok({ proposal, validationReport: await loadValidationReportIfPresent(proposalStore, args.proposalId) });
+        const scoped = getScopedEvolutionContext(args);
+        const proposal = await scoped.proposalStore.loadProposal(args.proposalId);
+        return ok({
+          proposal,
+          validationReport: await loadValidationReportIfPresent(scoped.proposalStore, args.proposalId),
+        });
       } catch (e) {
         return err(e);
       }
@@ -758,18 +772,19 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_store_evolution_proposal',
     'Validate and store an evolution proposal object',
-    { proposal: z.unknown() },
+    { proposal: z.unknown(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        const validation = proposalStore.validateProposal(args.proposal);
+        const scoped = getScopedEvolutionContext(args);
+        const validation = scoped.proposalStore.validateProposal(args.proposal);
         if (!validation.valid || !validation.proposal) {
           throw new PlaySpecError(
             `Evolution proposal is invalid: ${validation.report.errors.join('; ')}`,
             'Fix the proposal object and call the MCP tool again.'
           );
         }
-        const proposalPath = await proposalStore.saveProposal(validation.proposal);
-        const validationPath = await proposalStore.saveValidationReport(validation.report);
+        const proposalPath = await scoped.proposalStore.saveProposal(validation.proposal);
+        const validationPath = await scoped.proposalStore.saveValidationReport(validation.report);
         return ok({ proposal: validation.proposal, proposalPath, validationPath, validationReport: validation.report });
       } catch (e) {
         return err(e);
@@ -780,10 +795,11 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_update_evolution_proposal',
     'Update an existing pending/refining evolution proposal object',
-    { proposalId: z.string(), proposal: z.unknown() },
+    { proposalId: z.string(), proposal: z.unknown(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        return ok(await proposalStore.updateProposal(args.proposalId, args.proposal));
+        const scoped = getScopedEvolutionContext(args);
+        return ok(await scoped.proposalStore.updateProposal(args.proposalId, args.proposal));
       } catch (e) {
         return err(e);
       }
@@ -793,10 +809,11 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_append_evolution_evidence',
     'Append evidence to an existing pending/refining evolution proposal',
-    { proposalId: z.string(), path: z.string(), note: z.string() },
+    { proposalId: z.string(), path: z.string(), note: z.string(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        return ok(await proposalStore.appendEvidence(args.proposalId, { path: args.path, note: args.note }));
+        const scoped = getScopedEvolutionContext(args);
+        return ok(await scoped.proposalStore.appendEvidence(args.proposalId, { path: args.path, note: args.note }));
       } catch (e) {
         return err(e);
       }
@@ -822,10 +839,11 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_skip_evolution_proposal',
     'Mark an evolution proposal skipped',
-    { proposalId: z.string(), reason: z.string().optional() },
+    { proposalId: z.string(), reason: z.string().optional(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        const proposal = await proposalStore.skipProposal(args.proposalId, {
+        const scoped = getScopedEvolutionContext(args);
+        const proposal = await scoped.proposalStore.skipProposal(args.proposalId, {
           skippedAt: new Date().toISOString(),
           ...(args.reason ? { skipReason: args.reason } : {}),
         });
@@ -839,10 +857,11 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_diff_evolution_proposal',
     'Preview executable evolution proposal changes',
-    { proposalId: z.string() },
+    { proposalId: z.string(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
-        return ok(await new EvolutionApplyRunner(workspaceRoot).diff(args.proposalId));
+        const scoped = getScopedEvolutionContext(args);
+        return ok(await scoped.applyRunner.diff(args.proposalId));
       } catch (e) {
         return err(e);
       }
@@ -852,7 +871,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   server.tool(
     'playspec_apply_evolution_proposal',
     'Apply an approved executable evolution proposal. Requires approved true.',
-    { proposalId: z.string(), approved: z.boolean() },
+    { proposalId: z.string(), approved: z.boolean(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
         if (args.approved !== true) {
@@ -861,7 +880,8 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
             'Call playspec_diff_evolution_proposal first, inspect the diff, then call with approved: true.'
           );
         }
-        return ok(await new EvolutionApplyRunner(workspaceRoot).apply(args.proposalId, {
+        const scoped = getScopedEvolutionContext(args);
+        return ok(await scoped.applyRunner.apply(args.proposalId, {
           approved: true,
           approvalSource: 'mcp approved:true',
         }));

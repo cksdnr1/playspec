@@ -29,7 +29,7 @@ export class TaskAlreadyExistsError extends PlaySpecError {
   constructor(taskId: string) {
     super(
       `Task already exists: ${taskId}`,
-      'Choose a different task title or inspect existing tasks with `playspec list-tasks`.'
+      'Choose a different task title or inspect existing tasks with playspec_list_tasks or `playspec list-tasks`.'
     );
     this.name = 'TaskAlreadyExistsError';
   }
@@ -340,7 +340,7 @@ export class MissingResultError extends PlaySpecError {
   constructor(phaseId: string, allowedValues: string[]) {
     super(
       `Phase "${phaseId}" requires a result. Allowed values: ${allowedValues.join(', ')}`,
-      'Use --result <value> in non-interactive mode or run interactively to select from the menu.'
+      'Call playspec_complete_phase with result set to one of the allowed values, or use --result <value> from the CLI.'
     );
     this.name = 'MissingResultError';
   }
@@ -350,7 +350,7 @@ export class InvalidResultError extends PlaySpecError {
   constructor(phaseId: string, given: string, allowedValues: string[]) {
     super(
       `Invalid result "${given}" for phase "${phaseId}". Allowed values: ${allowedValues.join(', ')}`,
-      'Pass one of the allowed result values with --result <value>.'
+      'Call playspec_complete_phase with one of the allowed result values, or pass one with --result <value> from the CLI.'
     );
     this.name = 'InvalidResultError';
   }
@@ -400,7 +400,7 @@ export class UnexpectedResultError extends PlaySpecError {
   constructor(phaseId: string) {
     super(
       `Phase "${phaseId}" does not declare allowed results but a result was provided.`,
-      'Remove --result from the command or add a results declaration to the workflow phase.'
+      'Call playspec_complete_phase without result for this phase, or add a results declaration to the workflow phase.'
     );
     this.name = 'UnexpectedResultError';
   }
