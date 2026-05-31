@@ -47,4 +47,4 @@
 
 - PR body drafted in `docs/features/issue_299_block_unresolved_safe_point_git_head/pr.md`.
 - Reusable agent guidance update: not needed; this is a local rollback safety guard without a new cross-issue convention.
-- PR link: pending branch push and draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/300
