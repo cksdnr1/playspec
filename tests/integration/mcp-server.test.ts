@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chmod, readFile, readdir } from 'node:fs/promises';
 import { execa } from 'execa';
+import { parse as parseYaml } from 'yaml';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
 import { PresetManager } from '#preset/preset-manager.js';
@@ -12,7 +13,7 @@ import { PlaySpecCore } from '#core/playspec-core.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { writeTextFile } from '#utils/fs.js';
-import { getHeadPath } from '#utils/paths.js';
+import { getEvolutionHumanEditsRoot, getHeadPath } from '#utils/paths.js';
 import { McpSessionStore } from '#mcp/session-store.js';
 import { resolveMcpTaskId } from '#mcp/context.js';
 import {
@@ -25,7 +26,7 @@ import {
 import { buildMcpServer } from '#mcp/server.js';
 import { EvolutionFeedbackThreadStore } from '#evolution/feedback-thread-store.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
-import type { EvolutionProposal, FeedbackThread } from '#evolution/types.js';
+import type { EvolutionProposal, FeedbackThread, HumanEditObservation } from '#evolution/types.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MCP_PATH = path.resolve(TESTS_DIR, '../../src/mcp/index.ts');
@@ -315,6 +316,17 @@ function getRegisteredToolHandler(toolName: string, serverWorkspaceRoot = worksp
 
 function parseToolJson(result: { content: { text: string }[] }) {
   return JSON.parse(result.content[0].text) as Record<string, unknown>;
+}
+
+async function listHumanEditFiles(): Promise<string[]> {
+  try {
+    return await readdir(getEvolutionHumanEditsRoot(workspace.dir));
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
 }
 
 function makeTaskIdResolver() {
@@ -1686,6 +1698,106 @@ phases:
     expect(result.content[0].text).toContain('mcp_ambiguous_alpha');
     expect(result.content[0].text).toContain('mcp_ambiguous_beta');
     expect(result.content[0].text).toContain('Use a longer task ID prefix.');
+  });
+
+  it('records MCP human edit observations with canonical source task IDs from unique prefixes', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Human Edit Observation Target');
+    const handler = getRegisteredToolHandler('playspec_record_human_edit_observation');
+
+    const result = await handler({
+      id: 'mcp_human_edit_prefix_canonical',
+      target: 'src/mcp/server.ts',
+      summary: 'Canonicalize human edit task IDs.',
+      rationale: 'Prefix-scoped observations should match evolution context.',
+      taskId: 'mcp_human_edit',
+    });
+    const body = parseToolJson(result);
+    const persisted = parseYaml(
+      await readFile(String(body['observationPath']), 'utf8')
+    ) as HumanEditObservation;
+
+    expect(result.isError, result.content[0].text).toBeUndefined();
+    expect((body['observation'] as HumanEditObservation).sourceTaskId).toBe(taskId);
+    expect(persisted.sourceTaskId).toBe(taskId);
+  });
+
+  it('rejects ambiguous MCP human edit task prefixes without writing observations', async () => {
+    const { store } = await initWorkspaceWithTask('MCP Human Edit Ambiguous Alpha');
+    await store.createTask({
+      id: 'mcp_human_edit_ambiguous_beta',
+      title: 'MCP Human Edit Ambiguous Beta',
+      workflow: 'multi-spec',
+    });
+    const handler = getRegisteredToolHandler('playspec_record_human_edit_observation');
+
+    const result = await handler({
+      id: 'mcp_human_edit_ambiguous_rejected',
+      target: 'src/mcp/server.ts',
+      summary: 'Rejected ambiguous human edit observation.',
+      rationale: 'Ambiguous task prefixes must not persist stale source IDs.',
+      taskId: 'mcp_human_edit_ambiguous',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Ambiguous task ID prefix "mcp_human_edit_ambiguous"');
+    expect(result.content[0].text).toContain('Use a longer task ID prefix.');
+    expect(await listHumanEditFiles()).toEqual([]);
+  });
+
+  it('rejects missing MCP human edit task IDs without writing observations', async () => {
+    await initWorkspaceWithTask('MCP Human Edit Missing Target');
+    const handler = getRegisteredToolHandler('playspec_record_human_edit_observation');
+
+    const result = await handler({
+      id: 'mcp_human_edit_missing_rejected',
+      target: 'src/mcp/server.ts',
+      summary: 'Rejected missing human edit observation.',
+      rationale: 'Missing task IDs must not persist stale source IDs.',
+      taskId: 'does_not_exist',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('No task found matching: does_not_exist');
+    expect(await listHumanEditFiles()).toEqual([]);
+  });
+
+  it('records MCP human edit observations without taskId for unscoped follow-up review', async () => {
+    await initWorkspaceWithTask('MCP Human Edit Unscoped Target');
+    const handler = getRegisteredToolHandler('playspec_record_human_edit_observation');
+
+    const result = await handler({
+      id: 'mcp_human_edit_unscoped',
+      target: 'src/mcp/server.ts',
+      summary: 'Unscoped human edit observation.',
+      rationale: 'Proposal-only or unscoped observations should still write.',
+    });
+    const body = parseToolJson(result);
+
+    expect(result.isError, result.content[0].text).toBeUndefined();
+    expect((body['observation'] as HumanEditObservation).sourceTaskId).toBeUndefined();
+    expect(await listHumanEditFiles()).toEqual(['mcp_human_edit_unscoped.yaml']);
+  });
+
+  it('includes prefix-recorded MCP human edit observations in canonical task evolution context', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Human Edit Evolution Context');
+    const recordHandler = getRegisteredToolHandler('playspec_record_human_edit_observation');
+    const renderHandler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const recorded = await recordHandler({
+      id: 'mcp_human_edit_context_visible',
+      target: 'src/mcp/server.ts',
+      summary: 'Visible human edit observation.',
+      rationale: 'Evolution context should consider canonicalized source task IDs.',
+      taskId: 'mcp_human_edit_evolution',
+    });
+    const rendered = await renderHandler({ taskId, withEvolutionContext: true });
+    const body = parseToolJson(rendered);
+
+    expect(recorded.isError, recorded.content[0].text).toBeUndefined();
+    expect(rendered.isError, rendered.content[0].text).toBeUndefined();
+    expect(String(body['prompt'])).toContain('## Evolution Context');
+    expect(String(body['prompt'])).toContain('Human edit observations considered: 1');
+    expect(String(body['prompt'])).toContain('mcp_human_edit_context_visible');
   });
 
   it('binds MCP sessions to canonical task IDs when given a unique prefix', async () => {

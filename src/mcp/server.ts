@@ -903,9 +903,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       proposalId: z.string().optional(),
       before: z.string().optional(),
       after: z.string().optional(),
+      workspaceRoot: z.string().optional(),
     },
     async (args) => {
       try {
+        const scoped = getScopedTaskContext(args);
+        const sourceTaskId = args.taskId
+          ? await resolveMcpTaskId({ taskId: args.taskId }, scoped.sessionStore, scoped.taskIdResolver)
+          : undefined;
         const now = new Date().toISOString();
         const observation: HumanEditObservation = {
           id: args.id ?? generateHumanEditObservationId(args.target),
@@ -915,12 +920,12 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
           targetPath: args.target,
           summary: args.summary,
           rationale: args.rationale,
-          ...(args.taskId ? { sourceTaskId: args.taskId } : {}),
+          ...(sourceTaskId ? { sourceTaskId } : {}),
           ...(args.proposalId ? { proposalId: args.proposalId } : {}),
           ...(args.before ? { beforeRef: args.before } : {}),
           ...(args.after ? { afterRef: args.after } : {}),
         };
-        const observationPath = await humanEditStore.saveObservation(observation);
+        const observationPath = await new EvolutionHumanEditStore(scoped.workspaceRoot).saveObservation(observation);
         return ok({ observation, observationPath });
       } catch (e) {
         return err(e);
