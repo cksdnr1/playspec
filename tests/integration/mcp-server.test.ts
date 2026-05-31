@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile, readdir } from 'node:fs/promises';
+import { chmod, readFile, readdir } from 'node:fs/promises';
 import { execa } from 'execa';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
@@ -858,6 +858,310 @@ phases:
       expect(evidence.isError).toBeUndefined();
       expect(evidenceFiles.length).toBeGreaterThan(0);
       expect(evidenceDirEntries).toEqual(expect.arrayContaining(evidenceFiles.map((file) => path.basename(file))));
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
+  it('runs an end-to-end PlaySpec lifecycle through MCP tools only', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const manager = new PresetManager();
+      await manager.initWorkspace(workspace.dir, 'default');
+      await writeTextFile(
+        path.join(workspace.dir, '.playspec', 'workflows', 'mcp-lifecycle-flow', 'workflow.yaml'),
+        `id: mcp-lifecycle-flow
+mode: linear
+variables:
+  OUTPUT_DIR:
+    default: docs/features/{{FEATURE_SLUG}}
+  SPEC_FILE:
+    default: "{{OUTPUT_DIR}}/spec.md"
+  RESULT_FILE:
+    default: "{{OUTPUT_DIR}}/result.md"
+artifacts:
+  spec:
+    path: "{{SPEC_FILE}}"
+    kind: spec
+    description: Lifecycle spec.
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
+    description: Lifecycle result.
+phaseOrder:
+  - problem
+  - gate
+  - final
+phases:
+  problem:
+    title: Problem
+    template: problem.md
+  gate:
+    title: Gate
+    template: gate.md
+    gate:
+      results:
+        - approved
+        - needs_revision
+      nextByResult:
+        approved: final
+        needs_revision: problem
+  final:
+    title: Final
+    template: final.md
+`
+      );
+      await writeTextFile(
+        path.join(workspace.dir, '.playspec', 'workflows', 'mcp-lifecycle-flow', 'templates', 'problem.md'),
+        '# Problem {{TASK_TITLE}}\n\nSource: {{SOURCE_PROBLEM_FILE}}\n'
+      );
+      await writeTextFile(
+        path.join(workspace.dir, '.playspec', 'workflows', 'mcp-lifecycle-flow', 'templates', 'gate.md'),
+        '# Gate {{TASK_TITLE}}\n\nSpec: {{SPEC_FILE}}\n'
+      );
+      await writeTextFile(
+        path.join(workspace.dir, '.playspec', 'workflows', 'mcp-lifecycle-flow', 'templates', 'final.md'),
+        '# Final {{TASK_TITLE}}\n\nResult: {{RESULT_FILE}}\n'
+      );
+      await writeTextFile(path.join(workspace.dir, 'context', 'lifecycle.md'), '# Lifecycle Context\n');
+      await writeTextFile(
+        path.join(workspace.dir, 'docs', 'features', 'mcp_lifecycle_task', 'spec.md'),
+        '# Lifecycle Spec\n'
+      );
+      await writeTextFile(
+        path.join(workspace.dir, 'docs', 'features', 'mcp_lifecycle_task', 'result.md'),
+        '# Lifecycle Result\n'
+      );
+      await writeTextFile(path.join(workspace.dir, 'evidence', 'lifecycle.md'), '# Lifecycle Evidence\n');
+      const fakeBinDir = path.join(workspace.dir, 'fake-bin');
+      const fakeGitPath = path.join(fakeBinDir, 'git');
+      await writeTextFile(
+        fakeGitPath,
+        `#!/bin/sh
+if [ "$1" = "rev-parse" ]; then
+  exit 1
+fi
+if [ "$1" = "status" ] && [ "$2" = "--short" ]; then
+  printf '## main\\n'
+  exit 0
+fi
+if [ "$1" = "status" ]; then
+  exit 0
+fi
+if [ "$1" = "diff" ]; then
+  exit 0
+fi
+exit 1
+`
+      );
+      await chmod(fakeGitPath, 0o755);
+
+      const createHandler = getRegisteredToolHandler('playspec_create_task', serverWorkspace.dir);
+      const renderHandler = getRegisteredToolHandler('playspec_render_next_prompt', serverWorkspace.dir);
+      const addContextHandler = getRegisteredToolHandler('playspec_add_context', serverWorkspace.dir);
+      const completeHandler = getRegisteredToolHandler('playspec_complete_phase', serverWorkspace.dir);
+      const getTaskHandler = getRegisteredToolHandler('playspec_get_task', serverWorkspace.dir);
+      const listTasksHandler = getRegisteredToolHandler('playspec_list_tasks', serverWorkspace.dir);
+      const generateProposalHandler = getRegisteredToolHandler(
+        'playspec_generate_evolution_proposal',
+        serverWorkspace.dir
+      );
+      const getProposalHandler = getRegisteredToolHandler('playspec_get_evolution_proposal', serverWorkspace.dir);
+      const listProposalsHandler = getRegisteredToolHandler('playspec_list_evolution_proposals', serverWorkspace.dir);
+      const originalPath = process.env.PATH;
+      process.env.PATH = fakeBinDir;
+
+      try {
+        const created = await createHandler({
+          workspaceRoot: workspace.dir,
+          title: 'MCP Lifecycle Task',
+          workflow: 'mcp-lifecycle-flow',
+          taskId: 'mcp_lifecycle_task',
+          sourceProblemText: 'Drive the whole PlaySpec lifecycle through MCP.',
+          bindSessionId: 'mcp.lifecycle',
+          adapter: 'codex',
+        });
+        const createdBody = parseToolJson(created);
+        const taskId = String(createdBody['taskId']);
+        const sourceProblemFile = String(createdBody['sourceProblemFile']);
+        const firstRender = await renderHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          contextMode: 'strict',
+        });
+        const addedContext = await addContextHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          path: 'context/lifecycle.md',
+        });
+        const problemCompleted = await completeHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+        });
+        const gateRender = await renderHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          contextMode: 'strict',
+        });
+        const missingGateResult = await completeHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+        });
+        const gateCompleted = await completeHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          result: 'approved',
+        });
+        const finalRender = await renderHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+        });
+        const generatedProposal = await generateProposalHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          fromEvidence: 'evidence/lifecycle.md',
+          target: '.playspec/workflows/mcp-lifecycle-flow/templates/gate.md',
+          summary: 'Lifecycle MCP proposal',
+          rationale: 'Exercise MCP proposal generation in the lifecycle test.',
+          risk: 'low',
+          generatedId: 'mcp_lifecycle_proposal',
+        });
+        const finalCompleted = await completeHandler({
+          workspaceRoot: workspace.dir,
+          sessionId: 'mcp.lifecycle',
+          withEvolutionContext: true,
+        });
+        const fetched = await getTaskHandler({ workspaceRoot: workspace.dir, taskId });
+        const listed = await listTasksHandler({ workspaceRoot: workspace.dir });
+        const duplicate = await createHandler({
+          workspaceRoot: workspace.dir,
+          title: 'MCP Lifecycle Task',
+          workflow: 'mcp-lifecycle-flow',
+          taskId,
+          sourceProblemText: 'Duplicate rerun should not create a second task.',
+        });
+        const listedAfterDuplicate = await listTasksHandler({ workspaceRoot: workspace.dir });
+        const proposal = await getProposalHandler({
+          workspaceRoot: workspace.dir,
+          proposalId: 'mcp_lifecycle_proposal',
+        });
+        const proposals = await listProposalsHandler({ workspaceRoot: workspace.dir });
+        const serverRootSession = await new McpSessionStore(serverWorkspace.dir).loadSession('mcp.lifecycle');
+        const projectRootSession = await new McpSessionStore(workspace.dir).loadSession('mcp.lifecycle');
+        const projectHead = await readFile(getHeadPath(workspace.dir), 'utf8');
+        const sourceContent = await readFile(path.join(workspace.dir, sourceProblemFile), 'utf8');
+
+        expect(created.isError, created.content[0].text).toBeUndefined();
+      expect(taskId).toBe('mcp_lifecycle_task');
+      expect(createdBody).toMatchObject({
+        workflow: 'mcp-lifecycle-flow',
+        status: 'active',
+        currentPhase: null,
+        nextStep: 'Call playspec_render_next_prompt with taskId or bound sessionId.',
+      });
+      expect(createdBody['boundSession']).toMatchObject({
+        sessionId: 'mcp.lifecycle',
+        currentTaskId: taskId,
+        adapter: 'codex',
+      });
+      expect(createdBody['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+      });
+      expect(sourceContent).toBe('Drive the whole PlaySpec lifecycle through MCP.\n');
+      expect(serverRootSession).toBeNull();
+      expect(projectRootSession?.currentTaskId).toBe(taskId);
+      expect(projectHead.trim()).toBe(taskId);
+
+      expect(firstRender.isError, firstRender.content[0].text).toBeUndefined();
+      expect(String(parseToolJson(firstRender)['prompt'])).toContain('# Problem MCP Lifecycle Task');
+      expect(String(parseToolJson(firstRender)['prompt'])).toContain(sourceProblemFile);
+      expect(addedContext.isError, addedContext.content[0].text).toBeUndefined();
+      expect(parseToolJson(addedContext)).toMatchObject({ taskId, path: 'context/lifecycle.md', added: true });
+
+      expect(problemCompleted.isError, problemCompleted.content[0].text).toBeUndefined();
+      expect(parseToolJson(problemCompleted)).toMatchObject({
+        taskId,
+        completedPhaseId: 'problem',
+        nextPhaseId: 'gate',
+        status: 'active',
+        isWorkflowComplete: false,
+      });
+      expect(String(parseToolJson(gateRender)['prompt'])).toContain('# Gate MCP Lifecycle Task');
+      expect(String(parseToolJson(gateRender)['prompt'])).toContain('context/lifecycle.md');
+      expect(missingGateResult.isError).toBe(true);
+      expect(missingGateResult.content[0].text).toContain('Phase "gate" requires a result');
+      expect(missingGateResult.content[0].text).toContain('playspec_complete_phase');
+      expect(missingGateResult.content[0].text).toContain('approved');
+
+      expect(gateCompleted.isError, gateCompleted.content[0].text).toBeUndefined();
+      expect(parseToolJson(gateCompleted)).toMatchObject({
+        completedPhaseId: 'gate',
+        nextPhaseId: 'final',
+        status: 'active',
+        isWorkflowComplete: false,
+      });
+      expect(String(parseToolJson(finalRender)['prompt'])).toContain('# Final MCP Lifecycle Task');
+
+      expect(finalCompleted.isError, finalCompleted.content[0].text).toBeUndefined();
+      const finalBody = parseToolJson(finalCompleted);
+      expect(finalBody).toMatchObject({
+        taskId,
+        workflow: 'mcp-lifecycle-flow',
+        completedPhaseId: 'final',
+        nextPhase: null,
+        nextPhaseId: null,
+        status: 'completed',
+        taskStatus: 'completed',
+        isWorkflowComplete: true,
+      });
+      expect(finalBody['completionRecordPath']).toMatch(/^completions\/0003-final\.md$/);
+      expect(finalBody['evolutionContextSnapshotFile']).toMatch(/^\.playspec\/evolution\/context\/mcp_lifecycle_task\//);
+      expect(finalBody['operatorGuidance']).toMatchObject({
+        validNextMcpCalls: expect.arrayContaining(['playspec_get_task', 'playspec_list_tasks']),
+      });
+      expect(finalBody['finalizedArtifacts']).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          role: 'spec',
+          path: 'docs/features/mcp_lifecycle_task/spec.md',
+          exists: true,
+        }),
+        expect.objectContaining({
+          role: 'result',
+          path: 'docs/features/mcp_lifecycle_task/result.md',
+          exists: true,
+        }),
+      ]));
+
+      expect(fetched.isError, fetched.content[0].text).toBeUndefined();
+      expect(parseToolJson(fetched)).toMatchObject({ id: taskId, status: 'completed', currentPhase: null });
+      expect(listed.isError, listed.content[0].text).toBeUndefined();
+      expect((parseToolJson(listed)['completed'] as Array<{ id: string }>)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: taskId })])
+      );
+
+      expect(duplicate.isError).toBe(true);
+      expect(duplicate.content[0].text).toContain('Task already exists: mcp_lifecycle_task');
+      expect(duplicate.content[0].text).toContain('playspec_list_tasks');
+      expect((parseToolJson(listedAfterDuplicate)['completed'] as Array<{ id: string }>).filter(
+        (task) => task.id === taskId
+      )).toHaveLength(1);
+
+      expect(generatedProposal.isError, generatedProposal.content[0].text).toBeUndefined();
+      expect(parseToolJson(generatedProposal)).toMatchObject({
+        taskId,
+        invokedBy: 'mcp',
+      });
+      expect(proposal.isError, proposal.content[0].text).toBeUndefined();
+      expect((parseToolJson(proposal)['proposal'] as EvolutionProposal).id).toBe('mcp_lifecycle_proposal');
+      expect(proposals.isError, proposals.content[0].text).toBeUndefined();
+      expect(parseToolJson(proposals)['proposals']).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'mcp_lifecycle_proposal' }),
+      ]));
+        expect(process.env.PATH).toBe(fakeBinDir);
+      } finally {
+        process.env.PATH = originalPath;
+      }
     } finally {
       await serverWorkspace.cleanup();
     }
