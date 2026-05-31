@@ -44,6 +44,40 @@ describe('YamlTaskStore', () => {
     expect(fetched.title).toBe('My Feature');
   });
 
+  it('creates and reads a task with a hyphenated task ID', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+    const task = await store.createTask({
+      id: 'alivesolution-748',
+      title: 'AliveSolution 748',
+      workflow: 'mono-spec',
+    });
+
+    expect(task.id).toBe('alivesolution-748');
+    await expect(access(path.join(
+      workspace.dir,
+      '.playspec',
+      'tasks',
+      'active',
+      'alivesolution-748',
+      'task.yaml'
+    ))).resolves.not.toThrow();
+    await expect(store.getTask('alivesolution-748')).resolves.toMatchObject({
+      id: 'alivesolution-748',
+      title: 'AliveSolution 748',
+    });
+  });
+
+  it('rejects unsafe task IDs before creating storage directories', async () => {
+    const store = new YamlTaskStore(workspace.dir);
+
+    await expect(store.createTask({
+      id: '../outside',
+      title: 'Outside Task',
+      workflow: 'mono-spec',
+    })).rejects.toThrow(UnsafeTaskIdError);
+    await expect(access(path.join(workspace.dir, '.playspec', 'tasks', 'outside'))).rejects.toThrow();
+  });
+
   it('throws TaskNotFoundError for unknown task', async () => {
     const store = new YamlTaskStore(workspace.dir);
     await expect(store.getTask('nonexistent')).rejects.toThrow(TaskNotFoundError);

@@ -1638,6 +1638,8 @@ phaseHistory: []
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Unsafe task ID: ../outside');
+    expect(result.stderr).toContain('lowercase letters, numbers, underscores, or hyphens only');
+    expect(result.stderr).toContain('Example: alivesolution-748');
     expect(result.stderr).toContain('playspec use <TASK_ID>');
     expect(await readTextFile(getHeadPath(workspace.dir))).toBe(`${activeTaskId}\n`);
   });
