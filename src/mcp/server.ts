@@ -4,6 +4,7 @@ import { z, ZodError } from 'zod';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { PlaySpecError } from '#core/errors.js';
+import { createNormalTask } from '#core/task-creation.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
 import type { HarnessAttemptResult, TaskLinkType } from '#core/types.js';
 import { WorkflowEditor } from '#workflow/workflow-editor.js';
@@ -135,6 +136,68 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
         const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
         const task = await scopedTaskStore.getTask(args.taskId);
         return ok({ ...task, diagnostics });
+      } catch (e) {
+        return err(e, diagnostics);
+      }
+    }
+  );
+
+  server.tool(
+    'playspec_create_task',
+    'Create a PlaySpec task for an installed workflow',
+    {
+      workspaceRoot: z.string().optional(),
+      title: z.string(),
+      workflow: z.string().optional(),
+      taskId: z.string().optional(),
+      variables: z.record(z.string()).optional(),
+      sourceProblemText: z.string().optional(),
+      sourceProblemFile: z.string().optional(),
+      parentTaskId: z.string().optional(),
+      afterTaskId: z.string().optional(),
+      bindSessionId: z.string().optional(),
+      adapter: z.string().optional(),
+    },
+    async (args) => {
+      const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+      const diagnostics = await collectMcpWorkspaceDiagnostics(workspaceRoot, effectiveWorkspaceRoot);
+      try {
+        const created = await createNormalTask(effectiveWorkspaceRoot, {
+          title: args.title,
+          workflow: args.workflow ?? 'mono-spec',
+          taskId: args.taskId,
+          variables: args.variables,
+          sourceProblemText: args.sourceProblemText,
+          sourceProblemFile: args.sourceProblemFile,
+          sourceProblemMethod: args.sourceProblemText !== undefined ? 'mcp' : 'create',
+          parentTaskId: args.parentTaskId,
+          afterTaskId: args.afterTaskId,
+          linkCreatedBy: 'agent',
+        });
+        let boundSession = null;
+        if (args.bindSessionId) {
+          boundSession = await new McpSessionStore(effectiveWorkspaceRoot).setSessionTask(
+            args.bindSessionId,
+            created.taskId,
+            args.adapter ?? 'mcp'
+          );
+        }
+        return ok({
+          taskId: created.task.id,
+          title: created.task.title,
+          workflow: created.task.workflow,
+          status: created.task.status,
+          currentPhase: created.task.currentPhase,
+          taskRoot: created.task.paths.taskRoot,
+          projectDocRoot: created.task.paths.projectDocRoot,
+          contextRefs: created.task.contextRefs ?? [],
+          sourceProblemFile: created.sourceProblemFile,
+          variables: created.task.variables,
+          links: created.task.links ?? [],
+          boundSession,
+          diagnostics,
+          nextStep: 'Call playspec_render_next_prompt with taskId or bound sessionId.',
+        });
       } catch (e) {
         return err(e, diagnostics);
       }
