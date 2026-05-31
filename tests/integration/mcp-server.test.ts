@@ -698,6 +698,31 @@ describe('buildMcpServer', () => {
     });
   });
 
+  it('creates a mono-spec task with a hyphenated task ID through MCP', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const createHandler = getRegisteredToolHandler('playspec_create_task');
+
+    const created = await createHandler({
+      taskId: 'alivesolution-748',
+      title: 'AliveSolution issue 748',
+      workflow: 'mono-spec',
+      sourceProblemText: 'alivesolution 748',
+    });
+    const body = parseToolJson(created);
+    const task = await new YamlTaskStore(workspace.dir).getTask('alivesolution-748');
+
+    expect(created.isError).toBeUndefined();
+    expect(body).toMatchObject({
+      taskId: 'alivesolution-748',
+      workflow: 'mono-spec',
+      status: 'active',
+      taskRoot: path.join('.playspec', 'tasks', 'active', 'alivesolution-748'),
+      projectDocRoot: path.join('docs', 'features', 'alivesolution-748'),
+    });
+    expect(task.id).toBe('alivesolution-748');
+  });
+
   it('creates a total-plan task with required variables through MCP', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');

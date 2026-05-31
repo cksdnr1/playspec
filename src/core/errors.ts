@@ -49,7 +49,7 @@ export class UnsafeTaskIdError extends PlaySpecError {
   constructor(taskId: string) {
     super(
       `Unsafe task ID: ${taskId}`,
-      'Use a single PlaySpec task ID segment. Run `playspec list-tasks`, then select an active task with `playspec use <TASK_ID>`.'
+      'Use a single PlaySpec task ID segment: lowercase letters, numbers, underscores, or hyphens only. Example: alivesolution-748. Run `playspec list-tasks`, then select an active task with `playspec use <TASK_ID>`.'
     );
     this.name = 'UnsafeTaskIdError';
   }

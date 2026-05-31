@@ -157,6 +157,7 @@ export class YamlTaskStore implements TaskStore {
   }
 
   async createTask(input: CreateTaskInput): Promise<TaskRecord> {
+    assertSafeTaskId(input.id);
     const absoluteTaskRoot = getActiveTaskRoot(this.workspaceRoot, input.id);
     if (await pathExists(absoluteTaskRoot)) {
       throw new TaskAlreadyExistsError(input.id);
