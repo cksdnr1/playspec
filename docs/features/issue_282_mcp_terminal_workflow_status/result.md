@@ -38,4 +38,4 @@
 
 - PR body source written to `docs/features/issue_282_mcp_terminal_workflow_status/pr.md`.
 - Reusable agent guidance: no new reusable guidance is needed; this is a narrow response contract hardening change.
-- PR link: pending creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/287
