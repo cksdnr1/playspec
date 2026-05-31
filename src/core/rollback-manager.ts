@@ -14,7 +14,7 @@ import type {
   RollbackSafePoint,
   TaskRecord,
 } from '#core/types.js';
-import { GitState } from '#core/git-state.js';
+import { GitState, type GitNameStatusEntry } from '#core/git-state.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
 const ACTIVE_ARTIFACT_DIRS = ['prompts', 'reviews', 'evidence', 'snapshots'] as const;
@@ -29,14 +29,24 @@ export class RollbackManager {
   async plan(task: TaskRecord): Promise<RollbackPlanResult> {
     const safePoint = getSafePoint(task);
     const state = await this.gitState.getWorkspaceState();
-    const affectedCommits =
-      safePoint.gitHead && state.head
-        ? await this.gitState.listCommitsAfter(safePoint.gitHead).catch(() => [])
-        : [];
-    const committedEntries =
-      safePoint.gitHead && state.head && state.head !== safePoint.gitHead
-        ? await this.gitState.listNameStatusSince(safePoint.gitHead).catch(() => [])
-        : [];
+    const safetyReasons: string[] = [];
+    let affectedCommits: string[] = [];
+    let committedEntries: GitNameStatusEntry[] = [];
+
+    if (safePoint.gitHead && state.head) {
+      try {
+        affectedCommits = await this.gitState.listCommitsAfter(safePoint.gitHead);
+      } catch {
+        addSafePointComparisonFailure(safetyReasons);
+      }
+    }
+    if (safePoint.gitHead && state.head && state.head !== safePoint.gitHead) {
+      try {
+        committedEntries = await this.gitState.listNameStatusSince(safePoint.gitHead);
+      } catch {
+        addSafePointComparisonFailure(safetyReasons);
+      }
+    }
     const userEntries = state.entries.filter((entry) => !entry.path.startsWith('.playspec/'));
     const dirtyEntries = userEntries.filter((entry) => entry.code !== '??');
     const untrackedFiles = state.entries
@@ -73,7 +83,6 @@ export class RollbackManager {
       renamedFiles,
     });
     const untrackedDeletionRiskFiles = untrackedFiles.filter((file) => targetFiles.includes(file));
-    const safetyReasons: string[] = [];
 
     if (dirtyEntries.length > 0) {
       safetyReasons.push('Working tree has uncommitted tracked changes.');
@@ -245,6 +254,13 @@ function rollbackTargetFiles(plan: Pick<RollbackPlanResult, 'changedFiles' | 'de
     ...plan.deletedFiles,
     ...plan.renamedFiles,
   ])].sort();
+}
+
+function addSafePointComparisonFailure(safetyReasons: string[]): void {
+  const reason = 'Rollback safe-point Git head cannot be resolved or compared.';
+  if (!safetyReasons.includes(reason)) {
+    safetyReasons.push(reason);
+  }
 }
 
 async function isFutureArtifact(filePath: string, safePoint: RollbackSafePoint): Promise<boolean> {
