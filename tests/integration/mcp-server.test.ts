@@ -189,6 +189,32 @@ function makeProposal(id: string, taskId: string): EvolutionProposal {
   };
 }
 
+function makeExecutableProposal(id: string, taskId: string, targetPath = '.playspec/templates/mcp-evolution.md'): EvolutionProposal {
+  return {
+    id,
+    revision: 1,
+    createdAt: '2026-05-03T00:00:00.000Z',
+    updatedAt: '2026-05-03T00:00:00.000Z',
+    status: 'pending',
+    source: { taskId, artifactRefs: [] },
+    targetFiles: [targetPath],
+    evidenceRefs: [],
+    riskLevel: 'low',
+    actions: [
+      {
+        actionId: 'action_1',
+        type: 'replace_file',
+        targetPath,
+        content: '# Updated MCP evolution guidance\n',
+        summary: 'Replace template content.',
+        rationale: 'Exercise approval-gated MCP apply.',
+      },
+    ],
+    rationale: 'Apply a reviewed executable MCP proposal.',
+    review: { status: 'reviewed', reviewer: 'mcp-test', reviewedAt: '2026-05-03T00:00:00.000Z' },
+  };
+}
+
 function makeFeedbackThread(id = 'feedback_thread_mcp'): FeedbackThread {
   return {
     id,
@@ -1104,14 +1130,25 @@ phases:
     expect(applyResult.content[0].text).toContain('approved: true');
   });
 
-  it('generates an evolution proposal through MCP with explicit session context', async () => {
+  it('runs the MCP-only completion to proposal lifecycle with explicit evidence and status reporting', async () => {
     const { taskId } = await initWorkspaceWithTask('MCP Generate Proposal');
     await writeTextFile(path.join(workspace.dir, 'evidence.md'), 'Observed update.\n');
+    await execa('git', ['init'], { cwd: workspace.dir });
     const sessionStore = new McpSessionStore(workspace.dir);
     await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
 
-    const handler = getRegisteredToolHandler('playspec_generate_evolution_proposal');
-    const result = await handler({
+    const completeHandler = getRegisteredToolHandler('playspec_complete_phase');
+    const generateHandler = getRegisteredToolHandler('playspec_generate_evolution_proposal');
+    const appendHandler = getRegisteredToolHandler('playspec_append_evolution_evidence');
+    const listHandler = getRegisteredToolHandler('playspec_list_evolution_proposals');
+    const getHandler = getRegisteredToolHandler('playspec_get_evolution_proposal');
+
+    const completed = await completeHandler({
+      sessionId: 'mcp.codex',
+      withEvolutionContext: true,
+      contextMode: 'compact',
+    });
+    const generated = await generateHandler({
       sessionId: 'mcp.codex',
       fromEvidence: 'evidence.md',
       target: '.playspec/templates/generated.md',
@@ -1120,12 +1157,104 @@ phases:
       risk: 'low',
       generatedId: 'mcp_generated_proposal',
     });
+    const appended = await appendHandler({
+      proposalId: 'mcp_generated_proposal',
+      path: 'evidence.md',
+      note: 'Additional MCP lifecycle evidence.',
+    });
+    const listed = await listHandler({});
+    const fetched = await getHandler({ proposalId: 'mcp_generated_proposal' });
 
-    expect(result.isError).toBeUndefined();
-    const body = parseToolJson(result);
-    expect(body['taskId']).toBe(taskId);
-    expect(body['invokedBy']).toBe('mcp');
-    expect((body['proposal'] as EvolutionProposal).id).toBe('mcp_generated_proposal');
+    expect(completed.isError, completed.content[0].text).toBeUndefined();
+    const completedBody = parseToolJson(completed);
+    expect(completedBody['taskId']).toBe(taskId);
+    expect(completedBody['evolutionContextSnapshotFile']).toMatch(
+      new RegExp(`^\\.playspec/evolution/context/${taskId}/`)
+    );
+
+    expect(generated.isError, generated.content[0].text).toBeUndefined();
+    const generatedBody = parseToolJson(generated);
+    expect(generatedBody['taskId']).toBe(taskId);
+    expect(generatedBody['invokedBy']).toBe('mcp');
+    expect((generatedBody['proposal'] as EvolutionProposal)).toMatchObject({
+      id: 'mcp_generated_proposal',
+      status: 'pending',
+      revision: 1,
+    });
+
+    expect(appended.isError, appended.content[0].text).toBeUndefined();
+    expect((parseToolJson(appended)['proposal'] as EvolutionProposal)).toMatchObject({
+      id: 'mcp_generated_proposal',
+      status: 'pending',
+      revision: 2,
+    });
+    expect(listed.isError, listed.content[0].text).toBeUndefined();
+    expect((parseToolJson(listed)['proposals'] as EvolutionProposal[])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'mcp_generated_proposal', status: 'pending', revision: 2 }),
+    ]));
+    expect(fetched.isError, fetched.content[0].text).toBeUndefined();
+    const fetchedProposal = parseToolJson(fetched)['proposal'] as EvolutionProposal;
+    expect(fetchedProposal.status).toBe('pending');
+    expect(fetchedProposal.evidenceRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'evidence.md', source: 'generated' }),
+      expect.objectContaining({ path: 'evidence.md', source: 'append-evidence' }),
+    ]));
+  });
+
+  it('refuses duplicate MCP proposal generation and refines the existing proposal explicitly', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Duplicate Proposal');
+    await writeTextFile(path.join(workspace.dir, 'evidence-one.md'), 'First evidence.\n');
+    await writeTextFile(path.join(workspace.dir, 'evidence-two.md'), 'Second evidence.\n');
+    const sessionStore = new McpSessionStore(workspace.dir);
+    await sessionStore.setSessionTask('mcp.codex', taskId, 'codex');
+
+    const generateHandler = getRegisteredToolHandler('playspec_generate_evolution_proposal');
+    const getHandler = getRegisteredToolHandler('playspec_get_evolution_proposal');
+
+    const first = await generateHandler({
+      sessionId: 'mcp.codex',
+      fromEvidence: 'evidence-one.md',
+      target: '.playspec/templates/duplicate-target.md',
+      summary: 'Initial proposal.',
+      rationale: 'Initial MCP evidence.',
+      risk: 'low',
+      generatedId: 'mcp_duplicate_existing',
+    });
+    const duplicate = await generateHandler({
+      sessionId: 'mcp.codex',
+      fromEvidence: 'evidence-two.md',
+      target: '.playspec/templates/duplicate-target.md',
+      summary: 'Duplicate proposal.',
+      rationale: 'Should refine the existing proposal.',
+      risk: 'low',
+      generatedId: 'mcp_duplicate_second',
+    });
+    const refined = await generateHandler({
+      sessionId: 'mcp.codex',
+      proposalId: 'mcp_duplicate_existing',
+      fromEvidence: 'evidence-two.md',
+      target: '.playspec/templates/duplicate-target.md',
+      summary: 'Refined proposal.',
+      rationale: 'Explicitly refine the existing matching proposal.',
+      risk: 'low',
+    });
+    const fetched = await getHandler({ proposalId: 'mcp_duplicate_existing' });
+
+    expect(first.isError, first.content[0].text).toBeUndefined();
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.content[0].text).toContain('Active evolution proposal already targets .playspec/templates/duplicate-target.md');
+    expect(duplicate.content[0].text).toContain('refine the active proposal');
+    expect(refined.isError, refined.content[0].text).toBeUndefined();
+    expect((parseToolJson(refined)['proposal'] as EvolutionProposal)).toMatchObject({
+      id: 'mcp_duplicate_existing',
+      status: 'pending',
+      revision: 2,
+    });
+    const fetchedProposal = parseToolJson(fetched)['proposal'] as EvolutionProposal;
+    expect(fetchedProposal.evidenceRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'evidence-one.md', source: 'generated' }),
+      expect.objectContaining({ path: 'evidence-two.md', source: 'generated' }),
+    ]));
   });
 
   it('appends feedback thread evidence through MCP with explicit proposal and thread IDs', async () => {
@@ -1134,10 +1263,12 @@ phases:
     await new EvolutionFeedbackThreadStore(workspace.dir).saveThread(makeFeedbackThread());
 
     const handler = getRegisteredToolHandler('playspec_append_evolution_thread_evidence');
+    const getHandler = getRegisteredToolHandler('playspec_get_evolution_proposal');
     const result = await handler({
       proposalId: 'mcp_thread_proposal',
       threadId: 'feedback_thread_mcp',
     });
+    const fetched = await getHandler({ proposalId: 'mcp_thread_proposal' });
 
     expect(result.isError).toBeUndefined();
     const body = parseToolJson(result);
@@ -1145,6 +1276,48 @@ phases:
     expect(body['threadId']).toBe('feedback_thread_mcp');
     expect(body['evidencePath']).toBe('.playspec/evolution/feedback/threads/feedback_thread_mcp.yaml');
     expect(String(body['evidenceNote'])).toContain('MCP validation feedback summary.');
+    expect(fetched.isError, fetched.content[0].text).toBeUndefined();
+    expect((parseToolJson(fetched)['proposal'] as EvolutionProposal).evidenceRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: '.playspec/evolution/feedback/threads/feedback_thread_mcp.yaml',
+        source: 'append-evidence',
+      }),
+    ]));
+  });
+
+  it('previews and applies executable MCP evolution proposals only after explicit approval', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Apply Proposal');
+    await writeTextFile(path.join(workspace.dir, '.playspec', 'templates', 'mcp-evolution.md'), '# Original\n');
+    await new EvolutionProposalStore(workspace.dir).saveProposal(makeExecutableProposal('mcp_executable_apply', taskId));
+
+    const diffHandler = getRegisteredToolHandler('playspec_diff_evolution_proposal');
+    const applyHandler = getRegisteredToolHandler('playspec_apply_evolution_proposal');
+    const getHandler = getRegisteredToolHandler('playspec_get_evolution_proposal');
+
+    const diffed = await diffHandler({ proposalId: 'mcp_executable_apply' });
+    const rejected = await applyHandler({ proposalId: 'mcp_executable_apply', approved: false });
+    const contentAfterRejected = await readFile(path.join(workspace.dir, '.playspec', 'templates', 'mcp-evolution.md'), 'utf8');
+    const applied = await applyHandler({ proposalId: 'mcp_executable_apply', approved: true });
+    const contentAfterApplied = await readFile(path.join(workspace.dir, '.playspec', 'templates', 'mcp-evolution.md'), 'utf8');
+    const fetched = await getHandler({ proposalId: 'mcp_executable_apply' });
+
+    expect(diffed.isError, diffed.content[0].text).toBeUndefined();
+    expect(parseToolJson(diffed)).toMatchObject({
+      proposalId: 'mcp_executable_apply',
+      changedFiles: ['.playspec/templates/mcp-evolution.md'],
+      summary: ['action_1 replace_file .playspec/templates/mcp-evolution.md'],
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.content[0].text).toContain('approved: true');
+    expect(contentAfterRejected).toBe('# Original\n');
+    expect(applied.isError, applied.content[0].text).toBeUndefined();
+    expect(parseToolJson(applied)['report']).toMatchObject({
+      proposalId: 'mcp_executable_apply',
+      status: 'success',
+      approvalSource: 'mcp approved:true',
+    });
+    expect(contentAfterApplied).toBe('# Updated MCP evolution guidance\n');
+    expect((parseToolJson(fetched)['proposal'] as EvolutionProposal).status).toBe('applied');
   });
 
   it('links and unlinks tasks through MCP without HEAD fallback', async () => {
