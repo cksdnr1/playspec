@@ -634,6 +634,63 @@ describe('buildMcpServer', () => {
     }
   });
 
+  it('runs task phase tools against an explicit workspace when the server workspace differs', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      await execa('git', ['init'], { cwd: workspace.dir });
+      const { taskId, store } = await initWorkspaceWithTask('MCP Explicit Workspace Phase');
+      const bindHandler = getRegisteredToolHandler('playspec_use_session_task', serverWorkspace.dir);
+      const getSessionHandler = getRegisteredToolHandler('playspec_get_session_task', serverWorkspace.dir);
+      const renderHandler = getRegisteredToolHandler('playspec_render_next_prompt', serverWorkspace.dir);
+      const completeHandler = getRegisteredToolHandler('playspec_complete_phase', serverWorkspace.dir);
+      const evidenceHandler = getRegisteredToolHandler('playspec_collect_evidence', serverWorkspace.dir);
+
+      const bound = await bindHandler({
+        sessionId: 'mcp.explicit-workspace',
+        taskId: 'mcp_explicit_workspace_phase',
+        workspaceRoot: workspace.dir,
+      });
+      const serverRootSession = await new McpSessionStore(serverWorkspace.dir).loadSession('mcp.explicit-workspace');
+      const projectRootSession = await new McpSessionStore(workspace.dir).loadSession('mcp.explicit-workspace');
+      const sessionResult = await getSessionHandler({
+        sessionId: 'mcp.explicit-workspace',
+        workspaceRoot: workspace.dir,
+      });
+      const rendered = await renderHandler({
+        sessionId: 'mcp.explicit-workspace',
+        workspaceRoot: workspace.dir,
+      });
+      const completed = await completeHandler({ taskId, workspaceRoot: workspace.dir });
+      const evidence = await evidenceHandler({ taskId, workspaceRoot: workspace.dir });
+      const evidenceFiles = parseToolJson(evidence)['evidenceFiles'] as string[];
+      const evidenceDirEntries = await readdir(path.join(
+        workspace.dir,
+        '.playspec',
+        'tasks',
+        'active',
+        taskId,
+        'evidence'
+      ));
+
+      expect(bound.isError).toBeUndefined();
+      expect(parseToolJson(bound)['currentTaskId']).toBe(taskId);
+      expect(serverRootSession).toBeNull();
+      expect(projectRootSession?.currentTaskId).toBe(taskId);
+      expect(sessionResult.isError).toBeUndefined();
+      expect(parseToolJson(sessionResult)['task']).toMatchObject({ id: taskId });
+      expect(rendered.isError).toBeUndefined();
+      expect(String(parseToolJson(rendered)['prompt'])).toContain('MCP Explicit Workspace Phase');
+      expect(completed.isError).toBeUndefined();
+      expect(parseToolJson(completed)['taskId']).toBe(taskId);
+      expect((await store.getTask(taskId)).currentPhase).not.toBeNull();
+      expect(evidence.isError).toBeUndefined();
+      expect(evidenceFiles.length).toBeGreaterThan(0);
+      expect(evidenceDirEntries).toEqual(expect.arrayContaining(evidenceFiles.map((file) => path.basename(file))));
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
   it('includes workspace diagnostics when explicit task lookup misses', async () => {
     await initWorkspaceWithTask('MCP Missing Lookup Diagnostics');
     const handler = getRegisteredToolHandler('playspec_get_task');
