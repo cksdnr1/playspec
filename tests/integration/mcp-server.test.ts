@@ -1369,6 +1369,52 @@ phases:
     ]));
   });
 
+  it('rejects terminal completion when a finalized artifact path is missing a required variable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-required-artifact-flow', 'workflow.yaml'),
+      `id: mcp-required-artifact-flow
+mode: linear
+variables:
+  PROJECT_KEY:
+    required: true
+artifacts:
+  result:
+    path: docs/{{PROJECT_KEY}}/result.md
+    kind: result
+phaseOrder:
+  - finish
+phases:
+  finish:
+    title: Finish
+    template: finish.md
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-required-artifact-flow', 'templates', 'finish.md'),
+      '# Finish {{TASK_TITLE}}\n'
+    );
+    const store = new YamlTaskStore(workspace.dir);
+    const taskId = 'mcp_required_artifact_task';
+    await store.createTask({
+      id: taskId,
+      title: 'MCP Required Artifact Task',
+      workflow: 'mcp-required-artifact-flow',
+    });
+    await execa('git', ['init'], { cwd: workspace.dir });
+
+    const completeHandler = getRegisteredToolHandler('playspec_complete_phase');
+    const result = await completeHandler({ taskId });
+    const task = await store.getTask(taskId);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Missing required variables');
+    expect(result.content[0].text).toContain('workflow "mcp-required-artifact-flow" phase "finish"');
+    expect(result.content[0].text).toContain('PROJECT_KEY');
+    expect(task.status).toBe('active');
+  });
+
   it('does not register archive lookup tools in Phase 5', () => {
     const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
     try {
