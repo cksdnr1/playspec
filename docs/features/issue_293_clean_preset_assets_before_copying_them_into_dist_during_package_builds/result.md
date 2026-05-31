@@ -30,4 +30,4 @@
 - Cleanup is intentionally scoped to `dist/preset/assets`; other stale compiled files in `dist` are outside this issue.
 - Safe-refactor review found no additional local cleanup worth applying beyond the scoped implementation.
 - No reusable agent guidance update is needed; this was a local package build regression.
-- PR link: pending until draft PR creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/294
