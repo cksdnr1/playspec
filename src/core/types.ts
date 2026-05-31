@@ -436,13 +436,36 @@ export interface CompletionFeedbackFailure {
 
 export type CompletionFeedbackResult = CompletionFeedbackSuccess | CompletionFeedbackFailure;
 
+export interface FinalizedWorkflowArtifact {
+  role: string;
+  path: string;
+  exists: boolean;
+  kind?: string;
+  description?: string;
+}
+
+export interface CompletionOperatorGuidance {
+  recommendedNextAction: string;
+  validNextMcpCalls: string[];
+  message: string;
+}
+
 export interface CompletionResult {
   taskId: TaskId;
+  workflow: WorkflowId;
   completedPhase: PhaseId;
+  completedPhaseId: PhaseId;
+  previousPhaseId: PhaseId | null;
   nextPhase: PhaseId | null;
+  nextPhaseId: PhaseId | null;
   status: TaskStatus;
+  taskStatus: TaskStatus;
+  isWorkflowComplete: boolean;
   evidenceFiles: string[];
   snapshotFiles: string[];
+  finalizedArtifacts: FinalizedWorkflowArtifact[];
+  completionRecordPath?: string;
+  operatorGuidance: CompletionOperatorGuidance;
   reviewFile?: string;
   evolutionContextSnapshotFile?: string;
   completionEvent?: CompletionEvent;

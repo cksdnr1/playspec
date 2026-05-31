@@ -49,7 +49,9 @@ import type {
   CompletionResult,
   CompletionFeedbackFailureStage,
   CompletionFeedbackResult,
+  CompletionOperatorGuidance,
   EvidenceResult,
+  FinalizedWorkflowArtifact,
   SnapshotResult,
   DesyncCheckResult,
   RollbackPlanResult,
@@ -363,14 +365,26 @@ export class PlaySpecCore {
       const evolutionContextSnapshotFile = options.withEvolutionContext
         ? await this.evolutionContextReader.writeSnapshot(task, phaseId, 'complete')
         : undefined;
+      const isWorkflowComplete = updatedTask.status === 'completed' && updatedTask.currentPhase === null;
+      const finalizedArtifacts = await this.resolveFinalizedArtifacts(updatedTask, workflow, phaseId, definition);
+      const operatorGuidance = this.buildCompletionOperatorGuidance(updatedTask, isWorkflowComplete);
 
       return {
         taskId: updatedTask.id,
+        workflow: workflow.id,
         completedPhase: phaseId,
+        completedPhaseId: phaseId,
+        previousPhaseId: completionEvent.previousPhase,
         nextPhase: updatedTask.currentPhase,
+        nextPhaseId: updatedTask.currentPhase,
         status: updatedTask.status,
+        taskStatus: updatedTask.status,
+        isWorkflowComplete,
         evidenceFiles,
         snapshotFiles,
+        finalizedArtifacts,
+        completionRecordPath: completionEvent.markdownFile,
+        operatorGuidance,
         reviewFile,
         evolutionContextSnapshotFile,
         completionEvent,
@@ -763,6 +777,71 @@ export class PlaySpecCore {
       return undefined;
     }
     return path.join('workflow', workflow.id, 'templates', templatePath);
+  }
+
+  private async resolveFinalizedArtifacts(
+    task: TaskRecord,
+    workflow: ResolvedWorkflow,
+    phaseId: string,
+    definition: PhaseDefinition
+  ): Promise<FinalizedWorkflowArtifact[]> {
+    const artifacts = workflow.definition.artifacts ?? {};
+    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition, {
+      additionalDemandedVariables: Object.values(artifacts).flatMap((artifact) =>
+        extractPlaceholderNames(artifact.path)
+      ),
+    });
+
+    return Promise.all(
+      Object.entries(artifacts).map(async ([role, artifact]) => {
+        const artifactPath = renderInlineTemplate(artifact.path, variables);
+        const resolvedPath = path.isAbsolute(artifactPath)
+          ? artifactPath
+          : path.resolve(this.workspaceRoot, artifactPath);
+        let exists = true;
+        try {
+          await access(resolvedPath);
+        } catch {
+          exists = false;
+        }
+
+        return {
+          role,
+          path: artifactPath,
+          exists,
+          ...(artifact.kind !== undefined ? { kind: artifact.kind } : {}),
+          ...(artifact.description !== undefined ? { description: artifact.description } : {}),
+        };
+      })
+    );
+  }
+
+  private buildCompletionOperatorGuidance(
+    task: TaskRecord,
+    isWorkflowComplete: boolean
+  ): CompletionOperatorGuidance {
+    if (isWorkflowComplete) {
+      return {
+        recommendedNextAction: 'Inspect the completed task and finalized artifact paths returned in this response.',
+        validNextMcpCalls: [
+          'playspec_get_task',
+          'playspec_list_tasks',
+        ],
+        message: `Workflow "${task.workflow}" is complete for task "${task.id}". Do not call playspec_render_next_prompt for this task unless the task is reopened by a future workflow feature.`,
+      };
+    }
+
+    return {
+      recommendedNextAction: 'Render the next phase prompt and continue the workflow.',
+      validNextMcpCalls: [
+        'playspec_render_next_prompt',
+        'playspec_render_phase_prompt',
+        'playspec_complete_phase',
+        'playspec_get_task',
+        'playspec_list_tasks',
+      ],
+      message: `Workflow "${task.workflow}" advanced to phase "${task.currentPhase}".`,
+    };
   }
 
   private buildRollbackSafePoint(
@@ -1337,4 +1416,22 @@ function safeFilePart(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'completion';
+}
+
+const INLINE_PLACEHOLDER_REGEX = /\{\{([^}#/^!>][^}]*)\}\}/g;
+
+function extractPlaceholderNames(template: string): string[] {
+  const names: string[] = [];
+  template.replace(INLINE_PLACEHOLDER_REGEX, (token, name: string) => {
+    names.push(name.trim());
+    return token;
+  });
+  return names;
+}
+
+function renderInlineTemplate(template: string, variables: Record<string, string>): string {
+  return template.replace(INLINE_PLACEHOLDER_REGEX, (token, name: string) => {
+    const value = variables[name.trim()];
+    return value === undefined ? token : value;
+  });
 }

@@ -895,6 +895,125 @@ phases:
     });
   });
 
+  it('returns terminal workflow status and finalized artifacts from MCP final completion', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-terminal-flow', 'workflow.yaml'),
+      `id: mcp-terminal-flow
+mode: linear
+variables:
+  OUTPUT_DIR:
+    default: docs/features/{{FEATURE_SLUG}}
+  SPEC_FILE:
+    default: "{{OUTPUT_DIR}}/spec.md"
+  RESULT_FILE:
+    default: "{{OUTPUT_DIR}}/result.md"
+artifacts:
+  spec:
+    path: "{{SPEC_FILE}}"
+    kind: spec
+    description: Final specification.
+  result:
+    path: "{{RESULT_FILE}}"
+    kind: result
+phaseOrder:
+  - draft
+  - finish
+phases:
+  draft:
+    title: Draft
+    template: draft.md
+  finish:
+    title: Finish
+    template: finish.md
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-terminal-flow', 'templates', 'draft.md'),
+      '# Draft {{TASK_TITLE}}\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-terminal-flow', 'templates', 'finish.md'),
+      '# Finish {{TASK_TITLE}}\n'
+    );
+    const store = new YamlTaskStore(workspace.dir);
+    const taskId = 'mcp_terminal_task';
+    await store.createTask({
+      id: taskId,
+      title: 'MCP Terminal Task',
+      workflow: 'mcp-terminal-flow',
+      variables: { FEATURE_SLUG: 'mcp_terminal_task' },
+    });
+    await writeTextFile(path.join(workspace.dir, 'docs', 'features', 'mcp_terminal_task', 'spec.md'), '# Spec\n');
+    await execa('git', ['init'], { cwd: workspace.dir });
+
+    const completeHandler = getRegisteredToolHandler('playspec_complete_phase');
+    const getTaskHandler = getRegisteredToolHandler('playspec_get_task');
+    const listTasksHandler = getRegisteredToolHandler('playspec_list_tasks');
+
+    const firstResult = await completeHandler({ taskId });
+    expect(firstResult.isError, firstResult.content[0].text).toBeUndefined();
+    const firstBody = parseToolJson(firstResult);
+    expect(firstBody['taskId']).toBe(taskId);
+    expect(firstBody['workflow']).toBe('mcp-terminal-flow');
+    expect(firstBody['completedPhaseId']).toBe('draft');
+    expect(firstBody['nextPhase']).toBe('finish');
+    expect(firstBody['nextPhaseId']).toBe('finish');
+    expect(firstBody['taskStatus']).toBe('active');
+    expect(firstBody['isWorkflowComplete']).toBe(false);
+    expect(firstBody['operatorGuidance']).toMatchObject({
+      recommendedNextAction: 'Render the next phase prompt and continue the workflow.',
+      validNextMcpCalls: expect.arrayContaining(['playspec_render_next_prompt', 'playspec_complete_phase']),
+    });
+
+    const finalResult = await completeHandler({ taskId });
+    expect(finalResult.isError, finalResult.content[0].text).toBeUndefined();
+    const finalBody = parseToolJson(finalResult);
+    expect(finalBody['taskId']).toBe(taskId);
+    expect(finalBody['workflow']).toBe('mcp-terminal-flow');
+    expect(finalBody['completedPhaseId']).toBe('finish');
+    expect(finalBody['previousPhaseId']).toBe('finish');
+    expect(finalBody['nextPhase']).toBeNull();
+    expect(finalBody['nextPhaseId']).toBeNull();
+    expect(finalBody['status']).toBe('completed');
+    expect(finalBody['taskStatus']).toBe('completed');
+    expect(finalBody['isWorkflowComplete']).toBe(true);
+    expect(finalBody['completionRecordPath']).toMatch(/^completions\/0002-finish\.md$/);
+    expect(finalBody['operatorGuidance']).toMatchObject({
+      validNextMcpCalls: expect.arrayContaining(['playspec_get_task', 'playspec_list_tasks']),
+    });
+    expect(String((finalBody['operatorGuidance'] as { message?: string }).message)).toContain('is complete');
+    expect(finalBody['finalizedArtifacts']).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'spec',
+        path: 'docs/features/mcp_terminal_task/spec.md',
+        kind: 'spec',
+        description: 'Final specification.',
+        exists: true,
+      }),
+      expect.objectContaining({
+        role: 'result',
+        path: 'docs/features/mcp_terminal_task/result.md',
+        kind: 'result',
+        exists: false,
+      }),
+    ]));
+
+    const getTask = await getTaskHandler({ taskId });
+    const taskBody = parseToolJson(getTask);
+    const listTasks = await listTasksHandler({});
+    const listBody = parseToolJson(listTasks) as { completed?: Array<{ id: string; status: string; currentPhase: string | null }> };
+
+    expect(getTask.isError).toBeUndefined();
+    expect(taskBody['status']).toBe('completed');
+    expect(taskBody['currentPhase']).toBeNull();
+    expect(listTasks.isError).toBeUndefined();
+    expect(listBody.completed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: taskId, status: 'completed', currentPhase: null }),
+    ]));
+  });
+
   it('does not register archive lookup tools in Phase 5', () => {
     const toolSpy = vi.spyOn(McpServer.prototype, 'tool');
     try {
