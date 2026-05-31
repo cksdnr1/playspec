@@ -286,6 +286,9 @@ export class PlaySpecCore {
       options.result
     );
     this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
+    if (nextPhase === null) {
+      await this.resolveFinalizedArtifacts(task, workflow, phaseId, definition);
+    }
     const completionArtifactSuffix = this.resolveCompletionArtifactSuffix(visitCount);
 
     // Render prompt snapshot only after routing validation passes
@@ -786,11 +789,16 @@ export class PlaySpecCore {
     definition: PhaseDefinition
   ): Promise<FinalizedWorkflowArtifact[]> {
     const artifacts = workflow.definition.artifacts ?? {};
-    const variables = this.variableResolver.resolve(task, phaseId, workflow.definition, definition, {
-      additionalDemandedVariables: Object.values(artifacts).flatMap((artifact) =>
-        extractPlaceholderNames(artifact.path)
-      ),
-    });
+    const artifactPathVariables = Object.values(artifacts).flatMap((artifact) =>
+      extractPlaceholderNames(artifact.path)
+    );
+    const variables = this.resolveAndAssertRequiredVariables(
+      task,
+      workflow,
+      phaseId,
+      definition,
+      artifactPathVariables
+    );
 
     return Promise.all(
       Object.entries(artifacts).map(async ([role, artifact]) => {
