@@ -25,6 +25,11 @@
 
 All validation commands passed.
 
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/286
+- Branch: `agent/issue-281-mcp-create`
+
 ## Focused Test Coverage
 
 - Added MCP handler tests for creating a `mono-spec` task with source problem text.
