@@ -313,6 +313,7 @@ Registered MCP tools:
 - `playspec_store_evolution_proposal`
 - `playspec_update_evolution_proposal`
 - `playspec_append_evolution_evidence`
+- `playspec_append_evolution_thread_evidence`
 - `playspec_skip_evolution_proposal`
 - `playspec_diff_evolution_proposal`
 - `playspec_apply_evolution_proposal`
@@ -331,6 +332,12 @@ playspec_use_session_task({ "sessionId": "codex-main", "taskId": "my_feature", "
 playspec_render_next_prompt({ "sessionId": "codex-main" })
 playspec_complete_phase({ "sessionId": "codex-main" })
 ```
+
+For post-run prompt/workflow evolution, use the documented MCP-only lifecycle in
+[`docs/mcp-evolution-lifecycle.md`](docs/mcp-evolution-lifecycle.md). That
+sequence covers completion with evolution context, explicit evidence, proposal
+generation/refinement, evidence append, diff preview, approval-gated apply, and
+final status reporting.
 
 ## `.playspec` Layout
 
