@@ -53,3 +53,9 @@ The test verifies:
 - Compared the implementation scope against `origin/master` and the approved plan.
 - No additional refactor was applied. The current helper is local to `buildMcpServer()` and avoids broader abstraction churn.
 - Skipped adding a dependency cache for scoped MCP contexts because the current per-request construction matches existing `get/list` behavior and keeps lifetime semantics simple.
+
+## PR
+
+- Draft PR: https://github.com/cksdnr1/playspec/pull/280
+- Branch: `agent/issue-278-mcp-workspace-root`
+- Reusable agent guidance: no new guidance needed; existing AGENTS.md MCP workspace/root rules were sufficient.
