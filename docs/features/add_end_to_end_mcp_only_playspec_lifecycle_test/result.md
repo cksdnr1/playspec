@@ -37,4 +37,4 @@
 - PR body source written to `docs/features/add_end_to_end_mcp_only_playspec_lifecycle_test/pr.md`.
 - Reusable agent guidance: not needed; the change is a focused test/API support fix.
 - Branch: `agent/issue-285-mcp-lifecycle`.
-- PR link: pending creation.
+- PR link: https://github.com/cksdnr1/playspec/pull/289
