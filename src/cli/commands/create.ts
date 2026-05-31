@@ -3,13 +3,12 @@ import path from 'node:path';
 import * as readline from 'node:readline';
 import { tmpdir } from 'node:os';
 import { execa } from 'execa';
-import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, SelfTaskLinkError, PlanningTaskNotCompletedError } from '#core/errors.js';
+import { createNormalTask as createNormalTaskShared } from '#core/task-creation.js';
+import { WorkspaceNotInitializedError, AmbiguousPlanningTaskError, PlanningContextNotFoundError, PlanningTaskNotCompletedError } from '#core/errors.js';
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { PhaseResolver } from '#workflow/phase-resolver.js';
-import { mergeVariableDeclarations, VariableResolver } from '#template/variable-resolver.js';
-import { assertRequiredVariables } from '#core/required-variables.js';
-import { TaskIdResolver } from '#core/task-id-resolver.js';
+import { VariableResolver } from '#template/variable-resolver.js';
 import { slugify } from '#utils/slug.js';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { readTextFile, writeTextFile } from '#utils/fs.js';
@@ -68,8 +67,17 @@ export async function runCreate(
       stdin: options.stdin,
       edit: options.edit,
     });
-    const links = await resolveCreateLinks(workspaceRoot, taskId, options);
-    await createNormalTask(workspaceRoot, workflow, title, source, links, parseTaskVariables(options.var));
+    const created = await createNormalTaskShared(workspaceRoot, {
+      title,
+      workflow,
+      variables: parseTaskVariables(options.var),
+      sourceProblemText: source?.content,
+      sourceProblemMethod: source?.method,
+      parentTaskId: options.parent,
+      afterTaskId: options.after,
+      linkCreatedBy: 'cli',
+    });
+    printNormalTaskCreated(created.task, title, created.sourceProblemFile, created.variables, created.links);
     return;
   }
 
@@ -290,7 +298,15 @@ export async function runInteractiveCreate(workspaceRoot: string): Promise<void>
     };
   }
 
-  await createNormalTask(workspaceRoot, workflow, titleInput, sourceResult, undefined, variables);
+  const created = await createNormalTaskShared(workspaceRoot, {
+    title: titleInput,
+    workflow,
+    variables,
+    sourceProblemText: sourceResult?.content,
+    sourceProblemMethod: sourceResult?.method,
+    linkCreatedBy: 'cli',
+  });
+  printNormalTaskCreated(created.task, titleInput, created.sourceProblemFile, created.variables, created.links);
 }
 
 async function collectInteractiveRequiredWorkflowVariables(
@@ -370,44 +386,13 @@ async function askRequiredVariable(
   }
 }
 
-async function createNormalTask(
-  workspaceRoot: string,
-  workflow: string,
+function printNormalTaskCreated(
+  task: TaskRecord,
   title: string,
-  source: SourceResult | undefined,
-  links?: TaskLink[],
-  variables: Record<string, string> = {}
-): Promise<void> {
-  const taskId = slugify(title);
-  const store = new YamlTaskStore(workspaceRoot);
-  const taskVariables = source
-    ? { ...variables, SOURCE_PROBLEM_FILE: source.relativePath }
-    : variables;
-  const contextRefs: TaskContextRef[] | undefined = source
-    ? [{ path: source.relativePath, role: 'source-problem', source: source.method }]
-    : undefined;
-
-  await assertInitialPhaseRequiredVariables(workspaceRoot, {
-    id: taskId,
-    title,
-    workflow,
-    variables: taskVariables,
-    contextRefs,
-    links,
-  });
-
-  const task = await store.createTask({
-    id: taskId,
-    title,
-    workflow,
-    variables: taskVariables,
-    contextRefs,
-    links,
-  });
-  if (source) {
-    await writeTextFile(path.join(workspaceRoot, source.relativePath), source.content);
-  }
-  await writeTextFile(getHeadPath(workspaceRoot), task.id + '\n');
+  sourceProblemFile: string | undefined,
+  variables: Record<string, string>,
+  links?: TaskLink[]
+): void {
   if (links && links.length > 0) {
     console.log('Created task:');
     console.log(`  ID: ${task.id}`);
@@ -415,8 +400,8 @@ async function createNormalTask(
   } else {
     console.log(`Created task "${task.id}" (${title})`);
   }
-  if (source) {
-    console.log(`Source problem stored: ${source.relativePath}`);
+  if (sourceProblemFile) {
+    console.log(`Source problem stored: ${sourceProblemFile}`);
   }
   const variableCount = Object.keys(variables).length;
   if (variableCount > 0) {
@@ -429,26 +414,6 @@ async function createNormalTask(
     }
   }
   console.log(`HEAD set to: ${task.id}`);
-}
-
-async function assertInitialPhaseRequiredVariables(
-  workspaceRoot: string,
-  input: {
-    id: string;
-    title: string;
-    workflow: string;
-    variables: Record<string, string>;
-    contextRefs?: TaskContextRef[];
-    links?: TaskLink[];
-  }
-): Promise<void> {
-  const workflow = await new WorkflowLoader(workspaceRoot).resolve(input.workflow);
-  const task = createTaskPreview(input);
-  const { phaseId, definition } = new PhaseResolver().resolveCurrentPhase(task, workflow.definition);
-  const variables = new VariableResolver().resolve(task, phaseId, workflow.definition, definition);
-  const declarations = mergeVariableDeclarations(workflow.definition.variables, definition.variables);
-
-  assertRequiredVariables(workflow.id, phaseId, definition, declarations, variables);
 }
 
 function createTaskPreview(input: {
@@ -505,44 +470,6 @@ function parseTaskVariables(entries: string[] | undefined): Record<string, strin
     variables[key] = value;
   }
   return variables;
-}
-
-async function resolveCreateLinks(
-  workspaceRoot: string,
-  newTaskId: string,
-  options: CreateOptions
-): Promise<TaskLink[] | undefined> {
-  const requested = [
-    options.parent ? { type: 'parent' as const, input: options.parent } : undefined,
-    options.after ? { type: 'after' as const, input: options.after } : undefined,
-  ].filter((value): value is { type: 'parent' | 'after'; input: string } => value !== undefined);
-
-  if (requested.length === 0) {
-    return undefined;
-  }
-
-  const store = new YamlTaskStore(workspaceRoot);
-  const resolver = new TaskIdResolver(store);
-  const createdAt = new Date().toISOString();
-  const links: TaskLink[] = [];
-
-  for (const request of requested) {
-    const resolved = await resolver.resolve(request.input);
-    if (resolved.taskId === newTaskId) {
-      throw new SelfTaskLinkError(newTaskId);
-    }
-    if (resolved.matchedBy === 'prefix') {
-      console.log(`Resolved ${request.input} -> ${resolved.taskId}`);
-    }
-    links.push({
-      type: request.type,
-      targetTaskId: resolved.taskId,
-      createdAt,
-      createdBy: 'cli',
-    });
-  }
-
-  return links;
 }
 
 async function resolveSourceProblem(

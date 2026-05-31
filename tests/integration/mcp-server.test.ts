@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { execa } from 'execa';
 import { createTempWorkspace } from '../helpers/createTempWorkspace.js';
 import type { TempWorkspace } from '../helpers/createTempWorkspace.js';
@@ -634,6 +634,178 @@ describe('buildMcpServer', () => {
     }
   });
 
+  it('creates a mono-spec task with source problem text through MCP', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const createHandler = getRegisteredToolHandler('playspec_create_task');
+    const listHandler = getRegisteredToolHandler('playspec_list_tasks');
+    const getHandler = getRegisteredToolHandler('playspec_get_task');
+
+    const created = await createHandler({
+      title: 'MCP Create Mono Spec',
+      workflow: 'mono-spec',
+      variables: { FEATURE_SLUG: 'mcp_create_mono_spec' },
+      sourceProblemText: 'Create this task through MCP only.',
+    });
+    const body = parseToolJson(created);
+    const taskId = String(body['taskId']);
+    const sourceProblemFile = String(body['sourceProblemFile']);
+    const sourceContent = await readFile(path.join(workspace.dir, sourceProblemFile), 'utf8');
+    const listed = parseToolJson(await listHandler({}));
+    const fetched = parseToolJson(await getHandler({ taskId }));
+
+    expect(created.isError).toBeUndefined();
+    expect(taskId).toBe('mcp_create_mono_spec');
+    expect(body['workflow']).toBe('mono-spec');
+    expect(body['contextRefs']).toEqual([
+      { path: sourceProblemFile, role: 'source-problem', source: 'mcp' },
+    ]);
+    expect((body['variables'] as Record<string, string>)['SOURCE_PROBLEM_FILE']).toBe(sourceProblemFile);
+    expect(sourceContent).toBe('Create this task through MCP only.\n');
+    expect(listed['active']).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: taskId, workflow: 'mono-spec' }),
+    ]));
+    expect(fetched).toMatchObject({
+      id: taskId,
+      title: 'MCP Create Mono Spec',
+      workflow: 'mono-spec',
+    });
+  });
+
+  it('creates a total-plan task with required variables through MCP', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const createHandler = getRegisteredToolHandler('playspec_create_task');
+
+    const created = await createHandler({
+      title: 'MCP Create Total Plan',
+      workflow: 'total-plan',
+      variables: { FEATURE_SLUG: 'mcp_create_total_plan' },
+      sourceProblemText: 'Plan this larger feature from MCP.',
+    });
+    const body = parseToolJson(created);
+
+    expect(created.isError).toBeUndefined();
+    expect(body).toMatchObject({
+      taskId: 'mcp_create_total_plan',
+      workflow: 'total-plan',
+      status: 'active',
+      currentPhase: null,
+      taskRoot: path.join('.playspec', 'tasks', 'active', 'mcp_create_total_plan'),
+      projectDocRoot: path.join('docs', 'features', 'mcp_create_total_plan'),
+    });
+    expect((body['variables'] as Record<string, string>)['SOURCE_PROBLEM_FILE']).toBe(
+      path.join('.playspec', 'tasks', 'active', 'mcp_create_total_plan', 'sources', 'source_problem.md')
+    );
+  });
+
+  it('renders the first prompt immediately after MCP task creation', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const createHandler = getRegisteredToolHandler('playspec_create_task');
+    const renderHandler = getRegisteredToolHandler('playspec_render_next_prompt');
+
+    const created = await createHandler({
+      title: 'MCP Create Render Prompt',
+      workflow: 'mono-spec',
+      variables: { FEATURE_SLUG: 'mcp_create_render_prompt' },
+      sourceProblemText: 'Render this newly created task.',
+    });
+    const taskId = String(parseToolJson(created)['taskId']);
+    const rendered = await renderHandler({ taskId });
+    const body = parseToolJson(rendered);
+
+    expect(created.isError).toBeUndefined();
+    expect(rendered.isError).toBeUndefined();
+    expect(body['taskId']).toBe(taskId);
+    expect(String(body['prompt'])).toContain('MCP Create Render Prompt');
+    expect(String(body['prompt'])).toContain('mcp_create_render_prompt');
+  });
+
+  it('returns a clear error and creates no task when MCP task creation is missing required variables', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-required', 'workflow.yaml'),
+      `id: mcp-required
+mode: linear
+variables:
+  REQUIRED_INPUT:
+    required: true
+phaseOrder:
+  - start
+phases:
+  start:
+    title: Start
+    template: start.md
+    requiredVariables:
+      - REQUIRED_INPUT
+`
+    );
+    await writeTextFile(
+      path.join(workspace.dir, '.playspec', 'workflows', 'mcp-required', 'templates', 'start.md'),
+      '# Start\n'
+    );
+    const createHandler = getRegisteredToolHandler('playspec_create_task');
+
+    const result = await createHandler({
+      title: 'MCP Missing Source',
+      workflow: 'mcp-required',
+      taskId: 'mcp_missing_required',
+    });
+    const activeEntries = await readdir(path.join(workspace.dir, '.playspec', 'tasks', 'active'));
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Missing required variables');
+    expect(result.content[0].text).toContain('workflow "mcp-required" phase "start"');
+    expect(result.content[0].text).toContain('REQUIRED_INPUT');
+    expect(activeEntries).not.toContain('mcp_missing_required');
+  });
+
+  it('creates MCP tasks and sessions under an explicit project workspace', async () => {
+    const serverWorkspace = await createTempWorkspace();
+    try {
+      const manager = new PresetManager();
+      await manager.initWorkspace(workspace.dir, 'default');
+      const createHandler = getRegisteredToolHandler('playspec_create_task', serverWorkspace.dir);
+
+      const created = await createHandler({
+        workspaceRoot: workspace.dir,
+        title: 'MCP Explicit Workspace Create',
+        workflow: 'mono-spec',
+        variables: { FEATURE_SLUG: 'mcp_explicit_workspace_create' },
+        sourceProblemText: 'Create in the explicit project workspace.',
+        bindSessionId: 'mcp.explicit-create',
+        adapter: 'codex',
+      });
+      const body = parseToolJson(created);
+      const taskId = String(body['taskId']);
+      const projectTask = await new YamlTaskStore(workspace.dir).getTask(taskId);
+      const serverRootSession = await new McpSessionStore(serverWorkspace.dir).loadSession('mcp.explicit-create');
+      const projectRootSession = await new McpSessionStore(workspace.dir).loadSession('mcp.explicit-create');
+      const projectHead = await readFile(getHeadPath(workspace.dir), 'utf8');
+
+      expect(created.isError).toBeUndefined();
+      expect(taskId).toBe('mcp_explicit_workspace_create');
+      expect(projectTask.id).toBe(taskId);
+      await expect(new YamlTaskStore(serverWorkspace.dir).getTask(taskId)).rejects.toThrow('Task not found');
+      expect(serverRootSession).toBeNull();
+      expect(projectRootSession?.currentTaskId).toBe(taskId);
+      expect(projectHead.trim()).toBe(taskId);
+      expect(body['boundSession']).toMatchObject({
+        sessionId: 'mcp.explicit-create',
+        currentTaskId: taskId,
+        adapter: 'codex',
+      });
+      expect(body['diagnostics']).toMatchObject({
+        serverWorkspaceRoot: serverWorkspace.dir,
+        workspaceRoot: workspace.dir,
+      });
+    } finally {
+      await serverWorkspace.cleanup();
+    }
+  });
+
   it('runs task phase tools against an explicit workspace when the server workspace differs', async () => {
     const serverWorkspace = await createTempWorkspace();
     try {
@@ -742,6 +914,7 @@ describe('buildMcpServer', () => {
       buildMcpServer(workspace.dir);
       const toolNames = toolSpy.mock.calls.map((call) => String(call[0]));
       expect(toolNames).toEqual(expect.arrayContaining([
+        'playspec_create_task',
         'playspec_add_context',
         'playspec_set_current_phase',
         'playspec_create_snapshot',
