@@ -5,6 +5,51 @@ import type { GitNameStatusEntry, GitWorkspaceState } from '#core/git-state.js';
 import type { TaskRecord } from '#core/types.js';
 
 describe('RollbackManager', () => {
+  it('marks rollback ineligible when the safe-point Git head cannot be compared', async () => {
+    const gitState = {
+      getWorkspaceState: async (): Promise<GitWorkspaceState> => ({
+        head: 'new-head',
+        branchStatus: '## main',
+        entries: [],
+      }),
+      listCommitsAfter: async (): Promise<string[]> => {
+        throw new Error('fatal: bad revision safe-head..HEAD');
+      },
+      listNameStatusSince: async (): Promise<GitNameStatusEntry[]> => [],
+      run: async (): Promise<string> => '',
+    };
+    const manager = new RollbackManager('/tmp/playspec-test', {} as never, gitState as never);
+
+    const plan = await manager.plan(makeTask());
+
+    expect(plan.canExecuteGitRollback).toBe(false);
+    expect(plan.confirmCommand).toBeNull();
+    expect(plan.safetyReasons).toContain('Rollback safe-point Git head cannot be resolved or compared.');
+  });
+
+  it('blocks confirmed rollback without git restore when the safe-point Git head cannot be compared', async () => {
+    const restoreCalls: string[][] = [];
+    const gitState = {
+      getWorkspaceState: async (): Promise<GitWorkspaceState> => ({
+        head: 'new-head',
+        branchStatus: '## main',
+        entries: [],
+      }),
+      listCommitsAfter: async (): Promise<string[]> => {
+        throw new Error('fatal: bad revision safe-head..HEAD');
+      },
+      listNameStatusSince: async (): Promise<GitNameStatusEntry[]> => [],
+      run: async (args: string[]): Promise<string> => {
+        restoreCalls.push(args);
+        return '';
+      },
+    };
+    const manager = new RollbackManager('/tmp/playspec-test', {} as never, gitState as never);
+
+    await expect(manager.executeGitRollback(makeTask())).rejects.toThrow('Git rollback is blocked');
+    expect(restoreCalls).toEqual([]);
+  });
+
   it('passes exact quoted-character target paths to git restore when eligible', async () => {
     const restoreCalls: string[][] = [];
     const gitState = {
