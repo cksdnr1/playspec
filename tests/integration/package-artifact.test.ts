@@ -16,6 +16,25 @@ async function expectFileMissing(filePath: string): Promise<void> {
   await expect(access(filePath)).rejects.toThrow();
 }
 
+async function listSourceWorkflowIds(): Promise<string[]> {
+  const workflowsRoot = path.join(REPO_ROOT, 'src/preset/assets/workflows');
+  const entries = await readdir(workflowsRoot, { withFileTypes: true });
+  const workflowIds: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    try {
+      await access(path.join(workflowsRoot, entry.name, 'workflow.yaml'));
+      workflowIds.push(entry.name);
+    } catch {
+      // Non-workflow directories under the asset root are intentionally ignored.
+    }
+  }
+
+  return workflowIds.sort();
+}
+
 async function seedStalePresetAssets(): Promise<string[]> {
   const staleWorkflowFile = path.join(
     REPO_ROOT,
@@ -67,6 +86,8 @@ describe('package artifact', () => {
 
     try {
       const tarball = await packRepository(packWorkspace.dir);
+      const expectedBundledWorkflowIds = await listSourceWorkflowIds();
+
       for (const stalePath of staleRepoAssetPaths) {
         await expectFileMissing(stalePath);
       }
@@ -111,12 +132,22 @@ describe('package artifact', () => {
         'dist/migration/migration-runner.js',
         'dist/evolution/proposal-store.js',
         'dist/viewer/markdown-viewer.js',
-        'dist/preset/assets/workflows/mono-spec/workflow.yaml',
         'dist/preset/assets/workflows/mono-spec/templates/tech_spec_draft.md',
       ];
 
       for (const expectedFile of expectedInstalledFiles) {
         await expectFileExists(path.join(installedPackageRoot, expectedFile));
+      }
+
+      for (const workflowId of expectedBundledWorkflowIds) {
+        await expectFileExists(
+          path.join(
+            installedPackageRoot,
+            'dist/preset/assets/workflows',
+            workflowId,
+            'workflow.yaml'
+          )
+        );
       }
 
       const unexpectedInstalledFiles = [
@@ -142,9 +173,11 @@ describe('package artifact', () => {
 
       expect(initResult.exitCode).toBe(0);
       expect(initResult.stderr).not.toContain('ERR_PACKAGE_IMPORT_NOT_DEFINED');
-      await expectFileExists(
-        path.join(consumerWorkspace.dir, '.playspec/workflows/mono-spec/workflow.yaml')
-      );
+      for (const workflowId of expectedBundledWorkflowIds) {
+        await expectFileExists(
+          path.join(consumerWorkspace.dir, '.playspec/workflows', workflowId, 'workflow.yaml')
+        );
+      }
 
       const mcpResult = await execa('node', [mcpBinPath], {
         cwd: consumerWorkspace.dir,
