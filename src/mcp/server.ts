@@ -142,7 +142,8 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       const diagnostics = await collectMcpWorkspaceDiagnostics(workspaceRoot, effectiveWorkspaceRoot);
       try {
         const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
-        const task = await scopedTaskStore.getTask(args.taskId);
+        const resolved = await new TaskIdResolver(scopedTaskStore).resolve(args.taskId);
+        const task = await scopedTaskStore.getTask(resolved.taskId);
         return ok({ ...task, diagnostics });
       } catch (e) {
         return err(e, diagnostics);
