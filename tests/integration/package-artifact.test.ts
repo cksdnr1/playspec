@@ -129,8 +129,12 @@ describe('package artifact', () => {
       }
 
       const binPath = path.join(consumerWorkspace.dir, 'node_modules', '.bin', 'playspec');
-      const mcpBinPath = path.join(installedPackageRoot, 'dist/mcp/index.js');
+      const mcpBinPath = path.join(consumerWorkspace.dir, 'node_modules', '.bin', 'playspec-mcp');
       const userWorkflowRoot = path.join(consumerWorkspace.dir, 'user-workflows');
+
+      await expectFileExists(binPath);
+      await expectFileExists(mcpBinPath);
+
       const initResult = await execa(binPath, ['init', '--preset', 'default'], {
         cwd: consumerWorkspace.dir,
         env: {
@@ -146,7 +150,7 @@ describe('package artifact', () => {
         path.join(consumerWorkspace.dir, '.playspec/workflows/mono-spec/workflow.yaml')
       );
 
-      const mcpResult = await execa('node', [mcpBinPath], {
+      const mcpResult = await execa(mcpBinPath, [], {
         cwd: consumerWorkspace.dir,
         input: '',
         reject: false,
