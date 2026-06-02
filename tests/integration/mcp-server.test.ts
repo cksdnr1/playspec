@@ -624,6 +624,42 @@ describe('buildMcpServer', () => {
     });
   });
 
+  it('resolves a unique task ID prefix for playspec_get_task', async () => {
+    const { taskId } = await initWorkspaceWithTask('MCP Prefix Lookup Target');
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId: 'mcp_prefix_lookup' });
+    const body = parseToolJson(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(body['id']).toBe(taskId);
+    expect(body['diagnostics']).toMatchObject({
+      serverWorkspaceRoot: workspace.dir,
+      workspaceRoot: workspace.dir,
+    });
+  });
+
+  it('returns TaskIdResolver ambiguity guidance for ambiguous playspec_get_task prefixes', async () => {
+    const { store } = await initWorkspaceWithTask('MCP Ambiguous Lookup Alpha');
+    await store.createTask({
+      id: 'mcp_ambiguous_lookup_beta',
+      title: 'MCP Ambiguous Lookup Beta',
+      workflow: 'multi-spec',
+    });
+    const handler = getRegisteredToolHandler('playspec_get_task');
+
+    const result = await handler({ taskId: 'mcp_ambiguous_lookup' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(
+      'Ambiguous task ID prefix "mcp_ambiguous_lookup" matches:'
+    );
+    expect(result.content[0].text).toContain('mcp_ambiguous_lookup_alpha');
+    expect(result.content[0].text).toContain('mcp_ambiguous_lookup_beta');
+    expect(result.content[0].text).toContain('Hint: Use a longer task ID prefix.');
+    expect(result.content[0].text).toContain(`- effective workspace root: ${workspace.dir}`);
+  });
+
   it('retrieves an explicit workspace task when the server workspace differs', async () => {
     const serverWorkspace = await createTempWorkspace();
     try {
@@ -1237,7 +1273,7 @@ exit 1
     const result = await handler({ taskId: 'missing_task' });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Task not found: missing_task');
+    expect(result.content[0].text).toContain('No task found matching: missing_task');
     expect(result.content[0].text).toContain(`effective workspace root: ${workspace.dir}`);
     expect(result.content[0].text).toContain(
       `task search paths.active: ${path.join(workspace.dir, '.playspec', 'tasks', 'active')}`
