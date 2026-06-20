@@ -406,6 +406,16 @@ export class UnexpectedResultError extends PlaySpecError {
   }
 }
 
+export class PhaseAdvancedError extends PlaySpecError {
+  constructor(expectedPhaseId: string, actualPhaseId: string | null) {
+    super(
+      `Workflow phase has advanced: expected "${expectedPhaseId}" but the task is now on "${actualPhaseId ?? '(completed)'}".`,
+      'The task state changed since you last read it. Re-read it with playspec_get_status and retry against the current phase.'
+    );
+    this.name = 'PhaseAdvancedError';
+  }
+}
+
 export class InvalidCurrentPhaseError extends PlaySpecError {
   constructor(phaseId: string, workflowId: string, allowedValues: string[]) {
     super(

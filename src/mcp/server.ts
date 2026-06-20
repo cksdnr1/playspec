@@ -151,6 +151,21 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
   );
 
   server.tool(
+    'playspec_get_status',
+    'Get a lightweight status summary for a task (current phase, status, completion) without the full record. Cheap "where am I" check; prefer this over playspec_get_task / playspec_list_tasks when you only need the current phase.',
+    taskContext,
+    async (args) => {
+      try {
+        const { core, taskId } = await resolveScopedTask(args);
+        const status = await core.getTaskStatus(taskId);
+        return ok(status);
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.tool(
     'playspec_create_task',
     'Create a PlaySpec task for an installed workflow',
     {
@@ -517,14 +532,20 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
 
   server.tool(
     'playspec_complete_phase',
-    'Complete the current workflow phase. Requires taskId or sessionId.',
-    { ...taskContextWithEvolution, withReview: z.boolean().optional(), result: z.string().optional() },
+    'Complete the current workflow phase. Requires taskId or sessionId. Pass expectedPhaseId to assert which phase you intend to complete; if the workflow has advanced, completion is rejected instead of completing the wrong phase.',
+    {
+      ...taskContextWithEvolution,
+      withReview: z.boolean().optional(),
+      result: z.string().optional(),
+      expectedPhaseId: z.string().optional(),
+    },
     async (args) => {
       try {
         const { core, taskId } = await resolveScopedTask(args);
         const completionResult = await core.completePhase(taskId, {
           withReview: args.withReview,
           result: args.result,
+          expectedPhaseId: args.expectedPhaseId,
           withEvolutionContext: args.withEvolutionContext,
           contextMode: args.contextMode,
         });

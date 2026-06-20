@@ -19,6 +19,7 @@ import {
   InvalidRoutingTargetError,
   LoopGuardError,
   UnexpectedResultError,
+  PhaseAdvancedError,
   InvalidCurrentPhaseError,
   AbsoluteContextPathError,
   ContextPathEscapesWorkspaceError,
@@ -62,6 +63,7 @@ import type {
   PromptRenderOptions,
   PromptContextMode,
   CompletePhaseOptions,
+  TaskStatusSummary,
   HarnessAttemptResult,
   HarnessRecord,
   TaskLinkType,
@@ -274,6 +276,15 @@ export class PlaySpecCore {
 
     const workflow = await this.workflowLoader.resolve(task.workflow);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
+
+    // Guard against the workflow advancing underneath the caller. If the caller
+    // declares the phase it intended to complete and it no longer matches the
+    // resolved current phase, reject instead of completing a phase the caller
+    // never saw. Runs before any state mutation.
+    if (options.expectedPhaseId !== undefined && options.expectedPhaseId !== phaseId) {
+      throw new PhaseAdvancedError(options.expectedPhaseId, phaseId);
+    }
+
     const taskRoot = this.getAbsoluteTaskRoot(task);
     const validationTemplate = this.resolveValidationTemplate(workflow, definition);
 
@@ -404,6 +415,39 @@ export class PlaySpecCore {
   async readCompletionMarkdown(taskId: string, completionId: string): Promise<string> {
     await this.taskStore.getTask(taskId);
     return (await this.completionLedgerStore.readMarkdown(taskId, completionId)).markdown;
+  }
+
+  /**
+   * Lightweight "where am I" projection of a task. Returns only the few fields an
+   * agent needs to orient (current phase, status, completion), without the full
+   * task record's phaseHistory/contextRefs or workspace diagnostics. Use this
+   * instead of getTask/listTasks for cheap status polling.
+   */
+  async getTaskStatus(taskId: string): Promise<TaskStatusSummary> {
+    const task = await this.taskStore.getTask(taskId);
+    const isWorkflowComplete = task.status === 'completed' && task.currentPhase === null;
+
+    // Report the resolved effective phase. A freshly created active task stores a
+    // null currentPhase but effectively sits on the first phase, so resolve it the
+    // same way the rest of the engine does.
+    let currentPhase: string | null = null;
+    if (!isWorkflowComplete && task.status === 'active') {
+      const workflow = await this.workflowLoader.resolve(task.workflow);
+      currentPhase = this.phaseResolver.resolveCurrentPhase(task, workflow.definition).phaseId;
+    } else {
+      currentPhase = task.currentPhase;
+    }
+
+    return {
+      id: task.id,
+      title: task.title,
+      workflow: task.workflow,
+      status: task.status,
+      currentPhase,
+      isWorkflowComplete,
+      lastCompletedAt: task.stateSync?.lastCompletedAt ?? null,
+      lastKnownGitHead: task.stateSync?.lastKnownGitHead ?? null,
+    };
   }
 
   private resolveRoutedCompletion(

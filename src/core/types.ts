@@ -410,6 +410,27 @@ export interface CompletePhaseOptions {
   result?: string;
   withEvolutionContext?: boolean;
   contextMode?: PromptContextMode;
+  /**
+   * Optional guard: the phase the caller believes the task is on. If provided and
+   * it does not match the task's current phase, completion is rejected with
+   * PhaseAdvancedError instead of completing a phase the caller did not intend.
+   */
+  expectedPhaseId?: string;
+}
+
+/**
+ * Lightweight task status projection for cheap "where am I" checks, without the
+ * full task record (phaseHistory, contextRefs, diagnostics).
+ */
+export interface TaskStatusSummary {
+  id: TaskId;
+  title: string;
+  workflow: WorkflowId;
+  status: TaskStatus;
+  currentPhase: PhaseId | null;
+  isWorkflowComplete: boolean;
+  lastCompletedAt: string | null;
+  lastKnownGitHead: string | null;
 }
 
 export type CompletionFeedbackPolicy = PhaseFeedbackFailurePolicy;

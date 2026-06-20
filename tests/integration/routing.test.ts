@@ -16,6 +16,7 @@ import {
   InvalidRoutingTargetError,
   LoopGuardError,
   UnexpectedResultError,
+  PhaseAdvancedError,
   MissingRequiredVariablesError,
 } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
@@ -710,5 +711,74 @@ phases:
       expect(task.currentPhase).toBeNull();
       expect(task.phaseHistory).toHaveLength(0);
     });
+  });
+});
+
+describe('completePhase expectedPhaseId guard', () => {
+  it('completes when expectedPhaseId matches the current phase', async () => {
+    const { store, taskId } = await initRoutedWorkspace();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved', expectedPhaseId: 'validation' });
+    expect(result.nextPhase).toBe('implementation');
+
+    const task = await store.getTask(taskId);
+    expect(task.currentPhase).toBe('implementation');
+  });
+
+  it('rejects with PhaseAdvancedError when expectedPhaseId does not match, before any mutation', async () => {
+    const { store, taskId } = await initRoutedWorkspace();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await expect(
+      core.completePhase(taskId, { result: 'approved', expectedPhaseId: 'spec_patch' })
+    ).rejects.toThrow(PhaseAdvancedError);
+
+    // No mutation: the task is untouched (still on the unresolved initial phase).
+    const task = await store.getTask(taskId);
+    expect(task.phaseHistory).toHaveLength(0);
+    // The resolved effective phase is still the first phase.
+    const status = await core.getTaskStatus(taskId);
+    expect(status.currentPhase).toBe('validation');
+  });
+
+  it('completes normally when expectedPhaseId is omitted', async () => {
+    const { store, taskId } = await initRoutedWorkspace();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const result = await core.completePhase(taskId, { result: 'approved' });
+    expect(result.nextPhase).toBe('implementation');
+  });
+});
+
+describe('getTaskStatus lightweight projection', () => {
+  it('returns minimal active-task status', async () => {
+    const { store, taskId } = await initRoutedWorkspace();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    const status = await core.getTaskStatus(taskId);
+    expect(status).toMatchObject({
+      id: taskId,
+      title: 'Routed Task',
+      workflow: 'routed-spec',
+      status: 'active',
+      currentPhase: 'validation',
+      isWorkflowComplete: false,
+      lastCompletedAt: null,
+    });
+    // Must not leak the heavy fields the full record carries.
+    expect(status).not.toHaveProperty('phaseHistory');
+    expect(status).not.toHaveProperty('contextRefs');
+  });
+
+  it('reflects phase advance and records lastCompletedAt after completion', async () => {
+    const { store, taskId } = await initRoutedWorkspace();
+    const core = new PlaySpecCore(workspace.dir, store);
+
+    await core.completePhase(taskId, { result: 'approved' });
+
+    const status = await core.getTaskStatus(taskId);
+    expect(status.currentPhase).toBe('implementation');
+    expect(status.lastCompletedAt).not.toBeNull();
   });
 });
