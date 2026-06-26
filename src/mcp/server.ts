@@ -6,7 +6,7 @@ import { PlaySpecCore } from '#core/playspec-core.js';
 import { PlaySpecError } from '#core/errors.js';
 import { createNormalTask } from '#core/task-creation.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
-import type { HarnessAttemptResult, TaskLinkType } from '#core/types.js';
+import type { HarnessAttemptResult, TaskLinkType, TaskRecord, TaskStatus, TaskSummary } from '#core/types.js';
 import { WorkflowEditor } from '#workflow/workflow-editor.js';
 import { WorkflowInstaller } from '#workflow/workflow-installer.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
@@ -79,6 +79,95 @@ const riskLevel = z.enum(['low', 'medium', 'high']);
 const harnessAttemptResult = z.enum(['success', 'failure']);
 const humanEditStatus = z.enum(['ignored', 'superseded']);
 const taskLinkType = z.enum(['parent', 'after', 'related']);
+const listTaskStatus = z.enum(['active', 'completed', 'archived', 'all']);
+const LIST_TASKS_DEFAULT_LIMIT = 50;
+const LIST_TASKS_MAX_LIMIT = 500;
+
+type ListTasksStatus = z.infer<typeof listTaskStatus>;
+type ListTasksItem = TaskSummary | TaskRecord;
+
+interface ListTasksArgs {
+  status?: ListTasksStatus;
+  phase?: string;
+  slug?: string;
+  idContains?: string;
+  summary?: boolean;
+  detail?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+interface StatusSummaries {
+  active: TaskSummary[];
+  completed: TaskSummary[];
+  archived: TaskSummary[];
+}
+
+interface GroupedListTasks<T extends ListTasksItem> {
+  active: T[];
+  completed: T[];
+  archived: T[];
+}
+
+function requestedStatuses(status?: ListTasksStatus): TaskStatus[] {
+  if (status === 'archived') return ['archived'];
+  if (status === 'completed') return ['completed'];
+  if (status === 'active') return ['active'];
+  if (status === 'all') return ['active', 'completed', 'archived'];
+  return ['active', 'completed'];
+}
+
+function normalizeNeedle(value: string | undefined): string | undefined {
+  const trimmed = value?.trim().toLowerCase();
+  return trimmed ? trimmed : undefined;
+}
+
+function matchesListTasksFilters(task: TaskSummary, args: ListTasksArgs): boolean {
+  if (args.phase !== undefined && task.currentPhase !== args.phase) {
+    return false;
+  }
+
+  const slug = normalizeNeedle(args.slug);
+  if (slug && !task.id.toLowerCase().includes(slug) && !task.title.toLowerCase().includes(slug)) {
+    return false;
+  }
+
+  const idContains = normalizeNeedle(args.idContains);
+  if (idContains && !task.id.toLowerCase().includes(idContains)) {
+    return false;
+  }
+
+  return true;
+}
+
+function flattenSummariesByStatus(summaries: StatusSummaries, statuses: TaskStatus[]): TaskSummary[] {
+  return statuses.flatMap((status) => summaries[status]);
+}
+
+function paginateTasks<T>(tasks: T[], limit: number, offset: number): T[] {
+  return tasks.slice(offset, offset + limit);
+}
+
+function groupTasksByStatus<T extends ListTasksItem>(tasks: T[]): GroupedListTasks<T> {
+  return tasks.reduce<GroupedListTasks<T>>(
+    (grouped, task) => {
+      grouped[task.status].push(task);
+      return grouped;
+    },
+    { active: [], completed: [], archived: [] }
+  );
+}
+
+async function expandListTaskDetails(
+  taskStore: YamlTaskStore,
+  tasks: TaskSummary[]
+): Promise<TaskRecord[]> {
+  return Promise.all(tasks.map((task) => (
+    task.status === 'archived'
+      ? taskStore.getArchivedTask(task.id)
+      : taskStore.getTask(task.id)
+  )));
+}
 
 export function buildMcpServer(workspaceRoot: string): McpServer {
   const server = new McpServer({ name: 'playspec', version: '0.1.0' });
@@ -115,18 +204,55 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
 
   server.tool(
     'playspec_list_tasks',
-    'List active and completed PlaySpec tasks',
-    { workspaceRoot: z.string().optional() },
+    'List PlaySpec tasks with server-side filtering, bounded pagination, and compact summaries by default',
+    {
+      workspaceRoot: z.string().optional(),
+      status: listTaskStatus.optional(),
+      phase: z.string().optional(),
+      slug: z.string().optional(),
+      idContains: z.string().optional(),
+      summary: z.boolean().optional(),
+      detail: z.boolean().optional(),
+      limit: z.number().int().min(1).max(LIST_TASKS_MAX_LIMIT).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
     async (args) => {
       try {
         const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
         const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
-        const [active, completed] = await Promise.all([
-          scopedTaskStore.listActiveTasks(),
-          scopedTaskStore.listCompletedTasks(),
+        const statuses = requestedStatuses(args.status);
+        const [active, completed, archived] = await Promise.all([
+          statuses.includes('active') ? scopedTaskStore.listActiveTasks() : Promise.resolve([]),
+          statuses.includes('completed') ? scopedTaskStore.listCompletedTasks() : Promise.resolve([]),
+          statuses.includes('archived') ? scopedTaskStore.listArchivedTasks() : Promise.resolve([]),
         ]);
+        const summaries = { active, completed, archived };
+        const filtered = flattenSummariesByStatus(summaries, statuses)
+          .filter((task) => matchesListTasksFilters(task, args));
+        const limit = args.limit ?? LIST_TASKS_DEFAULT_LIMIT;
+        const offset = args.offset ?? 0;
+        const paged = paginateTasks(filtered, limit, offset);
+        const detail = args.detail === true || args.summary === false;
+        const grouped = groupTasksByStatus(
+          detail ? await expandListTaskDetails(scopedTaskStore, paged) : paged
+        );
         const diagnostics = await collectMcpWorkspaceDiagnostics(workspaceRoot, effectiveWorkspaceRoot);
-        return ok({ active, completed, diagnostics });
+        const response: Record<string, unknown> = {
+          active: grouped.active,
+          completed: grouped.completed,
+          pagination: {
+            limit,
+            offset,
+            total: filtered.length,
+            returned: paged.length,
+            hasMore: offset + paged.length < filtered.length,
+          },
+          diagnostics,
+        };
+        if (statuses.includes('archived')) {
+          response['archived'] = grouped.archived;
+        }
+        return ok(response);
       } catch (e) {
         return err(e);
       }
