@@ -25,6 +25,7 @@ Source of truth:
 
 Scope rules:
 - Validate the total spec against actual code paths and user-visible behavior.
+- Validate structured-artifact consistency: enum/status/classification/schema/field names, value distributions, subset filters, generated catalog fields, fingerprint/hash inputs, deterministic artifact boundaries, baseline anchors, and artifact paths must match authoritative structured artifacts or declare an explicit migration/mapping.
 - Do not create or patch the phase plan in this step.
 - Do not treat helper, interface, callback, method, command option, or data-structure existence as end-to-end implementation proof.
 - Check active entry point -> state/data update -> propagation/callback/event -> reset/clear -> final user-visible behavior.
@@ -32,7 +33,8 @@ Scope rules:
 Output requirements:
 - Report findings first, ordered by severity.
 - Include a readiness score from 0 to 100.
-- Include a concise risk ledger covering missing entry points, stale assumptions, unverified behavior, output filename compatibility, and future-phase leakage.
+- Include a concise risk ledger covering missing entry points, stale assumptions, unverified behavior, structured-artifact vocabulary/schema/catalog/hash mismatches, output filename compatibility, and future-phase leakage.
+- Classify structured-artifact vocabulary/schema/catalog/hash mismatches as at least Medium. Classify them as Blockers when they would force a later phase to choose a contract, storage/API shape, migration behavior, or safety boundary.
 - State the exact result to pass to completion:
   - Use `playspec complete --result approved` only when the readiness score is `>= 95` and no blockers remain.
   - Use `playspec complete --result needs_revision` when the readiness score is below `95` or unresolved blockers remain.

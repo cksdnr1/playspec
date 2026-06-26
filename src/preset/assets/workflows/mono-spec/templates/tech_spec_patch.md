@@ -25,10 +25,15 @@ Scope rules:
 - Do not add future phases or broad architecture.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
 - Verify active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior before marking a path complete.
+- For every risk about schemas, descriptors, catalogs, fingerprints, migrations, policy tiers, status values, or generated artifacts, re-check the exact structured artifact field paths and literal values before patching.
+- After patching, perform a narrow consistency sweep for stale or parallel vocabulary names, field-name drift, fingerprint/hash input drift, deterministic catalog inputs, acceptance criteria coverage, rollback/flag posture, and test targets.
+- Do not preserve old invented enum/status/classification names unless the spec explicitly defines a compatibility mapping and tests for it.
+- Keep deterministic contract/hash/catalog inputs separate from runtime observations, environment-specific values, timestamps, and implementation provenance.
 
 Output requirements:
 - Update `{{SPEC_FILE}}`.
 - Record which validation issues were resolved, downgraded, or remain blockers, and reference the latest Step 2 score.
+- Record the structured-artifact checks used for resolved vocabulary/schema/catalog/fingerprint risks, including any grep or value-distribution check that proves old names are gone.
 - Keep markdown readable for the implementation planner.
 
 Approval/gate handling:

@@ -25,6 +25,8 @@ Scope rules:
 - Do not broaden scope beyond the approved spec.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
 - Preserve active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior checks in the plan.
+- Re-check any patched enum/status/classification/schema/field names against the approved spec and authoritative structured artifacts.
+- After patching, scan for stale invented vocabulary, field-name drift, fingerprint/hash input drift, deterministic artifact input drift, and test coverage gaps introduced by the patch.
 
 Output requirements:
 - Update `{{PLAN_FILE}}`.

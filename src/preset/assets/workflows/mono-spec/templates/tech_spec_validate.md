@@ -48,6 +48,7 @@ Validate:
 - mutation boundaries and allow-lists
 - CLI/MCP/API entry point contracts
 - contradictions
+- structured-artifact vocabulary/schema mismatches
 - over-engineering
 - premature readiness claims
 - acceptance criteria quality
@@ -76,6 +77,11 @@ Rules:
 - If unclear, mark it as risk; do not assume implementation will solve it safely.
 - Prefer patch-ready fixes, but do not lower severity just because the fix is small.
 - Avoid redesign unless the current spec cannot be safely patched.
+- If a spec proposes enum, vocabulary, status, classification, schema, or field names that conflict with literal values in an authoritative structured artifact, classify it as at least Medium. Classify it as Blocker when the mismatch would affect storage, API/runtime behavior, security, policy, migration correctness, user-visible behavior, or force implementation-time architecture decisions.
+- If a structured artifact is material to the spec but the spec omits the artifact path, field/key path, target subset/filter, or value distribution/counts needed to reproduce the claim, classify it as at least Medium when the omission could lead to invented metadata or ambiguous implementation.
+- If deterministic hashes, fingerprints, committed catalogs, or baseline comparisons include volatile runtime observations, timestamps, environment-specific values, or implementation provenance without an explicit stable mapping, classify it as at least Medium.
+- If the spec defines parallel vocabularies for the same concept without a clear canonical field and compatibility mapping, classify it as at least Medium.
+- If contract versioning rules conflict with the fingerprint/hash input set, classify it as at least Medium, and Blocker when it would make compatibility or migration behavior unsafe.
 
 Scoring guidance:
 - 95-100: implementation-ready; no blockers; only minor wording or small test additions.

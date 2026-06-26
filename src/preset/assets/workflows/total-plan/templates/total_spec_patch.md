@@ -24,6 +24,10 @@ Scope rules:
 - Preserve reader-friendly structure and do not rewrite stable sections unnecessarily.
 - Do not create `{{PHASE_PLAN_FILE}}` yet.
 - Do not implement code or future phases.
+- For every risk about schemas, descriptors, catalogs, fingerprints, migrations, policy tiers, status values, generated artifacts, or phase boundaries, re-check the exact structured artifact field paths and literal values before patching.
+- After patching, perform a narrow consistency sweep for stale or parallel vocabulary names, field-name drift, fingerprint/hash input drift, deterministic catalog inputs, acceptance criteria coverage, rollback/flag posture, and downstream test gates.
+- Do not preserve old invented enum/status/classification names unless the total spec explicitly defines a compatibility mapping and tests for it.
+- Keep deterministic contract/hash/catalog inputs separate from runtime observations, environment-specific values, timestamps, and implementation provenance.
 
 Output requirements:
 - Update `{{TOTAL_SPEC_FILE}}`.

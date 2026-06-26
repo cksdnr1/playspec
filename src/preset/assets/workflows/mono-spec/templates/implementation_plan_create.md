@@ -24,6 +24,8 @@ Scope rules:
 - Do not introduce framework-like abstractions unless the current codebase already points there.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
 - For every planned behavior, trace active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior.
+- When the plan references structured artifacts or spec-defined vocabularies, reuse literal enum/status/classification/schema/field names from the approved spec and authoritative artifacts. Do not invent or rename them in the plan.
+- If the approved spec conflicts with a current structured artifact or current code, stop and record the inconsistency as a planning risk instead of silently normalizing it.
 
 Output requirements:
 - Write or update `{{PLAN_FILE}}`.
