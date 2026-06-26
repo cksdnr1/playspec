@@ -9,7 +9,7 @@ variables:
     description: Target GitHub repository, for example owner/repo or a local checkout path with GitHub remote.
   ISSUE_SCOPE:
     required: true
-    description: Narrow issue discovery scope, such as reorder-risk improvement or inventory mapping correctness.
+    description: Narrow issue discovery scope, such as authentication cleanup, import validation, or workflow reliability.
   FOCUS_AREA:
     required: true
     description: Specific subsystem, workflow, product area, or code path to inspect.

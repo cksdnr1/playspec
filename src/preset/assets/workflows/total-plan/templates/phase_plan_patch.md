@@ -25,6 +25,8 @@ Scope rules:
 - Preserve phase numbering and dependency clarity unless the validation findings require a correction.
 - Do not alter the approved total spec unless validation exposed a direct contradiction; if that happens, document the issue and stop rather than silently changing both files.
 - Do not implement code or create child tasks.
+- Re-check any patched enum/status/classification/schema/field names against the approved total spec and authoritative structured artifacts.
+- After patching, scan for stale invented vocabulary, field-name drift, fingerprint/hash input drift, deterministic artifact input drift, and test coverage gaps introduced by the patch.
 
 Output requirements:
 - Update `{{PHASE_PLAN_FILE}}`.

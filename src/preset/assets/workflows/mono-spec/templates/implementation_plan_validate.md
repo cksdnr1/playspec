@@ -28,6 +28,7 @@ Scope rules:
 - Check whether any phase mixes architecture decision-making with implementation work.
 - Check whether the plan is over-engineered, underspecified, or missing active-path wiring.
 - Check dependencies, sequencing, reset/clear behavior, user-visible outcomes, state propagation, artifact paths, command/API contracts, and tests.
+- Check that structured-artifact literals used by the plan match the approved spec and authoritative artifacts: enum/status/classification/schema/field names, value mappings, generated catalog fields, fingerprint/hash inputs, baseline anchors, and artifact paths.
 - Check that no phase relies on future work unless it declares that dependency explicitly.
 - Do not treat method, helper, interface, callback, command option, or data-structure existence as end-to-end implementation.
 - Judge planned behavior from active entry point -> validation -> state/data update -> persistence -> propagation/callback/event -> reset/clear -> user-visible behavior -> tests.
@@ -35,6 +36,7 @@ Scope rules:
 - Flag direct file mutation, broad workspace-relative writes, missing allow-lists, missing backups, missing reports, or missing approval gates as blockers when they affect safety.
 - If the plan says "decide during implementation", "for example", "optional", "TBD", or leaves storage/API/mutation boundaries open, classify it as at least Medium, and Blocker if it affects correctness, persistence, safety, or user-visible behavior.
 - Missing tests for changed persistence, mutation, routing, archive, MCP, migration, prompt-rendering, workflow, or lifecycle behavior are at least Medium risk.
+- Structured-artifact vocabulary/schema/catalog/hash mismatches are at least Medium risk. They are Blockers when they would make implementation choose a contract, storage/API shape, migration behavior, or safety boundary during coding.
 - Do not implement code, edit files, create child tasks, or silently patch the plan unless the workflow explicitly allows editing this step.
 
 Severity rules:

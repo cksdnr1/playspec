@@ -29,6 +29,8 @@ Scope rules:
 - Split work into mono-spec-sized implementation phases that can later be run with phase-execution tasks.
 - Each phase must have a clear scope, entry points, data/state updates, propagation/callback/event behavior, reset/clear behavior, user-visible outcome, tests, dependencies, and explicit non-goals.
 - Preserve downstream compatibility with `{{TOTAL_SPEC_FILE}}` and `{{PHASE_PLAN_FILE}}`.
+- When the phase plan references structured artifacts or total-spec vocabularies, reuse literal enum/status/classification/schema/field names from the approved total spec and authoritative artifacts. Do not invent or rename them in the plan.
+- If the approved total spec conflicts with a current structured artifact or current code, stop and record the inconsistency as a planning risk instead of silently normalizing it.
 
 Output requirements:
 - Update `{{PHASE_PLAN_FILE}}`.
