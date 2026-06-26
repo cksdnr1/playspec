@@ -75,6 +75,7 @@ import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 const CONTEXT_SUMMARY_MAX_LENGTH = 240;
+const CONTEXT_BODY_MAX_LINE_LENGTH = 1_000;
 
 export class PlaySpecCore {
   private readonly workflowLoader: WorkflowLoader;
@@ -748,12 +749,14 @@ export class PlaySpecCore {
           return `- \`${ref.path}\` (role: ${ref.role}, source: ${ref.source})${summary ? `: ${summary}` : ''}`;
         })
       );
-      return `${prompt.trimEnd()}\n\n## Compact Context Summary\n\n${summaries.join('\n')}\n`;
+      const compactPrompt = removeRenderedContextVariableBlocks(prompt);
+      return `${compactPrompt.trimEnd()}\n\n## Compact Context Summary\n\n${summaries.join('\n')}\n`;
     }
 
     const sections = await Promise.all(
       refs.map(async (ref) => {
         const content = await readTextFile(path.resolve(this.workspaceRoot, ref.path));
+        const formattedContent = formatContextBodyContent(content);
         return [
           `### ${ref.path}`,
           '',
@@ -761,7 +764,7 @@ export class PlaySpecCore {
           `source: ${ref.source}`,
           '',
           '```',
-          content.trimEnd(),
+          formattedContent,
           '```',
         ].join('\n');
       })
@@ -1461,6 +1464,53 @@ function summarizeContextContent(content: string): string {
     return firstParagraph;
   }
   return `${firstParagraph.slice(0, CONTEXT_SUMMARY_MAX_LENGTH - 3)}...`;
+}
+
+function removeRenderedContextVariableBlocks(prompt: string): string {
+  const lines = prompt.split('\n');
+  const kept: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isContextVariableHeading(line)) {
+      while (index + 1 < lines.length && isContextVariableValueLine(lines[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    kept.push(line);
+  }
+
+  return kept.join('\n');
+}
+
+function isContextVariableHeading(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed === '- CONTEXT_FILES:' || trimmed === '- CONTEXT_REFS_DETAIL:';
+}
+
+function isContextVariableValueLine(line: string): boolean {
+  return /^- (`|\(none\))/.test(line.trim());
+}
+
+function formatContextBodyContent(content: string): string {
+  return content
+    .trimEnd()
+    .split('\n')
+    .flatMap((line) => wrapLongContextLine(line))
+    .join('\n');
+}
+
+function wrapLongContextLine(line: string): string[] {
+  if (line.length <= CONTEXT_BODY_MAX_LINE_LENGTH) {
+    return [line];
+  }
+
+  const chunks: string[] = [];
+  for (let index = 0; index < line.length; index += CONTEXT_BODY_MAX_LINE_LENGTH) {
+    chunks.push(line.slice(index, index + CONTEXT_BODY_MAX_LINE_LENGTH));
+  }
+  return chunks;
 }
 
 function safeFilePart(value: string): string {

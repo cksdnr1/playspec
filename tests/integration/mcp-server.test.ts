@@ -318,6 +318,10 @@ function parseToolJson(result: { content: { text: string }[] }) {
   return JSON.parse(result.content[0].text) as Record<string, unknown>;
 }
 
+function countOccurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
+}
+
 async function listHumanEditFiles(): Promise<string[]> {
   try {
     return await readdir(getEvolutionHumanEditsRoot(workspace.dir));
@@ -2261,6 +2265,55 @@ describe('MCP render matches Core render', () => {
     expect(body['prompt']).toContain('Strict mode embeds this body.');
     const promptArtifacts = await readdir(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts'));
     expect(promptArtifacts.some((file) => file.endsWith('.meta.yaml'))).toBe(false);
+  });
+
+  it('MCP phase prompt compact mode returns a single enriched context list', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'mcp-compact-context.md'),
+      'MCP compact snippet.\n\nAdditional detail.\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'mcp-compact-extra.md'),
+      'MCP extra snippet.\n'
+    );
+    const taskId = slugify('MCP Compact Phase Context');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'MCP Compact Phase Context',
+      workflow: 'mono-spec',
+      contextRefs: [
+        {
+          path: 'docs/mcp-compact-context.md',
+          role: 'planning-context',
+          source: 'mcp-test',
+        },
+        {
+          path: 'docs/mcp-compact-extra.md',
+          role: 'planning-context',
+          source: 'mcp-extra',
+        },
+      ],
+    });
+
+    const handler = getRegisteredToolHandler('playspec_render_phase_prompt');
+    const result = await handler({ taskId, phaseId: 'tech_spec_draft', contextMode: 'compact' });
+    const body = parseToolJson(result);
+    const prompt = String(body['prompt']);
+
+    expect(result.isError).toBeUndefined();
+    expect(prompt).not.toContain('- CONTEXT_FILES:');
+    expect(prompt).not.toContain('- CONTEXT_REFS_DETAIL:');
+    expect(prompt).toContain(
+      '- `docs/mcp-compact-context.md` (role: planning-context, source: mcp-test): MCP compact snippet.'
+    );
+    expect(prompt).toContain(
+      '- `docs/mcp-compact-extra.md` (role: planning-context, source: mcp-extra): MCP extra snippet.'
+    );
+    expect(countOccurrences(prompt, 'docs/mcp-compact-context.md')).toBe(1);
+    expect(countOccurrences(prompt, 'docs/mcp-compact-extra.md')).toBe(1);
   });
 });
 
