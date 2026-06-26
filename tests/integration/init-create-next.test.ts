@@ -40,6 +40,10 @@ function runCli(args: string[]) {
   });
 }
 
+function countOccurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
+}
+
 beforeEach(async () => {
   workspace = await createTempWorkspace();
   previousUserWorkflows = process.env['PLAY_SPEC_USER_WORKFLOWS'];
@@ -535,6 +539,88 @@ phases:
     expect(strictPrompt).toContain('# Source Problem');
     expect(fullPrompt).toContain('## Context Files');
     expect(fullPrompt).toContain('Implement context modes.');
+  });
+
+  it('dedupes compact context refs while preserving path role source and snippet', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'compact-dedupe', 'source.md'),
+      'Source snippet for compact dedupe.\n\nMore detail.\n'
+    );
+    await writeTextFile(
+      path.join(workspace.dir, 'docs', 'features', 'compact-dedupe', 'notes.md'),
+      'Notes snippet for compact dedupe.\n'
+    );
+
+    const taskId = slugify('Compact Dedupe Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Compact Dedupe Task',
+      workflow: 'mono-spec',
+      contextRefs: [
+        {
+          path: 'docs/features/compact-dedupe/source.md',
+          role: 'planning-context',
+          source: 'test',
+        },
+        {
+          path: 'docs/features/compact-dedupe/notes.md',
+          role: 'planning-context',
+          source: 'test-notes',
+        },
+      ],
+    });
+
+    const prompt = await new PlaySpecCore(workspace.dir, store).renderNextPrompt(taskId, {
+      contextMode: 'compact',
+    });
+
+    expect(prompt).not.toContain('- CONTEXT_FILES:');
+    expect(prompt).not.toContain('- CONTEXT_REFS_DETAIL:');
+    expect(prompt).toContain('## Compact Context Summary');
+    expect(prompt).toContain(
+      '- `docs/features/compact-dedupe/source.md` (role: planning-context, source: test): Source snippet for compact dedupe.'
+    );
+    expect(prompt).toContain(
+      '- `docs/features/compact-dedupe/notes.md` (role: planning-context, source: test-notes): Notes snippet for compact dedupe.'
+    );
+    expect(countOccurrences(prompt, 'docs/features/compact-dedupe/source.md')).toBe(1);
+    expect(countOccurrences(prompt, 'docs/features/compact-dedupe/notes.md')).toBe(1);
+  });
+
+  it('wraps long full-mode context lines so prompt output remains line chunkable', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+
+    const longLine = 'x'.repeat(2_500);
+    await writeTextFile(path.join(workspace.dir, 'docs', 'long-context.md'), `${longLine}\n`);
+
+    const taskId = slugify('Long Full Context Task');
+    const store = new YamlTaskStore(workspace.dir);
+    await store.createTask({
+      id: taskId,
+      title: 'Long Full Context Task',
+      workflow: 'multi-spec',
+      contextRefs: [
+        { path: 'docs/long-context.md', role: 'planning-context', source: 'test' },
+      ],
+    });
+
+    const prompt = await new PlaySpecCore(workspace.dir, store).renderNextPrompt(taskId, {
+      contextMode: 'full',
+    });
+    const lines = prompt.split('\n');
+    const contextHeadingIndex = lines.indexOf('### docs/long-context.md');
+    const openingFenceIndex = lines.indexOf('```', contextHeadingIndex);
+    const closingFenceIndex = lines.indexOf('```', openingFenceIndex + 1);
+    const contentLines = lines.slice(openingFenceIndex + 1, closingFenceIndex);
+
+    expect(contextHeadingIndex).toBeGreaterThanOrEqual(0);
+    expect(contentLines.length).toBeGreaterThan(1);
+    expect(contentLines.join('')).toBe(longLine);
   });
 
   it('renders compact, strict, and full context modes with explicit archived context refs', async () => {
