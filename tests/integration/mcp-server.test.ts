@@ -708,6 +708,187 @@ describe('buildMcpServer', () => {
     }
   });
 
+  it('lists tasks as bounded summaries by default with pagination metadata', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const store = new YamlTaskStore(workspace.dir);
+    const handler = getRegisteredToolHandler('playspec_list_tasks');
+
+    for (let idx = 0; idx < 55; idx += 1) {
+      const suffix = String(idx).padStart(2, '0');
+      await store.createTask({
+        id: `bulk_task_${suffix}`,
+        title: `Bulk Task ${suffix}`,
+        workflow: 'multi-spec',
+      });
+    }
+
+    const result = await handler({});
+    const body = parseToolJson(result) as {
+      active?: Array<Record<string, unknown>>;
+      completed?: unknown[];
+      pagination?: Record<string, unknown>;
+    };
+
+    expect(result.isError).toBeUndefined();
+    expect(body.active).toHaveLength(50);
+    expect(body.completed).toEqual([]);
+    expect(body.active?.[0]).toEqual({
+      id: 'bulk_task_00',
+      title: 'Bulk Task 00',
+      status: 'active',
+      currentPhase: null,
+      workflow: 'multi-spec',
+    });
+    expect(body.active?.[0]).not.toHaveProperty('variables');
+    expect(body.pagination).toMatchObject({
+      limit: 50,
+      offset: 0,
+      total: 55,
+      returned: 50,
+      hasMore: true,
+    });
+  });
+
+  it('filters listed tasks by status and phase', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const store = new YamlTaskStore(workspace.dir);
+    const handler = getRegisteredToolHandler('playspec_list_tasks');
+
+    await store.createTask({
+      id: 'active_validate_task',
+      title: 'Active Validate Task',
+      workflow: 'mono-spec',
+      currentPhase: 'tech_spec_validate',
+    });
+    await store.createTask({
+      id: 'active_implementation_task',
+      title: 'Active Implementation Task',
+      workflow: 'mono-spec',
+      currentPhase: 'implementation',
+    });
+    await store.createTask({
+      id: 'completed_validate_task',
+      title: 'Completed Validate Task',
+      workflow: 'mono-spec',
+      currentPhase: 'tech_spec_validate',
+    });
+    await store.updateTask('completed_validate_task', { status: 'completed' });
+
+    const result = await handler({ status: 'active', phase: 'tech_spec_validate' });
+    const body = parseToolJson(result) as {
+      active?: Array<{ id: string; currentPhase: string | null }>;
+      completed?: unknown[];
+      pagination?: Record<string, unknown>;
+    };
+
+    expect(result.isError).toBeUndefined();
+    expect(body.active).toEqual([
+      expect.objectContaining({ id: 'active_validate_task', currentPhase: 'tech_spec_validate' }),
+    ]);
+    expect(body.completed).toEqual([]);
+    expect(body.pagination).toMatchObject({ total: 1, returned: 1, hasMore: false });
+  });
+
+  it('filters listed tasks by slug and idContains substrings', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const store = new YamlTaskStore(workspace.dir);
+    const handler = getRegisteredToolHandler('playspec_list_tasks');
+
+    await store.createTask({
+      id: 'alpha_locator',
+      title: 'Unrelated Title',
+      workflow: 'multi-spec',
+    });
+    await store.createTask({
+      id: 'beta_task',
+      title: 'Customer Portal Locator',
+      workflow: 'multi-spec',
+    });
+
+    const slugResult = await handler({ slug: 'locator' });
+    const slugBody = parseToolJson(slugResult) as { active?: Array<{ id: string }> };
+    const idResult = await handler({ idContains: 'alpha_' });
+    const idBody = parseToolJson(idResult) as { active?: Array<{ id: string }> };
+
+    expect(slugResult.isError).toBeUndefined();
+    expect(slugBody.active?.map((task) => task.id).sort()).toEqual(['alpha_locator', 'beta_task']);
+    expect(idResult.isError).toBeUndefined();
+    expect(idBody.active).toEqual([
+      expect.objectContaining({ id: 'alpha_locator' }),
+    ]);
+  });
+
+  it('returns full task records only when detail is requested', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const store = new YamlTaskStore(workspace.dir);
+    const handler = getRegisteredToolHandler('playspec_list_tasks');
+
+    await store.createTask({
+      id: 'detail_task',
+      title: 'Detail Task',
+      workflow: 'multi-spec',
+      variables: { FEATURE_SLUG: 'detail_task' },
+    });
+
+    const summaryResult = await handler({ idContains: 'detail_task' });
+    const summaryBody = parseToolJson(summaryResult) as { active?: Array<Record<string, unknown>> };
+    const detailResult = await handler({ idContains: 'detail_task', detail: true });
+    const detailBody = parseToolJson(detailResult) as { active?: Array<Record<string, unknown>> };
+    const summaryFalseResult = await handler({ idContains: 'detail_task', summary: false });
+    const summaryFalseBody = parseToolJson(summaryFalseResult) as { active?: Array<Record<string, unknown>> };
+
+    expect(summaryResult.isError).toBeUndefined();
+    expect(summaryBody.active?.[0]).not.toHaveProperty('variables');
+    expect(detailResult.isError).toBeUndefined();
+    expect(detailBody.active?.[0]).toMatchObject({
+      id: 'detail_task',
+      variables: { FEATURE_SLUG: 'detail_task' },
+      paths: expect.any(Object),
+      phaseHistory: [],
+    });
+    expect(summaryFalseResult.isError).toBeUndefined();
+    expect(summaryFalseBody.active?.[0]).toHaveProperty('variables');
+  });
+
+  it('lists archived tasks only when requested', async () => {
+    const manager = new PresetManager();
+    await manager.initWorkspace(workspace.dir, 'default');
+    const store = new YamlTaskStore(workspace.dir);
+    const handler = getRegisteredToolHandler('playspec_list_tasks');
+
+    await store.createTask({
+      id: 'archive_candidate',
+      title: 'Archive Candidate',
+      workflow: 'multi-spec',
+    });
+    await store.updateTask('archive_candidate', { status: 'completed' });
+    await store.archiveCompletedTask('archive_candidate');
+
+    const defaultResult = await handler({});
+    const defaultBody = parseToolJson(defaultResult) as Record<string, unknown>;
+    const archivedResult = await handler({ status: 'archived' });
+    const archivedBody = parseToolJson(archivedResult) as {
+      active?: unknown[];
+      completed?: unknown[];
+      archived?: Array<{ id: string; status: string }>;
+      pagination?: Record<string, unknown>;
+    };
+
+    expect(defaultResult.isError).toBeUndefined();
+    expect(defaultBody).not.toHaveProperty('archived');
+    expect(archivedResult.isError).toBeUndefined();
+    expect(archivedBody.active).toEqual([]);
+    expect(archivedBody.completed).toEqual([]);
+    expect(archivedBody.archived).toEqual([
+      expect.objectContaining({ id: 'archive_candidate', status: 'archived' }),
+    ]);
+    expect(archivedBody.pagination).toMatchObject({ total: 1, returned: 1, hasMore: false });
+  });
+
   it('creates a mono-spec task with source problem text through MCP', async () => {
     const manager = new PresetManager();
     await manager.initWorkspace(workspace.dir, 'default');
