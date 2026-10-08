@@ -4,6 +4,7 @@ import { CompletionLedgerSchema } from '#core/schemas.js';
 import type { CompletionEvent, CompletionLedger, TaskRecord } from '#core/types.js';
 import { readTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import { getCompletionIndexPath, getCompletionRoot } from '#utils/paths.js';
+import { getActiveTaskRoot } from '#utils/paths.js';
 
 export class CompletionLedgerStore {
   constructor(private readonly workspaceRoot: string) {}
@@ -26,13 +27,19 @@ export class CompletionLedgerStore {
 
   async appendEvent(task: TaskRecord, event: CompletionEvent, markdown: string): Promise<CompletionEvent> {
     const existing = await this.readLedger(task.id);
+    const prior = existing.events.find(candidate => candidate.id === event.id);
+    if (prior) {
+      if (JSON.stringify(prior) !== JSON.stringify(event)) throw new Error(`Completion ID conflict: ${event.id}`);
+      return prior;
+    }
+    if (event.sequence !== existing.events.length + 1) throw new Error('Completion sequence is not append-only.');
     const ledger = CompletionLedgerSchema.parse({
       taskId: task.id,
       events: [...existing.events, event],
     });
 
     await writeTextFileAtomic(
-      path.join(this.workspaceRoot, task.paths.taskRoot, event.markdownFile),
+      path.join(getActiveTaskRoot(this.workspaceRoot, task.id), event.markdownFile),
       markdown
     );
     await writeTextFileAtomic(
