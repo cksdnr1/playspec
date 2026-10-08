@@ -1,6 +1,7 @@
 import path from 'node:path';
 import Handlebars from 'handlebars';
 import { readTextFile } from '#utils/fs.js';
+import { resolveContainedPath } from '#utils/contained-path.js';
 import {
   CircularIncludeError,
   IncludeNotFoundError,
@@ -20,7 +21,7 @@ interface TemplatePlaceholder {
 export class TemplateRenderer {
   constructor(private readonly workspaceRoot: string) {}
 
-  private resolveTemplatePath(templateRoot: string, templatePath: string): string {
+  private async resolveTemplatePath(templateRoot: string, templatePath: string): Promise<string> {
     if (path.isAbsolute(templatePath)) {
       throw new IncludePathOutsideRootError(templatePath, templatePath, templateRoot);
     }
@@ -40,7 +41,11 @@ export class TemplateRenderer {
       );
     }
 
-    return resolvedTemplatePath;
+    try { return await resolveContainedPath(templateRoot, templatePath); }
+    catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return resolvedTemplatePath;
+      throw new IncludePathOutsideRootError(templatePath, resolvedTemplatePath, templateRoot);
+    }
   }
 
   private findTemplatePlaceholders(content: string): TemplatePlaceholder[] {
@@ -110,7 +115,7 @@ export class TemplateRenderer {
     let result = content;
     for (const match of matches) {
       const includePath = match[1].trim();
-      const fullIncludePath = this.resolveTemplatePath(templateRoot, includePath);
+      const fullIncludePath = await this.resolveTemplatePath(templateRoot, includePath);
 
       if (includeChain.includes(fullIncludePath)) {
         throw new CircularIncludeError(includePath, [
@@ -143,7 +148,7 @@ export class TemplateRenderer {
     templatePath: string,
     templateRoot: string
   ): Promise<string[]> {
-    const fullTemplatePath = this.resolveTemplatePath(templateRoot, templatePath);
+    const fullTemplatePath = await this.resolveTemplatePath(templateRoot, templatePath);
 
     let content: string;
     try {
@@ -167,7 +172,7 @@ export class TemplateRenderer {
     variables: Record<string, string>,
     templateRoot: string
   ): Promise<string> {
-    const fullTemplatePath = this.resolveTemplatePath(templateRoot, templatePath);
+    const fullTemplatePath = await this.resolveTemplatePath(templateRoot, templatePath);
 
     let content: string;
     try {

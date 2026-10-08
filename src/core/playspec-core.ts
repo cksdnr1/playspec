@@ -72,6 +72,7 @@ import type {
 } from '#core/types.js';
 import { getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
+import { resolveContainedPath } from '#utils/contained-path.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 const CONTEXT_SUMMARY_MAX_LENGTH = 240;
@@ -127,6 +128,8 @@ export class PlaySpecCore {
     if (!this.isWithinWorkspace(resolved, workspaceRoot)) {
       throw new ContextPathEscapesWorkspaceError(contextPath);
     }
+    try { await resolveContainedPath(workspaceRoot, normalizedPath); }
+    catch { throw new ContextPathEscapesWorkspaceError(contextPath); }
     try {
       await access(resolved);
     } catch {
@@ -675,6 +678,7 @@ export class PlaySpecCore {
     definition: PhaseDefinition,
     options: PromptRenderOptions = {}
   ): Promise<string> {
+    await this.assertContextRefsExist(task);
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
     const renderedTemplateVariables = await this.templateRenderer.discoverPlaceholderNames(
       definition.template,
@@ -744,7 +748,7 @@ export class PlaySpecCore {
     if (contextMode === 'compact') {
       const summaries = await Promise.all(
         refs.map(async (ref) => {
-          const content = await readTextFile(path.resolve(this.workspaceRoot, ref.path));
+          const content = await readTextFile(await resolveContainedPath(this.workspaceRoot, ref.path));
           const summary = summarizeContextContent(content);
           return `- \`${ref.path}\` (role: ${ref.role}, source: ${ref.source})${summary ? `: ${summary}` : ''}`;
         })
@@ -755,7 +759,7 @@ export class PlaySpecCore {
 
     const sections = await Promise.all(
       refs.map(async (ref) => {
-        const content = await readTextFile(path.resolve(this.workspaceRoot, ref.path));
+        const content = await readTextFile(await resolveContainedPath(this.workspaceRoot, ref.path));
         const formattedContent = formatContextBodyContent(content);
         return [
           `### ${ref.path}`,
@@ -1293,7 +1297,7 @@ Use the rollback safe point above for state rollback context. This markdown is a
         throw new MissingContextRefError(ref.path);
       }
       try {
-        await access(resolved);
+        await access(await resolveContainedPath(workspaceRoot, ref.path));
       } catch {
         throw new MissingContextRefError(ref.path);
       }
