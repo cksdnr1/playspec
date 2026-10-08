@@ -665,6 +665,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       withReview: z.boolean().optional(),
       result: z.string().optional(),
       expectedPhaseId: z.string().optional(),
+      requestId: z.string().min(1).max(128).optional(),
     },
     async (args) => {
       try {
@@ -673,6 +674,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
           withReview: args.withReview,
           result: args.result,
           expectedPhaseId: args.expectedPhaseId,
+          requestId: args.requestId,
           withEvolutionContext: args.withEvolutionContext,
           contextMode: args.contextMode,
         });
