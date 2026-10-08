@@ -23,6 +23,11 @@ export const PhaseCompletionSchema = z.object({
 });
 
 export const PhaseGateSchema = z.object({
+  validation: z.object({
+    reportPath: z.string().min(1), artifactPaths: z.array(z.string().min(1)).min(1),
+    threshold: z.number().min(0).max(100), approvalResult: z.string().min(1).optional(),
+    rubric: z.record(z.number().positive()).refine(rubric => Math.abs(Object.values(rubric).reduce((sum, value) => sum + value, 0) - 100) < 1e-6, 'Rubric maxima must total 100.').optional(),
+  }).optional(),
   results: z.array(z.string()).min(1),
   nextByResult: z.record(z.string()),
   eventTypes: z.record(z.string()).optional(),
@@ -252,6 +257,7 @@ export const CompletionFeedbackResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export const CompletionEventSchema = z.object({
+  validationReportFile: z.string().optional(),
   requestId: z.string().min(1).max(128).optional(),
   id: z.string(),
   sequence: z.number().int().positive(),

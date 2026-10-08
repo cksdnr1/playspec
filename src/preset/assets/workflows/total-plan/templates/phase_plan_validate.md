@@ -49,4 +49,20 @@ Approval/gate handling:
 - `approved` routes to final planning review.
 - `needs_revision` routes to phase plan patching.
 
+
+## Required engine validation report
+
+Write a version-1 YAML or JSON report to `{{PHASE_PLAN_VALIDATION_FILE}}` before completing this phase. The engine rejects completion without this report, even if you pass `approved`.
+
+Required fields:
+- `version: 1`, `taskId: "{{TASK_ID}}"`, `phaseId: "phase_plan_validate"`, and `result` matching the completion result.
+- `score`: the numeric sum of earned rubric points; `blockers`: an array of unresolved blockers (empty only when none remain); `summary`: the evidence-based verdict.
+- Required rubric names and maxima: `correctness`=30, `contracts`=25, `failure_handling`=20, `testability`=15, `scope`=10.
+- `dimensions`: one entry per scoring dimension, each with `name`, numeric `earned` and `max`, nonempty `evidence` references, and `deductions` explaining lost points. Maxima must total 100 and earned points must equal score.
+- `artifacts`: exactly the evaluated files listed below, each with its workspace-relative `path` and SHA-256 `sha256` of the current file bytes:
+  - `{{PHASE_PLAN_FILE}}`
+  - `{{TOTAL_SPEC_FILE}}`
+
+For approval, score must be at least 95 and blockers must be empty. Recompute hashes and rewrite the report after any artifact changes; prior reports do not approve a changed file. Keep human-readable findings as well. Report schema and a complete example: `docs/validation-reports.md`.
+
 {{include:rules/global_rules.md}}

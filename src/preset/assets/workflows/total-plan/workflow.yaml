@@ -16,6 +16,12 @@ variables:
   RESULT_FILE:
     default: "docs/features/{{FEATURE_SLUG}}/result.md"
     description: Final planning review result.
+  TOTAL_SPEC_VALIDATION_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/total-spec-validation.yaml"
+    description: Structured validation report required by the engine.
+  PHASE_PLAN_VALIDATION_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/phase-plan-validation.yaml"
+    description: Structured validation report required by the engine.
 artifacts:
   totalSpec:
     path: "{{TOTAL_SPEC_FILE}}"
@@ -68,6 +74,17 @@ phases:
     outputs:
       - "{{TOTAL_SPEC_FILE}}"
     gate:
+      validation:
+        reportPath: "{{TOTAL_SPEC_VALIDATION_FILE}}"
+        threshold: 95
+        rubric:
+          correctness: 30
+          contracts: 25
+          failure_handling: 20
+          testability: 15
+          scope: 10
+        artifactPaths:
+          - "{{TOTAL_SPEC_FILE}}"
       results:
         - approved
         - needs_revision
@@ -118,6 +135,18 @@ phases:
     outputs:
       - "{{PHASE_PLAN_FILE}}"
     gate:
+      validation:
+        reportPath: "{{PHASE_PLAN_VALIDATION_FILE}}"
+        threshold: 95
+        rubric:
+          correctness: 30
+          contracts: 25
+          failure_handling: 20
+          testability: 15
+          scope: 10
+        artifactPaths:
+          - "{{PHASE_PLAN_FILE}}"
+          - "{{TOTAL_SPEC_FILE}}"
       results:
         - approved
         - needs_revision

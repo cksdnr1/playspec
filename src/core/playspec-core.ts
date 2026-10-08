@@ -77,6 +77,7 @@ import { getActiveTaskRoot, getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 import { resolveContainedPath } from '#utils/contained-path.js';
 import { assertSafeTaskId } from '#utils/task-id.js';
+import { validateGateReport } from '#core/validation-gate.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 const CONTEXT_SUMMARY_MAX_LENGTH = 240;
@@ -344,6 +345,8 @@ export class PlaySpecCore {
       options.result
     );
     this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
+    const validation = await validateGateReport({ workspaceRoot: this.workspaceRoot, task, phaseId, definition,
+      variables: this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition), result });
     if (nextPhase === null) {
       await this.resolveFinalizedArtifacts(task, workflow, phaseId, definition);
     }
@@ -371,6 +374,11 @@ export class PlaySpecCore {
         completionArtifactSuffix
       );
       const evidenceFiles = await this.writeEvidence(task, phaseId, completionArtifactSuffix);
+      const validationReportFile = validation ? `reviews/phase${phaseId}${completionArtifactSuffix}_validation.yaml` : undefined;
+      if (validationReportFile && validation) {
+        await writeTextFileAtomic(path.join(taskRoot, validationReportFile), validation.content);
+        evidenceFiles.push(validationReportFile);
+      }
       const reviewFile = options.withReview
         ? await this.writeReview(task, phaseId, validationTemplate, completionArtifactSuffix)
         : undefined;
@@ -399,6 +407,7 @@ export class PlaySpecCore {
         rollback: { lastSafePoint: rollbackSafePoint }, result, visitCount,
       };
       const completionEvent = await this.writeCompletionEvent({
+        validationReportFile,
         completionInput,
         requestId: options.requestId,
         task,
@@ -1135,6 +1144,7 @@ export class PlaySpecCore {
   }
 
   private async writeCompletionEvent(input: {
+    validationReportFile?: string;
     completionInput: CompletePhaseInput;
     requestId?: string;
     task: TaskRecord;
@@ -1160,6 +1170,7 @@ export class PlaySpecCore {
       `${id}-${safeFilePart(input.phaseId)}${input.result ? `-${safeFilePart(eventType)}` : ''}.md`
     );
     const event: CompletionEvent = {
+      ...(input.validationReportFile ? { validationReportFile: input.validationReportFile } : {}),
       ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
       id,
       sequence,

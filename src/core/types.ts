@@ -118,6 +118,7 @@ export interface PhaseDefinition {
     eventType?: string;
   };
   gate?: {
+    validation?: { reportPath: string; artifactPaths: string[]; threshold: number; approvalResult?: string; rubric?: Record<string, number> };
     results: string[];
     nextByResult: Record<string, PhaseId>;
     eventTypes?: Record<string, string>;
@@ -495,6 +496,7 @@ export interface CompletionResult {
 }
 
 export interface CompletionEvent {
+  validationReportFile?: string;
   requestId?: string;
   id: string;
   sequence: number;
