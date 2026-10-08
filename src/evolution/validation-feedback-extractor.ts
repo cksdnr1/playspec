@@ -1,5 +1,6 @@
 import YAML from 'yaml';
 import { z } from 'zod';
+import { ValidationReportSchema } from '#core/validation-gate.js';
 import { FeedbackWorkflowSourceResolver } from './feedback-workflow-source-resolver.js';
 import {
   ValidationFeedbackBlockSchema,
@@ -29,6 +30,25 @@ export class ValidationFeedbackExtractor {
   }
 
   extract(input: ValidationFeedbackExtractionInput): ValidationFeedbackExtraction {
+    if (input.feedbackConfig.scoreSource.artifactRole === 'validation_report') {
+      let raw: unknown;
+      try { raw = YAML.parse(input.artifactContent); }
+      catch { throw new ValidationFeedbackExtractionError('Could not parse structured validation report.'); }
+      const report = parseSchema(ValidationReportSchema, raw, 'Invalid validation report');
+      if (report.taskId !== input.task.id || report.phaseId !== input.phaseId || report.result !== input.completionResult) {
+        throw new ValidationFeedbackExtractionError('Validation report identity/result does not match completion.');
+      }
+      if (!report.cause || !input.feedbackConfig.causeClassification.allowed.includes(report.cause.category)) {
+        throw new ValidationFeedbackExtractionError('Validation report requires an allowed explicit cause classification.');
+      }
+      const extraction = this.extractFromBlock(input, {
+        score: report.score, cause: report.cause, summary: report.summary,
+        evolutionTargetPhaseId: report.evolutionTargetPhaseId, dedupeFieldValues: report.dedupeFieldValues,
+        approval: { threshold: input.feedbackConfig.approval.threshold, result: input.completionResult },
+        feedback: { threshold: input.feedbackConfig.feedbackThreshold, result: feedbackResultFromScore(report.score, input.feedbackConfig.feedbackThreshold) },
+      });
+      return { ...extraction, method: 'validation_report' };
+    }
     const block = this.extractMachineReadableBlock(input.artifactContent);
     if (block) {
       return this.extractFromBlock(input, block);

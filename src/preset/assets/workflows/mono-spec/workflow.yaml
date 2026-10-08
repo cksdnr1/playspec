@@ -116,9 +116,9 @@ phases:
       evaluatedArtifactPhaseId: tech_spec_draft
       evolutionTargetPhaseId: tech_spec_draft
       scoreSource:
-        artifactRole: prompt_snapshot
+        artifactRole: validation_report
         preferredBlock: playspecFeedback
-        markdownFallback: true
+        markdownFallback: false
       approval:
         threshold: 95
         resultSource: completion_result
@@ -235,9 +235,9 @@ phases:
       evaluatedArtifactPhaseId: implementation_plan_create
       evolutionTargetPhaseId: implementation_plan_create
       scoreSource:
-        artifactRole: prompt_snapshot
+        artifactRole: validation_report
         preferredBlock: playspecFeedback
-        markdownFallback: true
+        markdownFallback: false
       approval:
         threshold: 95
         resultSource: completion_result

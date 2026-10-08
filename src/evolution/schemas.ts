@@ -42,7 +42,7 @@ export const FeedbackConfidenceSchema = z.enum(['low', 'medium', 'high']);
 export const FeedbackTrendDirectionSchema = z.enum(['improving', 'declining', 'stable', 'unknown']);
 export const FeedbackProposalReadinessStateSchema = z.enum(['not_ready', 'ready_for_review', 'proposal_candidate']);
 export const FeedbackMutationStrategySchema = z.enum(['manual_review_only']);
-export const ValidationFeedbackExtractionMethodSchema = z.enum(['machine_readable_block', 'markdown_fallback']);
+export const ValidationFeedbackExtractionMethodSchema = z.enum(['machine_readable_block', 'markdown_fallback', 'validation_report']);
 export const ValidationFeedbackPromptTargetTypeSchema = z.enum(['workflow_prompt_template']);
 export const FeedbackPathKindSchema = z.enum([
   'workspace_relative',

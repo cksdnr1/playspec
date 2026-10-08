@@ -25,7 +25,8 @@ export async function writeGateReport(workspaceRoot: string, taskId: string, pha
     const lost = Math.min(max, deduction); deduction -= lost;
     return { name, max, earned: max - lost, evidence: ['Evaluated fixture artifact and test contract'], deductions: lost ? `${lost} points reserved for nonblocking fixture limitations.` : '' };
   });
-  const report: ValidationReport = { version: 1, taskId, phaseId, result, score, blockers: [], summary: 'Explicit fixture review for engine regression tests.', dimensions, artifacts };
+  const report: ValidationReport = { version: 1, taskId, phaseId, result, score, blockers: [], summary: 'Explicit fixture review for engine regression tests.', dimensions, artifacts,
+    cause: { category: 'artifact_quality_issue', confidence: 'high', summary: 'Fixture artifact quality; no inference of prompt defects.' } };
   const reportPath = path.join(workspaceRoot, renderArtifactPath(config.reportPath, variables));
   await mkdir(path.dirname(reportPath), { recursive: true }); await writeFile(reportPath, stringify(report));
   return { report, reportPath };

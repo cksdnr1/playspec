@@ -383,6 +383,7 @@ export class PlaySpecCore {
         ? await this.writeReview(task, phaseId, validationTemplate, completionArtifactSuffix)
         : undefined;
       const feedback = await this.captureValidationFeedback({
+        validationReportFile,
         task,
         workflow,
         definition,
@@ -998,6 +999,7 @@ export class PlaySpecCore {
   }
 
   private async captureValidationFeedback(input: {
+    validationReportFile?: string;
     task: TaskRecord;
     workflow: ResolvedWorkflow;
     definition: PhaseDefinition;
@@ -1013,6 +1015,7 @@ export class PlaySpecCore {
 
     try {
       const artifact = this.resolveFeedbackArtifact(feedbackConfig.scoreSource.artifactRole, {
+        validationReportFile: input.validationReportFile,
         reviewFile: input.reviewFile,
         snapshotFiles: input.snapshotFiles,
       });
@@ -1088,9 +1091,10 @@ export class PlaySpecCore {
 
   private resolveFeedbackArtifact(
     artifactRole: string,
-    artifacts: { reviewFile?: string; snapshotFiles: string[] }
+    artifacts: { reviewFile?: string; snapshotFiles: string[]; validationReportFile?: string }
   ): string | undefined {
     const normalizedRole = artifactRole.toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalizedRole === 'validation_report') return artifacts.validationReportFile;
     if (normalizedRole.includes('review')) {
       return artifacts.reviewFile;
     }

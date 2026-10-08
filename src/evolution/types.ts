@@ -19,7 +19,7 @@ export type FeedbackPathKind =
   | 'workflow_relative'
   | 'user_home_relative'
   | 'package_relative';
-export type ValidationFeedbackExtractionMethod = 'machine_readable_block' | 'markdown_fallback';
+export type ValidationFeedbackExtractionMethod = 'machine_readable_block' | 'markdown_fallback' | 'validation_report';
 export type ValidationFeedbackPromptTargetType = 'workflow_prompt_template';
 
 export interface EvolutionArtifactReference {
