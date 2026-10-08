@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "taskId": "reaudit_04_evolution_paths",
+  "phaseId": "implementation_plan_validate",
+  "result": "approved",
+  "score": 96,
+  "blockers": [],
+  "summary": "The target boundary is the canonical specific allow-listed root inside the workspace. Explicit approval authorizes the named proposal, not external filesystem writes. Filesystem races with uncooperative external writers remain outside path-resolution guarantees.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 30,
+      "max": 30,
+      "evidence": [
+        "src/evolution/apply-runner.ts:214",
+        "src/utils/contained-path.ts",
+        "tests/cli.test.ts:1148"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "contracts",
+      "earned": 24,
+      "max": 25,
+      "evidence": [
+        "src/evolution/apply-runner.ts:214",
+        "src/utils/contained-path.ts",
+        "tests/cli.test.ts:1148"
+      ],
+      "deductions": "Compatibility with unusual symlinked workspace layouts requires regression coverage."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 18,
+      "max": 20,
+      "evidence": [
+        "src/evolution/apply-runner.ts:214",
+        "src/utils/contained-path.ts",
+        "tests/cli.test.ts:1148"
+      ],
+      "deductions": "External-writer filesystem races are not eliminated by path resolution."
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "src/evolution/apply-runner.ts:214",
+        "src/utils/contained-path.ts",
+        "tests/cli.test.ts:1148"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 9,
+      "max": 10,
+      "evidence": [
+        "src/evolution/apply-runner.ts:214",
+        "src/utils/contained-path.ts",
+        "tests/cli.test.ts:1148"
+      ],
+      "deductions": "Path resolution adds repeated filesystem calls."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/reaudit_04_evolution_paths/plan.md",
+      "sha256": "ed51a4bf7ce8724b554d701fdaaa662a3ba01a18216663c8dabc1e09c52c576d"
+    },
+    {
+      "path": "docs/features/reaudit_04_evolution_paths/spec.md",
+      "sha256": "b3396a4c9abca42bb6f589f83ca6ef99ddf87d22fb3fd4eb6d7fc50da6069b11"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "The target boundary is the canonical specific allow-listed root inside the workspace. Explicit approval authorizes the named proposal, not external filesystem writes. Filesystem races with uncooperative external writers remain outside path-resolution guarantees."
+  }
+}
