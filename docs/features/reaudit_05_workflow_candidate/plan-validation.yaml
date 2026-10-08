@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "taskId": "reaudit_05_workflow_candidate",
+  "phaseId": "implementation_plan_validate",
+  "result": "approved",
+  "score": 97,
+  "blockers": [],
+  "summary": "Candidate validation must cover retained assets and selected replacements together. Staging belongs to ignored update metadata; failure may retain diagnostic files but cannot alter runtime selection or baseline. Concurrent external task execution remains subject to documented pause requirement.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 29,
+      "max": 30,
+      "evidence": [
+        "src/workflow/workflow-updater.ts:24",
+        "src/workflow/workflow-loader.ts:106",
+        "src/template/template-renderer.ts:142"
+      ],
+      "deductions": "Template semantic correctness remains a reviewer responsibility."
+    },
+    {
+      "name": "contracts",
+      "earned": 25,
+      "max": 25,
+      "evidence": [
+        "src/workflow/workflow-updater.ts:24",
+        "src/workflow/workflow-loader.ts:106",
+        "src/template/template-renderer.ts:142"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "src/workflow/workflow-updater.ts:24",
+        "src/workflow/workflow-loader.ts:106",
+        "src/template/template-renderer.ts:142"
+      ],
+      "deductions": "Multi-file atomic activation remains outside this bounded fix."
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "src/workflow/workflow-updater.ts:24",
+        "src/workflow/workflow-loader.ts:106",
+        "src/template/template-renderer.ts:142"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 9,
+      "max": 10,
+      "evidence": [
+        "src/workflow/workflow-updater.ts:24",
+        "src/workflow/workflow-loader.ts:106",
+        "src/template/template-renderer.ts:142"
+      ],
+      "deductions": "Staging retains failed candidate evidence and uses extra disk space."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/reaudit_05_workflow_candidate/plan.md",
+      "sha256": "f30dbb08cf1378e99e9bb841f8d590f1f283f232b8085156c5bbd02dfb219719"
+    },
+    {
+      "path": "docs/features/reaudit_05_workflow_candidate/spec.md",
+      "sha256": "4f5204feb8c72317d297e51468ba9f7d23db05a14032edaa3c338fa57f571043"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Candidate validation must cover retained assets and selected replacements together. Staging belongs to ignored update metadata; failure may retain diagnostic files but cannot alter runtime selection or baseline. Concurrent external task execution remains subject to documented pause requirement."
+  }
+}
