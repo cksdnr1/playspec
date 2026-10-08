@@ -287,10 +287,24 @@ If the package is not globally linked, point the client at the built file:
 }
 ```
 
-Registered MCP tools:
+Registered MCP tools (48 total; all accept `workspaceRoot`):
 
 - `playspec_list_tasks`
 - `playspec_get_task`
+- `playspec_get_status`
+- `playspec_create_task`
+- `playspec_link_tasks`
+- `playspec_unlink_tasks`
+- `playspec_list_workflows`
+- `playspec_show_workflow`
+- `playspec_validate_workflow`
+- `playspec_install_workflow`
+- `playspec_remove_workflow`
+- `playspec_export_workflow`
+- `playspec_workflow_add_phase`
+- `playspec_workflow_remove_phase`
+- `playspec_workflow_reorder_phase`
+- `playspec_workflow_set_template`
 - `playspec_use_session_task`
 - `playspec_get_session_task`
 - `playspec_render_next_prompt`
@@ -319,6 +333,10 @@ Registered MCP tools:
 - `playspec_apply_evolution_proposal`
 - `playspec_record_human_edit_observation`
 - `playspec_update_human_edit_observation_status`
+- `playspec_list_feedback_threads`
+- `playspec_get_feedback_thread`
+- `playspec_list_human_edit_observations`
+- `playspec_get_human_edit_observation`
 
 MCP calls that operate on a task require either `taskId` or `sessionId`. If both are supplied, explicit `taskId` wins. MCP task references resolved through task context accept exact task IDs or unique task ID prefixes; ambiguous prefixes fail with guidance to use a longer prefix. `playspec_use_session_task` stores the canonical resolved task ID for later `sessionId` calls. MCP context resolution never reads `.playspec/HEAD`; `HEAD` is CLI-only.
 
@@ -337,7 +355,9 @@ playspec_render_next_prompt({ "workspaceRoot": "<project>", "taskId": "<returned
 # with execution.completion.arguments (+ a chosen result only when required).
 ```
 
-Success responses retain text JSON and add `structuredContent`; handler errors add stable codes and scoped read-only recovery calls. See [guided MCP execution](docs/mcp-guided-execution.md) for report authoring, retries, stale state and terminal behavior. Existing clients can retain manual completion guards; new clients should use the returned arguments.
+Success responses retain text JSON and add `structuredContent`; handler errors add stable codes and scoped inspection calls. See [guided MCP execution](docs/mcp-guided-execution.md) for report authoring, retries, stale state and terminal behavior. Existing clients can retain manual completion guards; new clients should use the returned arguments.
+
+See [complete MCP tool contracts](docs/mcp-tool-contracts.md) for project scoping, proposal schemas, evidence discovery, workflow installation scope and recovery.
 
 For post-run prompt/workflow evolution, use the documented MCP-only lifecycle in
 [`docs/mcp-evolution-lifecycle.md`](docs/mcp-evolution-lifecycle.md). That

@@ -49,3 +49,17 @@ export class McpSessionContextEmptyError extends PlaySpecError {
     this.name = 'McpSessionContextEmptyError';
   }
 }
+
+export class McpConfirmationRequiredError extends PlaySpecError {
+  constructor(message: string, hint: string) {
+    super(message, hint);
+    this.name = 'McpConfirmationRequiredError';
+  }
+}
+
+export class McpApprovalRequiredError extends PlaySpecError {
+  constructor(message: string, hint: string) {
+    super(message, hint);
+    this.name = 'McpApprovalRequiredError';
+  }
+}
