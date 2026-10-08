@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { rename } from 'node:fs/promises';
+import { rename, realpath } from 'node:fs/promises';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { MigrationPlanSchema, MigrationReportSchema } from './schemas.js';
 import type { MigrationPlan, MigrationReport } from './types.js';
@@ -33,6 +33,7 @@ export class MigrationStore {
   }
 
   async loadPlan(planId: string): Promise<MigrationPlan> {
+    MigrationPlanSchema.shape.id.parse(planId);
     const planPath = path.join(getMigrationPlansDir(this.workspaceRoot), `${planId}.yaml`);
     const content = await readTextFile(planPath);
     return MigrationPlanSchema.parse(parseYaml(content) as unknown) as MigrationPlan;
@@ -49,7 +50,8 @@ export class MigrationStore {
   }
 
   async createBackup(planId: string, absoluteTargetPath: string): Promise<string> {
-    const relPath = path.relative(this.workspaceRoot, absoluteTargetPath);
+    MigrationPlanSchema.shape.id.parse(planId);
+    const relPath = path.relative(await realpath(this.workspaceRoot), await realpath(absoluteTargetPath));
     const escaped = escapePathForFilename(relPath);
     const backupPath = path.join(
       getMigrationBackupsDir(this.workspaceRoot, planId),
@@ -61,7 +63,7 @@ export class MigrationStore {
   }
 
   async archiveFile(absoluteSourcePath: string): Promise<string> {
-    const relPath = path.relative(this.workspaceRoot, absoluteSourcePath);
+    const relPath = path.relative(await realpath(this.workspaceRoot), await realpath(absoluteSourcePath));
     const escaped = escapePathForFilename(relPath);
     const archivedPath = path.join(getMigrationArchivedDir(this.workspaceRoot), escaped);
     await writeTextFile(archivedPath, ''); // ensure dir

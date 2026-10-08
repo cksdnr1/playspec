@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import path from 'node:path';
+
+const SafeIdSchema = z.string().regex(/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/);
+const RelativePathSchema = z.string().min(1).refine(value => {
+  const normalized = value.replace(/\\/g, '/');
+  return !value.includes('\0') && !path.posix.isAbsolute(normalized) && !path.win32.isAbsolute(value) && !normalized.split('/').includes('..');
+}, 'Migration paths must remain workspace-relative without traversal.');
 
 export const MigrationModeSchema = z.enum(['review', 'dry-run', 'auto']);
 
@@ -18,8 +25,8 @@ export const ActionTypeSchema = z.enum([
 ]);
 
 const BaseActionSchema = z.object({
-  actionId: z.string(),
-  targetPath: z.string(),
+  actionId: SafeIdSchema,
+  targetPath: RelativePathSchema,
   sourcePaths: z.array(z.string()),
   reason: z.string(),
   evidence: z.string(),
@@ -53,7 +60,7 @@ export const UpdateTaskStateActionSchema = BaseActionSchema.extend({
 });
 
 export const ContextRefValueSchema = z.object({
-  path: z.string(),
+  path: RelativePathSchema,
   role: z.literal('planning-context'),
   source: z.string(),
 });
@@ -65,7 +72,7 @@ export const AddContextRefActionSchema = BaseActionSchema.extend({
 
 export const RemoveContextRefActionSchema = BaseActionSchema.extend({
   type: z.literal('remove_context_ref'),
-  refPath: z.string(),
+  refPath: RelativePathSchema,
 });
 
 export const ArchiveFileActionSchema = BaseActionSchema.extend({
@@ -93,13 +100,13 @@ export const StatePromotionSchema = z.object({
 });
 
 export const MigrationPlanSchema = z.object({
-  id: z.string(),
+  id: SafeIdSchema,
   createdAt: z.string(),
   mode: MigrationModeSchema,
   sourceRoot: z.string(),
-  targetTaskId: z.string(),
+  targetTaskId: SafeIdSchema,
   sourceFiles: z.array(z.string()),
-  targetFiles: z.array(z.string()),
+  targetFiles: z.array(RelativePathSchema),
   actions: z.array(MigrationActionSchema),
   statePromotions: z.array(StatePromotionSchema),
   riskLevel: RiskLevelSchema,
@@ -119,7 +126,7 @@ export const MigrationActionReportSchema = z.object({
 });
 
 export const MigrationReportSchema = z.object({
-  planId: z.string(),
+  planId: SafeIdSchema,
   createdAt: z.string(),
   mode: MigrationModeSchema,
   targetTaskId: z.string(),

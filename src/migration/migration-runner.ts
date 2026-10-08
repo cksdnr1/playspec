@@ -7,6 +7,8 @@ import type { TaskRecord, TaskContextRef } from '#core/types.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
+import { resolveContainedPath } from '#utils/contained-path.js';
+import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { MigrationPlanSchema } from './schemas.js';
 import { MigrationStore } from './migration-store.js';
 import type {
@@ -88,6 +90,7 @@ export class MigrationRunner {
     }
 
     await this.assertTaskMutationTargetIsActive(plan);
+    for (const action of plan.actions) await this.validateTarget(plan, action);
 
     // Persist plan before any mutation
     const planPath = await this.store.savePlan(plan);
@@ -137,23 +140,13 @@ export class MigrationRunner {
     action: MigrationAction,
     options: MigrationRunnerOptions
   ): Promise<MigrationActionReport> {
-    // Auto mode: only apply deterministic confidence actions
-    if (action.requiresReview) {
-      // Check if this action has a corresponding state promotion with deterministic confidence
-      const statePromotion = plan.statePromotions.find((sp) =>
-        action.type === 'update_task_state' && sp.fieldPath === (action as UpdateTaskStateAction).fieldPath
-      );
-
-      const confidence = statePromotion?.confidence ?? 'medium';
-
-      if (confidence !== 'deterministic') {
-        return {
-          actionId: action.actionId,
-          type: action.type,
-          status: 'skipped',
-          reason: `confidence "${confidence}" — downgraded to review in auto mode`,
-        };
-      }
+    const promotion = action.type === 'update_task_state'
+      ? plan.statePromotions.find(sp => sp.fieldPath === action.fieldPath)
+      : undefined;
+    if (action.type !== 'update_task_state' || action.riskLevel !== 'low' || plan.riskLevel !== 'low' ||
+        action.requiresReview || plan.requiresReview || promotion?.requiresReview !== false || promotion.confidence !== 'deterministic' ||
+        JSON.stringify(promotion.proposedValue) !== JSON.stringify(action.proposedValue)) {
+      return { actionId: action.actionId, type: action.type, status: 'skipped', reason: 'Auto mode requires a low-risk deterministic structured state promotion with no pending review; use review mode.' };
     }
 
     return this.applyAction(plan, action, options);
@@ -209,14 +202,15 @@ export class MigrationRunner {
     options: MigrationRunnerOptions
   ): Promise<MigrationActionReport> {
     try {
+      await this.validateTarget(plan, action);
       let backupPath: string | undefined;
 
-      if (action.backupRequired) {
-        const absoluteTarget = path.resolve(this.workspaceRoot, action.targetPath);
+      if (action.backupRequired || !isTaskMutationAction(action)) {
+        const absoluteTarget = await resolveContainedPath(this.workspaceRoot, action.targetPath);
         try {
           backupPath = await this.store.createBackup(plan.id, absoluteTarget);
-        } catch {
-          // Target may not exist yet (e.g. new context ref on empty task)
+        } catch (error) {
+          if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
         }
       }
 
@@ -252,24 +246,24 @@ export class MigrationRunner {
   }
 
   private async applyUpdateFile(targetPath: string, content: string): Promise<void> {
-    const absolutePath = path.resolve(this.workspaceRoot, targetPath);
-    await writeTextFile(absolutePath, content);
+    const absolutePath = await resolveContainedPath(this.workspaceRoot, targetPath);
+    await writeTextFileAtomic(absolutePath, content);
   }
 
   private async applyAppendSection(targetPath: string, sectionContent: string): Promise<void> {
-    const absolutePath = path.resolve(this.workspaceRoot, targetPath);
+    const absolutePath = await resolveContainedPath(this.workspaceRoot, targetPath);
     let existing = '';
     try {
       existing = await readTextFile(absolutePath);
-    } catch {
-      // File may not exist; start fresh
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
     }
     const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n\n' : '\n';
-    await writeTextFile(absolutePath, existing + separator + sectionContent);
+    await writeTextFileAtomic(absolutePath, existing + separator + sectionContent);
   }
 
   private async applyReplaceSection(targetPath: string, sectionName: string, sectionContent: string): Promise<void> {
-    const absolutePath = path.resolve(this.workspaceRoot, targetPath);
+    const absolutePath = await resolveContainedPath(this.workspaceRoot, targetPath);
     const existing = await readTextFile(absolutePath);
     // Replace markdown section: find "## sectionName\n" and replace until next "## " or EOF
     const sectionHeaderRegex = new RegExp(
@@ -278,13 +272,13 @@ export class MigrationRunner {
     );
     if (!sectionHeaderRegex.test(existing)) {
       // Section not found — append instead
-      await writeTextFile(absolutePath, existing + '\n\n## ' + sectionName + '\n\n' + sectionContent);
+      await writeTextFileAtomic(absolutePath, existing + '\n\n## ' + sectionName + '\n\n' + sectionContent);
     } else {
       const updated = existing.replace(
         sectionHeaderRegex,
-        `$1$2${sectionContent}`
+        (_match, prefix: string, header: string) => `${prefix}${header}${sectionContent}`
       );
-      await writeTextFile(absolutePath, updated);
+      await writeTextFileAtomic(absolutePath, updated);
     }
   }
 
@@ -302,6 +296,9 @@ export class MigrationRunner {
     }
 
     const task = await this.taskStore.getTask(taskId);
+    if (action.previousValue !== undefined && JSON.stringify(task[field as keyof TaskRecord]) !== JSON.stringify(action.previousValue)) {
+      throw new MigrationValidationError(`State field "${field}" changed since the migration was planned.`);
+    }
 
     // Backup task.yaml before mutation
     const taskYamlPath = path.join(getTaskRoot(this.workspaceRoot, taskId), 'task.yaml');
@@ -387,8 +384,30 @@ export class MigrationRunner {
     if (!options.withArchive) {
       throw new ArchiveRequiresFlagError(action.actionId);
     }
-    const absolutePath = path.resolve(this.workspaceRoot, action.targetPath);
+    const absolutePath = await resolveContainedPath(this.workspaceRoot, action.targetPath);
     await this.store.archiveFile(absolutePath);
+  }
+
+  private async validateTarget(plan: MigrationPlan, action: MigrationAction): Promise<void> {
+    const normalized = path.normalize(action.targetPath.replace(/\\/g, '/')).replace(/\\/g, '/');
+    await resolveContainedPath(this.workspaceRoot, normalized);
+    if (isTaskMutationAction(action)) {
+      const expected = path.relative(this.workspaceRoot, path.join(getTaskRoot(this.workspaceRoot, plan.targetTaskId), 'task.yaml')).replace(/\\/g, '/');
+      if (normalized !== expected) throw new MigrationValidationError('Structured task actions must target the declared task.yaml.');
+    } else if (!['docs/', '.playspec/templates/', '.playspec/rules/'].some(prefix => normalized.startsWith(prefix))) {
+      throw new MigrationValidationError(`File target is not allow-listed: ${normalized}`);
+    }
+    if (action.type === 'add_context_ref') {
+      const contextPath = await resolveContainedPath(this.workspaceRoot, action.contextRef.path);
+      await readTextFile(contextPath);
+    }
+    if (action.type === 'update_task_state' && action.fieldPath.replace(/^task\.yaml\./, '') === 'currentPhase') {
+      const task = await this.taskStore.getTask(plan.targetTaskId);
+      const workflow = await new WorkflowLoader(this.workspaceRoot).load(task.workflow);
+      if (action.proposedValue !== null && (typeof action.proposedValue !== 'string' || !workflow.phaseOrder.includes(action.proposedValue))) {
+        throw new MigrationValidationError('Proposed currentPhase must exist in the task workflow.');
+      }
+    }
   }
 
   private buildReport(plan: MigrationPlan, actionReports: MigrationActionReport[]): MigrationReport {
