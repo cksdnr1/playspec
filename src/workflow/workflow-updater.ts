@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { parse } from 'yaml';
+import { WorkflowDefinitionSchema } from '#core/schemas.js';
+import { TemplateRenderer } from '#template/template-renderer.js';
 import { readFile, copyFile, mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { WorkflowRegistry, assertSafeWorkflowId } from './workflow-registry.js';
@@ -21,7 +24,7 @@ export class WorkflowUpdater {
     await readFile(path.join(root, 'workflow.yaml'));
     return withWriteLock(root, async () => {
       const builtinRoot = path.join(registry.getBuiltinRoot(), id);
-      const builtin = await new WorkflowLoader(this.workspaceRoot).resolveFromDirectory(builtinRoot);
+      await new WorkflowLoader(this.workspaceRoot).resolveFromDirectory(builtinRoot);
       const desired = await workflowFiles(builtinRoot);
       const installed = await workflowFiles(root);
       let baseline: Record<string, string> = {};
@@ -40,15 +43,26 @@ export class WorkflowUpdater {
       const report = { workflowId: id, root, files, conflicts, applied: false, backupPath: undefined as string | undefined };
       if (!options.apply) return report;
       if (conflicts.length) throw new Error(`Customized workflow files require explicit --accept-customized paths: ${conflicts.join(', ')}`);
+      const changes = selectedFiles.filter(file => file.status !== 'unchanged');
+      const backupRoot = await resolveContainedPath(root, `.playspec-updates/${Date.now()}-${randomUUID()}`);
+      await mkdir(backupRoot, { recursive: true });
+      const candidateRoot = path.join(backupRoot, 'candidate');
+      for (const file of new Set([...Object.keys(installed), ...selectedFiles.map(item => item.path)])) {
+        const sourceRoot = selection.has(file) && Object.hasOwn(desired, file) ? builtinRoot : root;
+        await writeTextFileAtomic(path.join(candidateRoot, file), await readFile(await resolveContainedPath(sourceRoot, file)));
+      }
+      const candidate = WorkflowDefinitionSchema.parse(parse(await readFile(path.join(candidateRoot, 'workflow.yaml'), 'utf8')));
+      if (candidate.id !== id) throw new Error('Candidate workflow ID mismatch.');
+      const candidateTemplates = path.join(candidateRoot, 'templates');
+      await new WorkflowLoader(this.workspaceRoot).validateWorkflowDefinition(candidate, candidateTemplates);
+      const renderer = new TemplateRenderer(this.workspaceRoot);
+      for (const phase of Object.values(candidate.phases)) await renderer.discoverPlaceholderNames(phase.template, candidateTemplates);
       for (const task of await new YamlTaskStore(this.workspaceRoot).listActiveTasks()) {
-        if (task.workflow === id && task.currentPhase && !builtin.definition.phaseOrder.includes(task.currentPhase)) {
+        if (task.workflow === id && task.currentPhase && !candidate.phaseOrder.includes(task.currentPhase)) {
           throw new Error(`Update removes active phase ${task.currentPhase} of task ${task.id}`);
         }
       }
-      const changes = selectedFiles.filter(file => file.status !== 'unchanged');
       if (!changes.length) { await writeWorkflowBaseline(root, nextBaseline); return { ...report, applied: true }; }
-      const backupRoot = await resolveContainedPath(root, `.playspec-updates/${Date.now()}-${randomUUID()}`);
-      await mkdir(backupRoot, { recursive: true });
       report.backupPath = backupRoot;
       await writeTextFileAtomic(path.join(backupRoot, 'report.json'), JSON.stringify(report, null, 2));
       // Prepare every backup and read all replacement bytes before mutating runtime assets.
