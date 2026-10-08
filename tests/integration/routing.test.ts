@@ -1,3 +1,4 @@
+import { writeGateReport } from '../helpers/writeGateReport.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -576,6 +577,7 @@ phases:
       await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
+      await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'approved');
       const result = await core.completePhase(taskId, { result: 'approved' });
 
       expect(result.nextPhase).toBe('implementation_plan_create');
@@ -589,6 +591,7 @@ phases:
       await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
+      await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'needs_revision');
       const result = await core.completePhase(taskId, { result: 'needs_revision' });
 
       expect(result.nextPhase).toBe('tech_spec_patch');
@@ -613,6 +616,7 @@ phases:
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
+      await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'approved');
       const result = await core.completePhase(taskId, { result: 'approved' });
 
       expect(result.nextPhase).toBe('implementation');
@@ -625,6 +629,7 @@ phases:
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
+      await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'needs_revision');
       const result = await core.completePhase(taskId, { result: 'needs_revision' });
 
       expect(result.nextPhase).toBe('implementation_plan_patch');

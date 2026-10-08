@@ -19,6 +19,9 @@ variables:
   ISSUE_BODY_UPDATE_FILE:
     default: "docs/issues/{{ISSUE_NUMBER}}/body_update.md"
     description: Replacement issue body when the issue should be clarified.
+  VALIDATION_REPORT_FILE:
+    default: "docs/issues/{{ISSUE_NUMBER}}/validation.yaml"
+    description: Structured validation report required by the engine.
 artifacts:
   validation:
     path: "{{VALIDATION_FILE}}"
@@ -52,6 +55,18 @@ phases:
       - "{{ISSUE_COMMENT_FILE}}"
       - "{{ISSUE_BODY_UPDATE_FILE}}"
     gate:
+      validation:
+        reportPath: "{{VALIDATION_REPORT_FILE}}"
+        threshold: 90
+        rubric:
+          problem_value: 25
+          impact: 20
+          scope: 20
+          architecture: 15
+          testability: 10
+          sequencing: 10
+        artifactPaths:
+          - "{{SOURCE_PROBLEM_FILE}}"
       results:
         - approved
         - rejected

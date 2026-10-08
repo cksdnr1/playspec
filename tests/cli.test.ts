@@ -1,3 +1,4 @@
+import { writeGateReport } from './helpers/writeGateReport.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { access, readdir, rm, writeFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
@@ -3134,6 +3135,7 @@ phases:
     await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
     await initGitRepo();
 
+    await writeGateReport(workspace.dir, taskId, 'tech_spec_validate', 'approved');
     const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
 
     expect(result.exitCode).toBe(0);
@@ -3199,6 +3201,7 @@ phases:
       const { taskId, store } = await createMonoTask('Mono Trans Step2 Approved');
       await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
 
+      await writeGateReport(workspace.dir, taskId, 'tech_spec_validate', 'approved');
       const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
 
       expect(result.exitCode).toBe(0);
@@ -3211,6 +3214,7 @@ phases:
       const { taskId, store } = await createMonoTask('Mono Trans Step2 Revision');
       await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
 
+      await writeGateReport(workspace.dir, taskId, 'tech_spec_validate', 'needs_revision');
       const result = await runCli(['complete', '--result', 'needs_revision'], workspace.dir);
 
       expect(result.exitCode).toBe(0);
@@ -3258,6 +3262,7 @@ phases:
       const { taskId, store } = await createMonoTask('Mono Trans Step5 Approved');
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
+      await writeGateReport(workspace.dir, taskId, 'implementation_plan_validate', 'approved');
       const result = await runCli(['complete', '--result', 'approved'], workspace.dir);
 
       expect(result.exitCode).toBe(0);
@@ -3270,6 +3275,7 @@ phases:
       const { taskId, store } = await createMonoTask('Mono Trans Step5 Revision');
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
+      await writeGateReport(workspace.dir, taskId, 'implementation_plan_validate', 'needs_revision');
       const result = await runCli(['complete', '--result', 'needs_revision'], workspace.dir);
 
       expect(result.exitCode).toBe(0);
@@ -4806,3 +4812,15 @@ phases:
     expect(result.stderr).toContain('cannot be combined with --set or --select');
   });
 });
+
+ it('requires real evidence through CLI approval and accepts a fresh report', async () => {
+  const taskId = await createActiveTask('CLI Evidence Gate', 'mono-spec');
+  const store = new YamlTaskStore(workspace.dir);
+  await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' }); await initGitRepo();
+  const missing = await runCli(['complete', '--result', 'approved', '--no-copy'], workspace.dir);
+  expect(missing.exitCode).toBe(1); expect(missing.stderr).toContain('Validation report is required');
+  expect((await store.getTask(taskId)).phaseHistory).toEqual([]);
+  await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
+  const accepted = await runCli(['complete', '--result', 'approved', '--no-copy'], workspace.dir);
+  expect(accepted.exitCode).toBe(0); expect((await store.getTask(taskId)).currentPhase).toBe('implementation_plan_create');
+ });

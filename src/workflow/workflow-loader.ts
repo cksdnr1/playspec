@@ -120,6 +120,9 @@ export class WorkflowLoader {
       }
       const results = phase.gate?.results ?? phase.results;
       const routes = phase.gate?.nextByResult ?? phase.nextByResult;
+      if (phase.gate?.validation && !results?.includes(phase.gate.validation.approvalResult ?? 'approved')) {
+        throw new Error(`Workflow ${definition.id} phase "${phaseId}" validation approvalResult must be a declared gate result.`);
+      }
       for (const result of results ?? []) {
         if (!routes || !Object.hasOwn(routes, result)) throw new MissingResultMappingError(phaseId, result);
       }

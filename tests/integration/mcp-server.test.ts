@@ -1,3 +1,4 @@
+import { writeGateReport } from '../helpers/writeGateReport.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
@@ -2339,3 +2340,16 @@ describe('MCP server process', () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+ it('enforces the evidence gate through MCP completion', async () => {
+  const { taskId, store } = await initWorkspaceWithTask('MCP Evidence Gate', 'mono-spec');
+  await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+  await execa('git', ['init', '-q'], { cwd: workspace.dir });
+  const handler = getRegisteredToolHandler('playspec_complete_phase');
+  const missing = await handler({ taskId, result: 'approved' });
+  expect(missing.isError).toBe(true); expect(missing.content[0].text).toContain('Validation report is required');
+  expect((await store.getTask(taskId)).phaseHistory).toEqual([]);
+  await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
+  const accepted = await handler({ taskId, result: 'approved' });
+  expect(accepted.isError).toBeUndefined(); expect((await store.getTask(taskId)).currentPhase).toBe('implementation_plan_create');
+ });

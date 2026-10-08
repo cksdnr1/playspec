@@ -30,6 +30,12 @@ variables:
     default: "{{RESULT_FILE}}"
   PR_BODY_FILE:
     default: "{{PR_FILE}}"
+  SPEC_VALIDATION_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/spec-validation.yaml"
+    description: Structured validation report required by the engine.
+  PLAN_VALIDATION_FILE:
+    default: "docs/features/{{FEATURE_SLUG}}/plan-validation.yaml"
+    description: Structured validation report required by the engine.
 artifacts:
   spec:
     path: "{{SPEC_FILE}}"
@@ -82,6 +88,17 @@ phases:
       - RESULT_FILE
       - PR_FILE
     gate:
+      validation:
+        reportPath: "{{SPEC_VALIDATION_FILE}}"
+        threshold: 95
+        rubric:
+          correctness: 30
+          contracts: 25
+          failure_handling: 20
+          testability: 15
+          scope: 10
+        artifactPaths:
+          - "{{SPEC_FILE}}"
       results:
         - approved
         - needs_revision
@@ -189,6 +206,18 @@ phases:
       - RESULT_FILE
       - PR_FILE
     gate:
+      validation:
+        reportPath: "{{PLAN_VALIDATION_FILE}}"
+        threshold: 95
+        rubric:
+          correctness: 30
+          contracts: 25
+          failure_handling: 20
+          testability: 15
+          scope: 10
+        artifactPaths:
+          - "{{PLAN_FILE}}"
+          - "{{SPEC_FILE}}"
       results:
         - approved
         - needs_revision
