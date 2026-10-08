@@ -3328,6 +3328,11 @@ phases:
       const { taskId, store } = await createMonoTask('Mono Trans Step10');
       await store.updateTask(taskId, { currentPhase: 'pr_prepare' });
 
+      await store.updateTask(taskId, { variables: { FEATURE_SLUG: 'mono-final' } });
+      for (const file of ['spec.md', 'plan.md', 'result.md', 'pr.md']) {
+        await writeTextFile(path.join(workspace.dir, 'docs/features/mono-final', file), `# Reviewed ${file}\n`);
+      }
+
       const result = await runCli(['complete'], workspace.dir);
 
       expect(result.exitCode).toBe(0);

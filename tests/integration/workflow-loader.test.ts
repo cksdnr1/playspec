@@ -727,7 +727,7 @@ phases:
     const workflow = await new WorkflowLoader(workspace.dir).resolve('issue-scope-create');
 
     expect(workflow.source).toBe('project');
-    expect(workflow.diagnostics).toBeUndefined();
+    expect(workflow.diagnostics).toHaveLength(1);
     expect(prompt).toContain('This stale project template must not render.');
     expect(prompt).not.toContain('Replacement Search');
   });
@@ -749,7 +749,7 @@ phases:
     }));
   });
 
-  it('does not warn when artifact output and version definitions match despite template customization', async () => {
+  it('warns about template customization even when artifact and version definitions match', async () => {
     const registry = new WorkflowRegistry(workspace.dir);
     const projectMonoSpec = path.join(registry.getProjectRoot(), 'mono-spec');
     await rm(projectMonoSpec, { recursive: true, force: true });
@@ -763,10 +763,10 @@ phases:
     const workflow = await new WorkflowLoader(workspace.dir).resolve('mono-spec');
 
     expect(workflow.source).toBe('project');
-    expect(workflow.diagnostics).toBeUndefined();
+    expect(workflow.diagnostics).toHaveLength(1);
     expect(workflow.shadow).toEqual(expect.objectContaining({
       shadowSource: 'project',
-      differsFromBuiltin: false,
+      differsFromBuiltin: true,
       usingBuiltinFallback: false,
     }));
   });

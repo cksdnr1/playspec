@@ -4,13 +4,13 @@ import { parse as parseYaml } from 'yaml';
 import { WorkflowDefinitionSchema } from './workflow-schema.js';
 import { TemplateNotFoundError, MissingResultMappingError, InvalidRoutingTargetError } from '#core/errors.js';
 import type {
-  PhaseDefinition,
   ResolvedWorkflow,
   WorkflowDefinition,
   WorkflowDiagnostic,
   WorkflowDiagnosticDetail,
 } from '#core/types.js';
 import { readTextFile } from '#utils/fs.js';
+import { workflowFiles } from './workflow-manifest.js';
 import { assertSafeWorkflowId, WorkflowLocation, WorkflowRegistry } from './workflow-registry.js';
 
 export class WorkflowLoader {
@@ -186,6 +186,11 @@ export class WorkflowLoader {
 
     const builtin = await this.loadResolvedLocation(selected.id, builtinLocation);
     const details = this.compareDiagnosticFields(selected.definition, builtin.definition);
+    const activeFiles = await workflowFiles(selected.rootDir);
+    const builtinFiles = await workflowFiles(builtin.rootDir);
+    for (const file of new Set([...Object.keys(activeFiles), ...Object.keys(builtinFiles)])) {
+      if (file !== 'workflow.yaml') this.addValueDifference(details, `files.${file}`, activeFiles[file], builtinFiles[file]);
+    }
     const differsFromBuiltin = details.length > 0;
     const diagnostics = differsFromBuiltin
       ? [this.createBuiltinShadowDiagnostic(selected, builtin, details)]
@@ -211,18 +216,10 @@ export class WorkflowLoader {
     this.addValueDifference(details, 'version', active.version, builtin.version);
     this.addValueDifference(details, 'artifacts', active.artifacts ?? {}, builtin.artifacts ?? {});
 
+    this.addValueDifference(details, 'definition', { ...active, builtinShadow: undefined }, { ...builtin, builtinShadow: undefined });
     const phaseIds = [...new Set([...Object.keys(active.phases), ...Object.keys(builtin.phases)])].sort();
-    for (const phaseId of phaseIds) {
-      const activeOutputs = this.phaseOutputs(active.phases[phaseId]);
-      const builtinOutputs = this.phaseOutputs(builtin.phases[phaseId]);
-      this.addValueDifference(details, `phases.${phaseId}.outputs`, activeOutputs, builtinOutputs);
-    }
-
+    for (const phaseId of phaseIds) this.addValueDifference(details, `phases.${phaseId}.outputs`, active.phases[phaseId]?.outputs ?? [], builtin.phases[phaseId]?.outputs ?? []);
     return details;
-  }
-
-  private phaseOutputs(phase: PhaseDefinition | undefined): string[] {
-    return phase?.outputs ?? [];
   }
 
   private addValueDifference(
@@ -266,7 +263,7 @@ export class WorkflowLoader {
   ): WorkflowDiagnostic {
     return {
       code: 'workflow_builtin_shadow_artifact_drift',
-      message: `Workflow "${active.id}" from ${active.source} shadows a built-in workflow with different artifact/output or version definitions.`,
+      message: `Workflow "${active.id}" from ${active.source} shadows a built-in workflow with different workflow policies, artifacts or template contents.`,
       workflowId: active.id,
       activeSource: active.source as Exclude<ResolvedWorkflow['source'], 'builtin'>,
       activeRootDir: active.rootDir,
