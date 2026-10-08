@@ -1,3 +1,5 @@
+import { assertApprovalFreshness } from '#core/validation-gate.js';
+import { CompletionLedgerStore } from '#storage/completion-ledger-store.js';
 import path from 'node:path';
 import * as readline from 'node:readline';
 import { stringify as stringifyYaml } from 'yaml';
@@ -418,6 +420,10 @@ export class MigrationRunner {
       if (action.proposedValue !== null && (typeof action.proposedValue !== 'string' || !workflow.phaseOrder.includes(action.proposedValue))) {
         throw new MigrationValidationError('Proposed currentPhase must exist in the task workflow.');
       }
+      if (action.proposedValue === null && workflow.phaseOrder.some(id => workflow.phases[id].gate?.validation)) {
+        throw new MigrationValidationError('Terminal phase changes require normal workflow completion.');
+      }
+      if (typeof action.proposedValue === 'string') await assertApprovalFreshness(this.workspaceRoot, task, workflow, action.proposedValue, await new CompletionLedgerStore(this.workspaceRoot).listEvents(task.id), true);
     }
   }
 

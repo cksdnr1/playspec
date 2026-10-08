@@ -613,6 +613,9 @@ phases:
 
     it('routes implementation plan validate approved to implementation, skipping patch', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+      await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
+      await new PlaySpecCore(workspace.dir, store).completePhase(taskId, { result: 'approved' });
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
@@ -626,6 +629,9 @@ phases:
 
     it('routes implementation plan validate needs_revision to implementation_plan_patch', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+      await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
+      await new PlaySpecCore(workspace.dir, store).completePhase(taskId, { result: 'approved' });
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       const core = new PlaySpecCore(workspace.dir, store);
@@ -639,6 +645,9 @@ phases:
 
     it('routes implementation_plan_patch (non-gated) back to implementation_plan_validate via explicit next', async () => {
       const { store, taskId } = await initMonoSpecWorkspace();
+      await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
+      await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
+      await new PlaySpecCore(workspace.dir, store).completePhase(taskId, { result: 'approved' });
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
 
       const core = new PlaySpecCore(workspace.dir, store);

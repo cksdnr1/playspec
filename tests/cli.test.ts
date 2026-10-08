@@ -3178,6 +3178,18 @@ phases:
   });
 
   describe('mono-spec workflow transitions', () => {
+    async function approvePrerequisites(taskId: string, includePlan = false) {
+      const { PlaySpecCore } = await import('#core/playspec-core.js');
+      const store = new YamlTaskStore(workspace.dir);
+      const before = await store.getTask(taskId);
+      for (const phase of includePlan ? ['tech_spec_validate', 'implementation_plan_validate'] : ['tech_spec_validate']) {
+        await store.updateTask(taskId, { currentPhase: phase });
+        await writeGateReport(workspace.dir, taskId, phase);
+        await new PlaySpecCore(workspace.dir, store).completePhase(taskId, { result: 'approved' });
+      }
+      await store.updateTask(taskId, { currentPhase: before.currentPhase });
+    }
+
     async function createMonoTask(title: string) {
       const taskId = await createActiveTask(title, 'mono-spec');
       await initGitRepo();
@@ -3248,6 +3260,7 @@ phases:
 
     it('step 4 complete routes to step 5 (implementation_plan_create -> implementation_plan_validate)', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step4');
+      await approvePrerequisites(taskId);
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_create' });
 
       const result = await runCli(['complete'], workspace.dir);
@@ -3260,6 +3273,7 @@ phases:
 
     it('step 5 complete --result approved routes to step 7, skipping step 6', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step5 Approved');
+      await approvePrerequisites(taskId);
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       await writeGateReport(workspace.dir, taskId, 'implementation_plan_validate', 'approved');
@@ -3273,6 +3287,7 @@ phases:
 
     it('step 5 complete --result needs_revision routes to step 6', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step5 Revision');
+      await approvePrerequisites(taskId);
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_validate' });
 
       await writeGateReport(workspace.dir, taskId, 'implementation_plan_validate', 'needs_revision');
@@ -3296,6 +3311,7 @@ phases:
 
     it('step 6 complete routes back to step 5 (implementation_plan_patch -> implementation_plan_validate)', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Step6');
+      await approvePrerequisites(taskId);
       await store.updateTask(taskId, { currentPhase: 'implementation_plan_patch' });
 
       const result = await runCli(['complete'], workspace.dir);
@@ -3309,6 +3325,7 @@ phases:
 
     it('step 7 routes to step 8, step 8 to step 9, step 9 to step 10', async () => {
       const { taskId, store } = await createMonoTask('Mono Trans Linear');
+      await approvePrerequisites(taskId, true);
 
       for (const [from, toPhase, toLabel] of [
         ['implementation', 'focused_tests', '8. 테스트'],
@@ -3333,6 +3350,7 @@ phases:
         await writeTextFile(path.join(workspace.dir, 'docs/features/mono-final', file), `# Reviewed ${file}\n`);
       }
 
+      await approvePrerequisites(taskId, true);
       const result = await runCli(['complete'], workspace.dir);
 
       expect(result.exitCode).toBe(0);

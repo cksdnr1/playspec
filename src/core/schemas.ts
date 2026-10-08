@@ -258,7 +258,7 @@ export const CompletionFeedbackResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export const CompletionEventSchema = z.object({
-  evaluatedArtifacts: z.array(z.object({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/), snapshotFile: z.string() })).optional(),
+  evaluatedArtifacts: z.array(z.object({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/), snapshotFile: z.string() })).min(1).optional(),
   validationReportFile: z.string().optional(),
   requestId: z.string().min(1).max(128).optional(),
   id: z.string(),
