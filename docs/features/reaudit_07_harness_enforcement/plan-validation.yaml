@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "taskId": "reaudit_07_harness_enforcement",
+  "phaseId": "implementation_plan_validate",
+  "result": "approved",
+  "score": 98,
+  "blockers": [],
+  "summary": "Harness enforcement belongs to shared Core so CLI/MCP cannot accidentally omit it. Prompt inspection must stay available for diagnosis. Reset remains explicit and audited in resetEvents; approval policy for who may reset is outside this change.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 30,
+      "max": 30,
+      "evidence": [
+        "src/core/playspec-core.ts:644",
+        "src/core/playspec-core.ts:309",
+        "src/core/playspec-core.ts:682"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "contracts",
+      "earned": 24,
+      "max": 25,
+      "evidence": [
+        "src/core/playspec-core.ts:644",
+        "src/core/playspec-core.ts:309",
+        "src/core/playspec-core.ts:682"
+      ],
+      "deductions": "Noncurrent attempt recording intentionally becomes an error."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "src/core/playspec-core.ts:644",
+        "src/core/playspec-core.ts:309",
+        "src/core/playspec-core.ts:682"
+      ],
+      "deductions": "Reset authorization remains an operator policy."
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "src/core/playspec-core.ts:644",
+        "src/core/playspec-core.ts:309",
+        "src/core/playspec-core.ts:682"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 10,
+      "max": 10,
+      "evidence": [
+        "src/core/playspec-core.ts:644",
+        "src/core/playspec-core.ts:309",
+        "src/core/playspec-core.ts:682"
+      ],
+      "deductions": ""
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/reaudit_07_harness_enforcement/plan.md",
+      "sha256": "615b0562410bfd257c8940aaa8da10a5d2d0079ff41cc1016ae22843d799b0de"
+    },
+    {
+      "path": "docs/features/reaudit_07_harness_enforcement/spec.md",
+      "sha256": "ca4e3ffcd5cbc545f4f28fb29b7c00c9d859a1e9e45844e5163812dd896e4019"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Harness enforcement belongs to shared Core so CLI/MCP cannot accidentally omit it. Prompt inspection must stay available for diagnosis. Reset remains explicit and audited in resetEvents; approval policy for who may reset is outside this change."
+  }
+}

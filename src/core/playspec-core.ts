@@ -332,6 +332,9 @@ export class PlaySpecCore {
       throw new PhaseAdvancedError(options.expectedPhaseId, phaseId);
     }
 
+    const harness = await this.readHarnessRecord(task, phaseId);
+    if (harness.blocked || harness.circuitBreaker) throw new HarnessBlockedError(task.id, phaseId);
+
     const taskRoot = this.getAbsoluteTaskRoot(task);
     const validationTemplate = this.resolveValidationTemplate(workflow, definition);
 
@@ -646,12 +649,12 @@ export class PlaySpecCore {
     result: HarnessAttemptResult,
     reason?: string
   ): Promise<HarnessRecord> {
-    const task = await this.taskStore.getTask(taskId);
-    this.assertTaskIsActive(task);
-    const resolvedPhaseId = await this.resolveHarnessPhaseId(task, phaseId);
-    const taskRoot = this.getAbsoluteTaskRoot(task);
-
-    return withWriteLock(taskRoot, async () => {
+    return this.withTaskWriteLock(taskId, async () => {
+      const task = await this.taskStore.getTask(taskId);
+      this.assertTaskIsActive(task);
+      const currentPhase = await this.resolveHarnessPhaseId(task);
+      if (phaseId !== currentPhase) throw new PhaseAdvancedError(phaseId, currentPhase);
+      const resolvedPhaseId = currentPhase;
       const existing = await this.readHarnessRecord(task, resolvedPhaseId);
       if (existing.blocked || existing.circuitBreaker) {
         throw new HarnessBlockedError(task.id, resolvedPhaseId);
@@ -679,11 +682,9 @@ export class PlaySpecCore {
   }
 
   async resetHarness(taskId: string, reason?: string): Promise<HarnessRecord> {
-    const task = await this.taskStore.getTask(taskId);
-    this.assertTaskIsActive(task);
-    const taskRoot = this.getAbsoluteTaskRoot(task);
-
-    return withWriteLock(taskRoot, async () => {
+    return this.withTaskWriteLock(taskId, async () => {
+      const task = await this.taskStore.getTask(taskId);
+      this.assertTaskIsActive(task);
       const resolvedPhaseId = await this.resolveHarnessPhaseId(task);
       const existing = await this.readHarnessRecord(task, resolvedPhaseId);
       const now = new Date().toISOString();
