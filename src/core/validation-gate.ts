@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { resolveContainedPath } from '#utils/contained-path.js';
 import { getActiveTaskRoot } from '#utils/paths.js';
 import type { CompletionEvent, WorkflowDefinition, PhaseDefinition, TaskRecord } from './types.js';
-import { PlaySpecError } from './errors.js';
+import { ValidationGateError } from './errors.js';
 import { FeedbackCauseCategorySchema, FeedbackConfidenceSchema } from '#evolution/schemas.js';
 
 export const ValidationReportSchema = z.object({
@@ -26,12 +26,12 @@ export type ValidationReport = z.infer<typeof ValidationReportSchema>;
 export function renderArtifactPath(pattern: string, variables: Record<string, string>): string {
   const rendered = pattern.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_token, key: string) => {
     const value = variables[key.trim()];
-    if (!value || value.startsWith('(not provided)')) throw new Error(`Validation artifact variable is missing: ${key}`);
+    if (!value || value.startsWith('(not provided)')) throw new ValidationGateError('validation_report_invalid', `Validation artifact variable is missing: ${key}`);
     return value;
   });
   const normalized = rendered.replace(/\\/g, '/');
   if (!normalized || path.posix.isAbsolute(normalized) || path.win32.isAbsolute(normalized) || normalized.split('/').includes('..')) {
-    throw new Error(`Validation artifact must stay workspace-relative: ${rendered}`);
+    throw new ValidationGateError('validation_report_invalid', `Validation artifact must stay workspace-relative: ${rendered}`);
   }
   return path.posix.normalize(normalized);
 }
@@ -47,48 +47,54 @@ export async function validateGateReport(input: {
   try { content = await readFile(await resolveContainedPath(input.workspaceRoot, reportPath), 'utf8'); }
   catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      throw new PlaySpecError(`Validation report is required at ${reportPath}.`, 'Write a current evidence-bound report using docs/validation-reports.md before completing this phase.');
+      throw new ValidationGateError('validation_report_required', `Validation report is required at ${reportPath}.`, { reportPath });
     }
     throw error;
   }
-  const report = ValidationReportSchema.parse(parse(content));
+  let report: ValidationReport;
+  try { report = ValidationReportSchema.parse(parse(content)); }
+  catch (error) { throw new ValidationGateError('validation_report_invalid', `Invalid validation report: ${error instanceof Error ? error.message : String(error)}`); }
   if (report.taskId !== input.task.id || report.phaseId !== input.phaseId || report.result !== input.result) {
-    throw new Error('Validation report task, phase or result does not match this completion.');
+    throw new ValidationGateError('validation_report_invalid', 'Validation report task, phase or result does not match this completion.');
   }
   const maxima = report.dimensions.reduce((sum, dimension) => sum + dimension.max, 0);
   const earned = report.dimensions.reduce((sum, dimension) => sum + dimension.earned, 0);
   if (Math.abs(maxima - 100) > 1e-6 || Math.abs(earned - report.score) > 1e-6 ||
       new Set(report.dimensions.map(d => d.name)).size !== report.dimensions.length ||
       report.dimensions.some(d => d.earned > d.max || (d.earned < d.max && !d.deductions.trim()))) {
-    throw new Error('Validation rubric must total 100, match the score, and explain deductions.');
+    throw new ValidationGateError('validation_report_invalid', 'Validation rubric must total 100, match the score, and explain deductions.');
   }
   if (config.rubric && (report.dimensions.length !== Object.keys(config.rubric).length ||
       report.dimensions.some(d => config.rubric?.[d.name] !== d.max))) {
-    throw new Error('Validation dimensions must match the configured rubric names and maxima.');
+    throw new ValidationGateError('validation_report_invalid', 'Validation dimensions must match the configured rubric names and maxima.');
   }
   const expectedPaths = config.artifactPaths.map(pattern => renderArtifactPath(pattern, input.variables));
   if (report.artifacts.length !== expectedPaths.length || new Set(report.artifacts.map(a => a.path)).size !== expectedPaths.length) {
-    throw new Error('Validation report must identify exactly the configured evaluated artifacts.');
+    throw new ValidationGateError('validation_report_invalid', 'Validation report must identify exactly the configured evaluated artifacts.');
   }
   const artifacts: Array<{ path: string; sha256: string; bytes: Uint8Array }> = [];
   for (const artifactPath of expectedPaths) {
     const artifact = report.artifacts.find(candidate => candidate.path === artifactPath);
-    const bytes = await readFile(await resolveContainedPath(input.workspaceRoot, artifactPath));
+    let bytes: Uint8Array;
+    try { bytes = await readFile(await resolveContainedPath(input.workspaceRoot, artifactPath)); }
+    catch (error) { throw new ValidationGateError('validation_artifact_changed', `Cannot read evaluated artifact ${artifactPath}: ${error instanceof Error ? error.message : String(error)}`, { artifactPath }); }
     const hash = createHash('sha256').update(bytes).digest('hex');
-    if (!artifact || artifact.sha256 !== hash) throw new Error(`Validation report is stale or mismatched for ${artifactPath}.`);
+    if (!artifact || artifact.sha256 !== hash) throw new ValidationGateError('validation_artifact_changed', `Validation report is stale or mismatched for ${artifactPath}.`, { artifactPath });
     artifacts.push({ path: artifactPath, sha256: hash, bytes });
   }
   if (input.result === (config.approvalResult ?? 'approved') && (report.score < config.threshold || report.blockers.length > 0)) {
-    throw new Error(`Approval requires score >= ${config.threshold} and no blockers.`);
+    throw new ValidationGateError('validation_report_invalid', `Approval requires score >= ${config.threshold} and no blockers.`);
   }
   return { report, path: reportPath, content, artifacts };
 }
 
 export async function assertArtifactHashes(workspaceRoot: string, artifacts: Array<{ path: string; sha256: string }>): Promise<void> {
   for (const artifact of artifacts) {
-    const bytes = await readFile(await resolveContainedPath(workspaceRoot, artifact.path));
+    let bytes: Uint8Array;
+    try { bytes = await readFile(await resolveContainedPath(workspaceRoot, artifact.path)); }
+    catch (error) { throw new ValidationGateError('validation_artifact_changed', `Cannot read approved artifact ${artifact.path}: ${error instanceof Error ? error.message : String(error)}`, { artifactPath: artifact.path }); }
     if (createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) {
-      throw new Error(`Approved artifact changed: ${artifact.path}. Revalidate before proceeding.`);
+      throw new ValidationGateError('validation_artifact_changed', `Approved artifact changed: ${artifact.path}. Revalidate before proceeding.`, { artifactPath: artifact.path });
     }
   }
 }
@@ -104,19 +110,24 @@ export async function assertApprovalFreshness(workspaceRoot: string, task: TaskR
     if (Object.entries(gate.nextByResult ?? {}).some(([result, target]) => result !== approval && target === phaseId)) continue;
     const latest = events.filter(event => event.phase === gateId).at(-1);
     if (!latest || latest.result !== approval) {
-      if (requireApproval) throw new Error(`Validation prerequisite ${gateId} requires its latest approved decision before ${phaseId}.`);
+      if (requireApproval) throw new ValidationGateError('validation_prerequisite_required', `Validation prerequisite ${gateId} requires its latest approved decision before ${phaseId}.`, { phaseId: gateId });
       continue;
     }
     if (requireApproval && !latest.evaluatedArtifacts?.length && !latest.validationReportFile) {
-      throw new Error(`Validation prerequisite ${gateId} has no retained evidence. Revalidate before proceeding.`);
+      throw new ValidationGateError('validation_prerequisite_required', `Validation prerequisite ${gateId} has no retained evidence. Revalidate before proceeding.`, { phaseId: gateId });
     }
-    let artifacts = latest.evaluatedArtifacts;
-    if (!artifacts && latest.validationReportFile) {
-      const report = ValidationReportSchema.parse(parse(await readFile(await resolveContainedPath(getActiveTaskRoot(workspaceRoot, task.id), latest.validationReportFile), 'utf8')));
-      await assertArtifactHashes(workspaceRoot, report.artifacts);
-    } else if (artifacts) {
-      await assertArtifactHashes(workspaceRoot, artifacts);
-      await assertArtifactHashes(getActiveTaskRoot(workspaceRoot, task.id), artifacts.map(a => ({ path: a.snapshotFile, sha256: a.sha256 })));
+    try {
+      const artifacts = latest.evaluatedArtifacts;
+      if (!artifacts && latest.validationReportFile) {
+        const report = ValidationReportSchema.parse(parse(await readFile(await resolveContainedPath(getActiveTaskRoot(workspaceRoot, task.id), latest.validationReportFile), 'utf8')));
+        await assertArtifactHashes(workspaceRoot, report.artifacts);
+      } else if (artifacts) {
+        await assertArtifactHashes(workspaceRoot, artifacts);
+        await assertArtifactHashes(getActiveTaskRoot(workspaceRoot, task.id), artifacts.map(a => ({ path: a.snapshotFile, sha256: a.sha256 })));
+      }
+    } catch (error) {
+      if (error instanceof ValidationGateError) throw new ValidationGateError(error.code, error.message, { ...error.details, phaseId: gateId });
+      throw new ValidationGateError('validation_report_invalid', `Retained approval evidence for ${gateId} cannot be read: ${error instanceof Error ? error.message : String(error)}`, { phaseId: gateId });
     }
   }
 }
