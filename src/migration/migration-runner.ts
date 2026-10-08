@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
 import { PlaySpecError, TaskNotActiveError } from '#core/errors.js';
 import type { TaskRecord, TaskContextRef } from '#core/types.js';
+import { withTaskMutationLock } from '#storage/task-mutation-lock.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import { getTaskRoot } from '#utils/paths.js';
@@ -201,6 +202,16 @@ export class MigrationRunner {
     action: MigrationAction,
     options: MigrationRunnerOptions
   ): Promise<MigrationActionReport> {
+    if (isTaskMutationAction(action)) {
+      return withTaskMutationLock(this.workspaceRoot, this.taskStore, plan.targetTaskId, async () => {
+        await this.assertTaskMutationTargetIsActive(plan);
+        return this.applyActionLocked(plan, action, options);
+      });
+    }
+    return this.applyActionLocked(plan, action, options);
+  }
+
+  private async applyActionLocked(plan: MigrationPlan, action: MigrationAction, options: MigrationRunnerOptions): Promise<MigrationActionReport> {
     try {
       await this.validateTarget(plan, action);
       let backupPath: string | undefined;

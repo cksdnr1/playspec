@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "taskId": "reaudit_02_migration_lock",
+  "phaseId": "tech_spec_validate",
+  "result": "approved",
+  "score": 97,
+  "blockers": [],
+  "summary": "The shared lock must wrap the complete read/backup/write interval rather than only the final rename. Completion recovery must finish before migration observes state. Raw file actions and cross-task transactions remain separate.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 30,
+      "max": 30,
+      "evidence": [
+        "src/migration/migration-runner.ts:298",
+        "src/core/playspec-core.ts:304",
+        "src/storage/completion-transaction-store.ts:33"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "contracts",
+      "earned": 24,
+      "max": 25,
+      "evidence": [
+        "src/migration/migration-runner.ts:298",
+        "src/core/playspec-core.ts:304",
+        "src/storage/completion-transaction-store.ts:33"
+      ],
+      "deductions": "Whole-plan atomicity is intentionally not provided."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "src/migration/migration-runner.ts:298",
+        "src/core/playspec-core.ts:304",
+        "src/storage/completion-transaction-store.ts:33"
+      ],
+      "deductions": "Raw document writers have separate concurrency policy."
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "src/migration/migration-runner.ts:298",
+        "src/core/playspec-core.ts:304",
+        "src/storage/completion-transaction-store.ts:33"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 9,
+      "max": 10,
+      "evidence": [
+        "src/migration/migration-runner.ts:298",
+        "src/core/playspec-core.ts:304",
+        "src/storage/completion-transaction-store.ts:33"
+      ],
+      "deductions": "Shared helper affects Core import boundaries and needs regression checks."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/reaudit_02_migration_lock/spec.md",
+      "sha256": "d2674bac542c95455387e6fed37697fdc62cb0d0798c5a3afefb436d6bbc2589"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "The shared lock must wrap the complete read/backup/write interval rather than only the final rename. Completion recovery must finish before migration observes state. Raw file actions and cross-task transactions remain separate."
+  }
+}

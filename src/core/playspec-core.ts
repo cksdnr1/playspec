@@ -76,7 +76,7 @@ import type {
 import { getActiveTaskRoot, getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 import { resolveContainedPath } from '#utils/contained-path.js';
-import { assertSafeTaskId } from '#utils/task-id.js';
+import { withTaskMutationLock } from '#storage/task-mutation-lock.js';
 import { validateGateReport } from '#core/validation-gate.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
@@ -302,8 +302,7 @@ export class PlaySpecCore {
   }
 
   private withTaskWriteLock<T>(taskId: string, action: (recovered?: CompletionEvent) => Promise<T>): Promise<T> {
-    assertSafeTaskId(taskId);
-    return withWriteLock(getActiveTaskRoot(this.workspaceRoot, taskId), async () => action(await this.completionTransactionStore.recover(taskId)));
+    return withTaskMutationLock(this.workspaceRoot, this.taskStore, taskId, action);
   }
 
   private async completePhaseLocked(
