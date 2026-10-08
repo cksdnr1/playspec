@@ -353,6 +353,7 @@ export const FeedbackTrendStateSchema = z.object({
 });
 
 export const FeedbackThreadSchema = z.object({
+  committedObservationIds: z.array(z.string().min(1)).optional(),
   id: FeedbackThreadIdSchema,
   createdAt: z.string(),
   updatedAt: z.string(),

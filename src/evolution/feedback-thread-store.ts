@@ -19,6 +19,8 @@ import {
 export class EvolutionFeedbackThreadStore {
   constructor(private readonly workspaceRoot: string) {}
 
+  pathForThread(threadId: string): string { FeedbackThreadIdSchema.parse(threadId); return getEvolutionFeedbackThreadPath(this.workspaceRoot, threadId); }
+
   async saveThread(thread: FeedbackThread): Promise<string> {
     const validated = FeedbackThreadSchema.parse(thread) as FeedbackThread;
     const threadPath = getEvolutionFeedbackThreadPath(this.workspaceRoot, validated.id);
