@@ -324,13 +324,15 @@ MCP calls that operate on a task require either `taskId` or `sessionId`. If both
 
 Mutation-heavy MCP tools require explicit confirmation fields: `playspec_execute_git_rollback` requires `confirm: true`, and `playspec_apply_evolution_proposal` requires `approved: true`. Archive and migration operations remain CLI-only.
 
+MCP completion requires `expectedPhaseId` from the current/rendered phase and `requestId` (1–128 characters). Use a new request ID for each logical completion and reuse it for retries. A stale expected phase is rejected; a committed request ID replays its recorded completion. Existing clients must add both fields. Core/CLI callers retain their existing optional-guard compatibility.
+
 Typical MCP flow:
 
 ```text
 playspec_list_tasks
 playspec_use_session_task({ "sessionId": "codex-main", "taskId": "my_feature", "adapter": "codex" })
 playspec_render_next_prompt({ "sessionId": "codex-main" })
-playspec_complete_phase({ "sessionId": "codex-main" })
+playspec_complete_phase({ "sessionId": "codex-main", "expectedPhaseId": "tech_spec_draft", "requestId": "my_feature-draft-001" })
 ```
 
 For post-run prompt/workflow evolution, use the documented MCP-only lifecycle in

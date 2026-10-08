@@ -6,11 +6,13 @@ This is the supported MCP-only sequence for handling workflow evolution after a 
 
 1. Complete the current workflow phase.
 
-   Use `playspec_complete_phase` with `taskId` or `sessionId`. Set `withEvolutionContext: true` when the agent needs completion output to include evolution context for final review or follow-up proposal work.
+   Use `playspec_complete_phase` with `taskId` or `sessionId`, the current `expectedPhaseId`, and a unique `requestId` reused on retries. Set `withEvolutionContext: true` when the agent needs completion output to include evolution context for final review or follow-up proposal work.
 
    ```json
    {
      "sessionId": "codex-main",
+     "expectedPhaseId": "tech_spec_validate",
+     "requestId": "spec-validation-001",
      "result": "approved",
      "withEvolutionContext": true,
      "contextMode": "compact"
