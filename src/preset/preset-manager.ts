@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPlayspecRoot, getHeadPath } from '#utils/paths.js';
 import { writeTextFile } from '#utils/fs.js';
+import { workflowFiles, writeWorkflowBaseline } from '#workflow/workflow-manifest.js';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import type { WorkflowInstallDestination } from '#core/types.js';
 
@@ -115,6 +116,7 @@ export class PresetManager {
         continue;
       } catch {
         await cp(sourceDir, targetDir, { recursive: true });
+        await writeWorkflowBaseline(targetDir, await workflowFiles(sourceDir));
       }
     }
   }

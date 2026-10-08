@@ -60,6 +60,7 @@ import {
   runWorkflowSetTemplate,
   runWorkflowShow,
   runWorkflowValidate,
+  runWorkflowUpdate,
 } from './commands/workflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,6 +111,20 @@ program
 const workflowCommand = program
   .command('workflow', { hidden: true })
   .description('Manage workflow runtime assets');
+
+workflowCommand
+  .command('update <id>')
+  .description('Preview or explicitly apply built-in workflow asset updates')
+  .option('--apply', 'Apply reviewed updates with backups')
+  .option('--accept-customized <paths...>', 'Explicit conflicting asset paths to replace')
+  .option('--source <source>', 'Installed copy: project or user')
+  .option('--files <paths...>', 'Only update these built-in asset paths')
+  .action(async (id: string, opts) => {
+    try {
+      if (opts.source && !['project', 'user'].includes(opts.source)) throw new Error('source must be project or user');
+      await runWorkflowUpdate(process.cwd(), id, opts);
+    } catch (err) { handleError(err); }
+  });
 
 workflowCommand
   .command('list')

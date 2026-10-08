@@ -1262,6 +1262,7 @@ phases:
     await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'needs_revision');
     expect((await core.completePhase(taskId, { result: 'needs_revision' })).nextPhase).toBe('phase_plan_patch');
 
+    await writeFile(path.join(workspace.dir, 'docs/features/planning_routes/result.md'), '# Final planning review\nVerified specification and phase plan.\n');
     await store.updateTask(taskId, { currentPhase: 'final_review' });
     const finalResult = await core.completePhase(taskId);
     expect(finalResult.nextPhase).toBeNull();

@@ -133,3 +133,8 @@ function printWorkflowEditResult(prefix: string, result: WorkflowEditResult): vo
   console.log(`Backup: ${result.backupPath}`);
   console.log(`Report: ${result.reportPath}`);
 }
+
+export async function runWorkflowUpdate(workspaceRoot: string, id: string, opts: { apply?: boolean; acceptCustomized?: string[]; source?: 'project' | 'user'; files?: string[] }): Promise<void> {
+  const { WorkflowUpdater } = await import('#workflow/workflow-updater.js');
+  console.log(JSON.stringify(await new WorkflowUpdater(workspaceRoot).update(id, opts), null, 2));
+}

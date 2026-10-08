@@ -14,7 +14,7 @@ export async function writeTextFile(filePath: string, content: string): Promise<
 
 export async function writeTextFileAtomic(
   filePath: string,
-  content: string
+  content: string | Uint8Array
 ): Promise<void> {
   const dirPath = path.dirname(filePath);
   const fileName = path.basename(filePath);
