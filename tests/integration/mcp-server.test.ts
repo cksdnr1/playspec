@@ -2267,7 +2267,9 @@ describe('MCP render matches Core render', () => {
     });
 
     expect(result.isError).toBeUndefined();
-    expect(body['prompt']).toBe(corePrompt);
+    expect(String(body['prompt']).startsWith(corePrompt.trimEnd())).toBe(true);
+    expect(body['prompt']).toContain('## MCP execution instructions');
+    expect(corePrompt).not.toContain('## MCP execution instructions');
     expect(body['prompt']).toContain('Strict mode embeds this body.');
     const promptArtifacts = await readdir(path.join(workspace.dir, '.playspec', 'tasks', 'active', taskId, 'prompts'));
     expect(promptArtifacts.some((file) => file.endsWith('.meta.yaml'))).toBe(false);

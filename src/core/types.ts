@@ -409,6 +409,7 @@ export interface PromptRenderOptions {
 }
 
 export interface CompletePhaseOptions {
+  expectedRevision?: string;
   requestId?: string;
   withReview?: boolean;
   result?: string;
@@ -476,6 +477,8 @@ export interface CompletionOperatorGuidance {
 }
 
 export interface CompletionResult {
+  /** True when returning a previously committed request rather than a new transition. */
+  replayed?: boolean;
   taskId: TaskId;
   workflow: WorkflowId;
   completedPhase: PhaseId;

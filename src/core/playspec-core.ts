@@ -1,3 +1,6 @@
+import { buildPhaseExecutionContext, phaseExecutionRevision } from './phase-execution-context.js';
+import type { PhaseExecutionContext } from './phase-execution-context.js';
+import { CompletionRequestConflictError, MissingRequiredVariablesError, PhaseRevisionError } from './errors.js';
 import { renderCompletionFeedback } from './completion-feedback-capture.js';
 import path from 'node:path';
 import { access, stat } from 'node:fs/promises';
@@ -117,6 +120,32 @@ export class PlaySpecCore {
     this.validateCurrentPhase(task, workflow.definition);
     const { phaseId, definition } = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
     return this.renderResolvedPhase(task, workflow, phaseId, definition, options);
+  }
+
+  /** MCP prompt and execution arguments come from the same locked state. */
+  async renderPhaseExecution(taskId: string, options: PromptRenderOptions = {}, requestedPhaseId?: string): Promise<{ prompt: string; execution: PhaseExecutionContext }> {
+    return this.withTaskWriteLock(taskId, async () => {
+      const task = await this.taskStore.getTask(taskId);
+      this.assertTaskIsActive(task);
+      await this.assertContextRefsExist(task);
+      const workflow = await this.workflowLoader.resolve(task.workflow);
+      const current = this.phaseResolver.resolveCurrentPhase(task, workflow.definition);
+      const phaseId = requestedPhaseId ?? current.phaseId;
+      const definition = workflow.definition.phases[phaseId];
+      if (!definition || !workflow.definition.phaseOrder.includes(phaseId)) throw new PhaseNotFoundError(phaseId, workflow.id);
+      const finalPhase = !(definition.gate?.results ?? definition.results)?.length && this.resolveNextPhaseId(task, workflow.definition, phaseId) === null;
+      const paths = [...(definition.requiredOutputs ?? []), ...(finalPhase ? Object.values(workflow.definition.artifacts ?? {}).filter(a => a.required).map(a => a.path) : []),
+        ...(definition.gate?.validation ? [definition.gate.validation.reportPath, ...definition.gate.validation.artifactPaths] : [])];
+      const variables = this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition, paths.flatMap(extractPlaceholderNames));
+      const missingPathVariables = [...new Set(paths.flatMap(extractPlaceholderNames))].filter(name => !variables[name] || variables[name].startsWith('(not provided)'));
+      if (missingPathVariables.length) throw new MissingRequiredVariablesError(workflow.id, phaseId, missingPathVariables);
+      const execution = await buildPhaseExecutionContext({ workspaceRoot: this.workspaceRoot, task,
+        workflow: workflow.definition, phaseId, definition, variables, events: await this.completionLedgerStore.listEvents(taskId),
+        harness: await this.readHarnessRecord(task, phaseId), isCurrentPhase: phaseId === current.phaseId,
+        finalPhase });
+      const prompt = await this.renderResolvedPhase(task, workflow, phaseId, definition, options);
+      return { prompt, execution };
+    });
   }
 
   async addContextRef(taskId: string, contextPath: string): Promise<boolean> {
@@ -288,7 +317,7 @@ export class PlaySpecCore {
     return this.withTaskWriteLock(taskId, async recovered => {
       if (recovered && (options.requestId === undefined || options.requestId === recovered.requestId) &&
           (options.expectedPhaseId === undefined || options.expectedPhaseId === recovered.phase)) {
-        if (options.result !== undefined && options.result !== recovered.result) throw new Error('Recovered completion has a different result.');
+        if (options.result !== undefined && options.result !== recovered.result) throw new CompletionRequestConflictError('Recovered completion has a different result.');
         return this.replayCompletion(await this.taskStore.getTask(taskId), recovered);
       }
       return this.completePhaseLocked(taskId, options);
@@ -309,7 +338,7 @@ export class PlaySpecCore {
       const prior = (await this.completionLedgerStore.listEvents(taskId)).find(event => event.requestId === options.requestId);
       if (prior) {
         if ((options.expectedPhaseId !== undefined && options.expectedPhaseId !== prior.phase) ||
-            (options.result !== undefined && options.result !== prior.result)) throw new Error('requestId was already used for a different completion.');
+            (options.result !== undefined && options.result !== prior.result)) throw new CompletionRequestConflictError('requestId was already used for a different completion.');
         return this.replayCompletion(task, prior);
       }
     }
@@ -324,6 +353,10 @@ export class PlaySpecCore {
     // never saw. Runs before any state mutation.
     if (options.expectedPhaseId !== undefined && options.expectedPhaseId !== phaseId) {
       throw new PhaseAdvancedError(options.expectedPhaseId, phaseId);
+    }
+
+    if (options.expectedRevision !== undefined && options.expectedRevision !== phaseExecutionRevision(task, workflow.definition, await this.completionLedgerStore.listEvents(taskId))) {
+      throw new PhaseRevisionError(phaseId);
     }
 
     const harness = await this.readHarnessRecord(task, phaseId);
@@ -499,7 +532,7 @@ export class PlaySpecCore {
     const definition = workflow.definition.phases[event.phase];
     const isWorkflowComplete = event.statusAfterCompletion === 'completed' && event.nextPhase === null;
     return {
-      taskId: task.id, workflow: task.workflow, completedPhase: event.phase, completedPhaseId: event.phase,
+      replayed: true, taskId: task.id, workflow: task.workflow, completedPhase: event.phase, completedPhaseId: event.phase,
       previousPhaseId: event.previousPhase, nextPhase: event.nextPhase, nextPhaseId: event.nextPhase,
       status: event.statusAfterCompletion, taskStatus: event.statusAfterCompletion, isWorkflowComplete,
       evidenceFiles: event.evidenceFiles, snapshotFiles: event.snapshotFiles,

@@ -324,16 +324,20 @@ MCP calls that operate on a task require either `taskId` or `sessionId`. If both
 
 Mutation-heavy MCP tools require explicit confirmation fields: `playspec_execute_git_rollback` requires `confirm: true`, and `playspec_apply_evolution_proposal` requires `approved: true`. Archive and migration operations remain CLI-only.
 
-MCP completion requires `expectedPhaseId` from the current/rendered phase and `requestId` (1–128 characters). Use a new request ID for each logical completion and reuse it for retries. A stale expected phase is rejected; a committed request ID replays its recorded completion. Existing clients must add both fields. Core/CLI callers retain their existing optional-guard compatibility.
+MCP phase rendering returns `execution`: the effective phase ID, allowed result values, validation report path/schema/artifact hashes, and a ready-to-use `completion` call. Perform the phase, copy `execution.completion.arguments`, and add a reviewer-selected `result` only when `execution.resultRequired` is true. The server supplies `expectedPhaseId`, `requestId` and `expectedRevision`; keep the same arguments/result on retries. Blocked or noncurrent phases offer no completion call.
 
 Typical MCP flow:
 
 ```text
-playspec_list_tasks
-playspec_use_session_task({ "sessionId": "codex-main", "taskId": "my_feature", "adapter": "codex" })
-playspec_render_next_prompt({ "sessionId": "codex-main" })
-playspec_complete_phase({ "sessionId": "codex-main", "expectedPhaseId": "tech_spec_draft", "requestId": "my_feature-draft-001" })
+playspec_list_workflows({ "workspaceRoot": "<project>" })
+playspec_show_workflow({ "workspaceRoot": "<project>", "workflowId": "mono-spec" })
+playspec_create_task({ "workspaceRoot": "<project>", "title": "My feature", "workflow": "mono-spec" })
+playspec_render_next_prompt({ "workspaceRoot": "<project>", "taskId": "<returned taskId>" })
+# Perform the phase, then call the returned execution.completion.tool
+# with execution.completion.arguments (+ a chosen result only when required).
 ```
+
+Success responses retain text JSON and add `structuredContent`; handler errors add stable codes and scoped read-only recovery calls. See [guided MCP execution](docs/mcp-guided-execution.md) for report authoring, retries, stale state and terminal behavior. Existing clients can retain manual completion guards; new clients should use the returned arguments.
 
 For post-run prompt/workflow evolution, use the documented MCP-only lifecycle in
 [`docs/mcp-evolution-lifecycle.md`](docs/mcp-evolution-lifecycle.md). That

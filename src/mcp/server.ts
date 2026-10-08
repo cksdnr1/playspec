@@ -1,3 +1,5 @@
+import { CompletionArgumentsError, phasePromptResponse, scopedReadCall, structuredError } from './phase-guidance.js';
+import type { TaskCallContext } from './phase-guidance.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import path from 'node:path';
 import { z, ZodError } from 'zod';
@@ -30,10 +32,12 @@ import {
 } from './workspace-diagnostics.js';
 
 function ok(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+    structuredContent: data !== null && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : { data } };
 }
 
-function err(error: unknown, diagnostics?: McpWorkspaceDiagnostics) {
+function err(error: unknown, diagnostics?: McpWorkspaceDiagnostics, context?: TaskCallContext) {
+  const structuredContent = { error: structuredError(error, context ?? (diagnostics ? { workspaceRoot: diagnostics.workspaceRoot } : undefined)), ...(diagnostics ? { diagnostics } : {}) };
   if (error instanceof PlaySpecError) {
     const text = error.hint
       ? `${error.message}\n\nHint: ${error.hint}`
@@ -43,6 +47,7 @@ function err(error: unknown, diagnostics?: McpWorkspaceDiagnostics) {
         type: 'text' as const,
         text: appendDiagnostics(text, diagnostics),
       }],
+      structuredContent,
       isError: true as const,
     };
   }
@@ -52,6 +57,7 @@ function err(error: unknown, diagnostics?: McpWorkspaceDiagnostics) {
       type: 'text' as const,
       text: appendDiagnostics(text, diagnostics),
     }],
+    structuredContent,
     isError: true as const,
   };
 }
@@ -64,15 +70,15 @@ function appendDiagnostics(text: string, diagnostics?: McpWorkspaceDiagnostics):
 }
 
 const taskContext = {
-  taskId: z.string().optional(),
-  sessionId: z.string().optional(),
-  workspaceRoot: z.string().optional(),
+  taskId: z.string().optional().describe("Exact task ID or unique prefix; takes precedence over sessionId. Use the canonical taskId returned by create/render."),
+  sessionId: z.string().optional().describe("Session previously bound with playspec_use_session_task; required when taskId is omitted. Never uses CLI HEAD."),
+  workspaceRoot: z.string().optional().describe("Workspace containing .playspec. Copy from returned completion/recovery arguments when operating outside the server workspace."),
 };
 
 const taskContextWithEvolution = {
   ...taskContext,
-  withEvolutionContext: z.boolean().optional(),
-  contextMode: z.enum(['compact', 'strict', 'full']).optional(),
+  withEvolutionContext: z.boolean().optional().describe('Include optional evolution evidence context; does not apply proposals.'),
+  contextMode: z.enum(['compact', 'strict', 'full']).optional().describe('compact: concise context references; strict: embed context bodies; full: expanded context. Default compact.'),
 };
 
 const riskLevel = z.enum(['low', 'medium', 'high']);
@@ -171,7 +177,6 @@ async function expandListTaskDetails(
 
 export function buildMcpServer(workspaceRoot: string): McpServer {
   const server = new McpServer({ name: 'playspec', version: '0.1.0' });
-  const workflowRegistry = new WorkflowRegistry(workspaceRoot);
   const workflowLoader = new WorkflowLoader(workspaceRoot);
   const workflowInstaller = new WorkflowInstaller(workspaceRoot);
   const workflowEditor = new WorkflowEditor(workspaceRoot);
@@ -285,9 +290,9 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
       try {
         const { core, taskId } = await resolveScopedTask(args);
         const status = await core.getTaskStatus(taskId);
-        return ok(status);
+        return ok({ ...status, nextActions: [scopedReadCall(status.isWorkflowComplete ? 'playspec_get_task' : 'playspec_render_next_prompt', { taskId, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) })] });
       } catch (e) {
-        return err(e);
+        return err(e, undefined, { ...args, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) });
       }
     }
   );
@@ -298,9 +303,9 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     {
       workspaceRoot: z.string().optional(),
       title: z.string(),
-      workflow: z.string().optional(),
+      workflow: z.string().optional().describe('Workflow ID from playspec_list_workflows; default mono-spec. Inspect playspec_show_workflow for required variables.'),
       taskId: z.string().optional(),
-      variables: z.record(z.string()).optional(),
+      variables: z.record(z.string()).optional().describe('Values for workflow variable declarations. Required names and defaults are in playspec_show_workflow.definition.variables.'),
       sourceProblemText: z.string().optional(),
       sourceProblemFile: z.string().optional(),
       parentTaskId: z.string().optional(),
@@ -347,9 +352,10 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
           boundSession,
           diagnostics,
           nextStep: 'Call playspec_render_next_prompt with taskId or bound sessionId.',
+          nextActions: [scopedReadCall('playspec_render_next_prompt', { taskId: created.task.id, workspaceRoot: effectiveWorkspaceRoot })],
         });
       } catch (e) {
-        return err(e, diagnostics);
+        return err(e, diagnostics, { taskId: args.taskId, workspaceRoot: effectiveWorkspaceRoot });
       }
     }
   );
@@ -448,17 +454,21 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
 
   server.tool(
     'playspec_list_workflows',
-    'List available workflows with effective project/user/builtin priority',
-    async () => {
+    'List workflows for the requested workspace. Inspect playspec_show_workflow before create to discover phase and variable requirements.',
+    { workspaceRoot: taskContext.workspaceRoot },
+    async (args) => {
       try {
-        const locations = await workflowRegistry.list();
+        const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const scopedRegistry = new WorkflowRegistry(effectiveWorkspaceRoot);
+        const scopedLoader = new WorkflowLoader(effectiveWorkspaceRoot);
+        const locations = await scopedRegistry.list();
         const workflows = await Promise.all(
           locations.map(async (location) => {
-            const workflow = await workflowLoader.resolve(location.id);
+            const workflow = await scopedLoader.resolve(location.id);
             return {
               id: workflow.id,
               source: workflow.source,
-              rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
+              rootDir: toWorkspaceRelativeOrAbsolute(effectiveWorkspaceRoot, workflow.rootDir),
               name: workflow.definition.name,
               description: workflow.definition.description,
               phaseOrder: workflow.definition.phaseOrder,
@@ -467,27 +477,28 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
         );
         return ok({ workflows });
       } catch (e) {
-        return err(e);
+        return err(e, undefined, { workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) });
       }
     }
   );
 
   server.tool(
     'playspec_show_workflow',
-    'Show a workflow definition and source details',
-    { workflowId: z.string() },
+    'Show a workflow definition, variables, phases and gate requirements in the requested workspace. Use definition.variables to supply required create-task variables.',
+    { workflowId: z.string().describe('Workflow ID returned by playspec_list_workflows.'), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        const workflow = await workflowLoader.resolve(args.workflowId);
+        const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const workflow = await new WorkflowLoader(effectiveWorkspaceRoot).resolve(args.workflowId);
         return ok({
           id: workflow.id,
           source: workflow.source,
-          rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
-          templateDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.templateDir),
+          rootDir: toWorkspaceRelativeOrAbsolute(effectiveWorkspaceRoot, workflow.rootDir),
+          templateDir: toWorkspaceRelativeOrAbsolute(effectiveWorkspaceRoot, workflow.templateDir),
           definition: workflow.definition,
         });
       } catch (e) {
-        return err(e);
+        return err(e, undefined, { workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) });
       }
     }
   );
@@ -623,68 +634,74 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
 
   server.tool(
     'playspec_render_next_prompt',
-    'Render the next prompt for a task. Requires taskId or sessionId.',
+    'Render the current phase prompt and execution context. Returns phaseId, allowedResults, validation report schema/paths/hashes and server-issued execution.completion.arguments. Perform the phase, then submit those arguments; add result only when resultRequired is true.',
     taskContextWithEvolution,
     async (args) => {
+      const recoveryContext: TaskCallContext = { ...args, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) };
       try {
         const { core, taskId } = await resolveScopedTask(args);
-        const prompt = await core.renderNextPrompt(taskId, {
+        recoveryContext.taskId = taskId;
+        const rendered = await core.renderPhaseExecution(taskId, {
           withEvolutionContext: args.withEvolutionContext,
           evolutionContextSource: 'mcp',
           contextMode: args.contextMode,
         });
-        return ok({ taskId, prompt });
+        return ok(phasePromptResponse(rendered.prompt, rendered.execution, resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)));
       } catch (e) {
-        return err(e);
+        return err(e, undefined, recoveryContext);
       }
     }
   );
 
   server.tool(
     'playspec_render_phase_prompt',
-    'Render a specific workflow phase prompt. Requires taskId or sessionId plus phaseId.',
+    'Inspect a specific phase prompt and execution context. A noncurrent phase is inspection-only and returns no completion call. Requires taskId or sessionId plus phaseId.',
     { ...taskContext, phaseId: z.string(), contextMode: z.enum(['compact', 'strict', 'full']).optional() },
     async (args) => {
+      const recoveryContext: TaskCallContext = { ...args, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) };
       try {
         const { core, taskId } = await resolveScopedTask(args);
-        const prompt = await core.renderExplicitPhasePrompt(taskId, args.phaseId, {
-          contextMode: args.contextMode,
-        });
-        return ok({ taskId, phaseId: args.phaseId, prompt });
+        recoveryContext.taskId = taskId;
+        const rendered = await core.renderPhaseExecution(taskId, { contextMode: args.contextMode }, args.phaseId);
+        return ok(phasePromptResponse(rendered.prompt, rendered.execution, resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)));
       } catch (e) {
-        return err(e);
+        return err(e, undefined, recoveryContext);
       }
     }
   );
 
   server.tool(
     'playspec_complete_phase',
-    'Complete the current workflow phase. Requires taskId or sessionId. Requires expectedPhaseId from the rendered/current phase and a unique requestId for this logical completion. Reuse the same requestId on retries. If the workflow has advanced, completion is rejected.',
+    'Complete work for the rendered phase. Copy execution.completion.arguments from playspec_render_next_prompt; add result from execution.allowedResults only when required. Reuse the same arguments/result on retries. Stale phase/revision fails; re-render and perform the new phase before completing it.',
     {
       ...taskContextWithEvolution,
       withReview: z.boolean().optional(),
-      result: z.string().optional(),
-      expectedPhaseId: z.string().trim().min(1),
-      requestId: z.string().trim().min(1).max(128),
+      result: z.string().optional().describe('Required only when execution.resultRequired is true. Choose from execution.allowedResults after reviewing the phase; do not invent a result.'),
+      expectedPhaseId: z.string().trim().min(1).describe('Copy execution.completion.arguments.expectedPhaseId from the rendered phase.'),
+      expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Copy the server-issued revision from execution.completion.arguments. Detects stale same-phase state; omit only for legacy clients.'),
+      requestId: z.string().trim().min(1).max(128).describe('Copy execution.completion.arguments.requestId. Reuse unchanged on retries of the same logical completion; never reuse for another phase/result.'),
     },
     async (args) => {
+      const recoveryContext: TaskCallContext = { ...args, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) };
       try {
         const { core, taskId } = await resolveScopedTask(args);
+        recoveryContext.taskId = taskId;
         if (typeof args.expectedPhaseId !== 'string' || !args.expectedPhaseId.trim() ||
             typeof args.requestId !== 'string' || !args.requestId.trim() || args.requestId.length > 128) {
-          throw new Error('playspec_complete_phase requires expectedPhaseId and requestId. Read the current phase, choose a unique requestId, and reuse that ID when retrying this completion.');
+          throw new CompletionArgumentsError();
         }
         const completionResult = await core.completePhase(taskId, {
           withReview: args.withReview,
           result: args.result,
           expectedPhaseId: args.expectedPhaseId,
+          expectedRevision: args.expectedRevision,
           requestId: args.requestId,
           withEvolutionContext: args.withEvolutionContext,
           contextMode: args.contextMode,
         });
-        return ok(completionResult);
+        return ok({ ...completionResult, nextActions: [scopedReadCall(completionResult.replayed ? 'playspec_get_status' : completionResult.isWorkflowComplete ? 'playspec_get_task' : 'playspec_render_next_prompt', { taskId, workspaceRoot: resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot) })] });
       } catch (e) {
-        return err(e);
+        return err(e, undefined, recoveryContext);
       }
     }
   );

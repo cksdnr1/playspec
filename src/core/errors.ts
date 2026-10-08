@@ -167,7 +167,7 @@ export class UnresolvedPlaceholderError extends PlaySpecError {
 }
 
 export class MissingRequiredVariablesError extends PlaySpecError {
-  constructor(workflowId: string, phaseId: string, missingVariables: string[]) {
+  constructor(public readonly workflowId: string, public readonly phaseId: string, public readonly missingVariables: string[]) {
     super(
       `Missing required variables for workflow "${workflowId}" phase "${phaseId}": ${missingVariables.join(', ')}`,
       'Define the missing variables in task variables or remove them from workflow requiredVariables.'
@@ -410,7 +410,7 @@ export class PhaseAdvancedError extends PlaySpecError {
   constructor(expectedPhaseId: string, actualPhaseId: string | null) {
     super(
       `Workflow phase has advanced: expected "${expectedPhaseId}" but the task is now on "${actualPhaseId ?? '(completed)'}".`,
-      'The task state changed since you last read it. Re-read it with playspec_get_status and retry against the current phase.'
+      'The task state changed since you last read it. Call playspec_get_status and playspec_render_next_prompt, then perform the current phase before completing it.'
     );
     this.name = 'PhaseAdvancedError';
   }
@@ -504,5 +504,26 @@ export class AmbiguousPhaseCommandError extends PlaySpecError {
       'Use `playspec phase <phaseId>` for render-only, or `playspec phase --set <phaseId>` / `playspec phase --select` for recovery.'
     );
     this.name = 'AmbiguousPhaseCommandError';
+  }
+}
+
+export class PhaseRevisionError extends PlaySpecError {
+  constructor(phaseId: string) {
+    super(`Phase execution context is stale for "${phaseId}".`, 'Call playspec_render_next_prompt and perform the current phase using its new execution context; do not blindly retry completion.');
+    this.name = 'PhaseRevisionError';
+  }
+}
+
+export class ValidationGateError extends PlaySpecError {
+  constructor(public readonly code: 'validation_report_required' | 'validation_report_invalid' | 'validation_artifact_changed' | 'validation_prerequisite_required', message: string, public readonly details: Record<string, unknown> = {}) {
+    super(message, 'Call playspec_render_next_prompt for current validation paths, artifact hashes, report schema and allowed results. Review and correct the evidence before retrying.');
+    this.name = 'ValidationGateError';
+  }
+}
+
+export class CompletionRequestConflictError extends PlaySpecError {
+  constructor(message: string) {
+    super(message, 'The request already identifies a different committed result. Inspect playspec_get_status and render the current phase. Do not change the result when retrying a committed request.');
+    this.name = 'CompletionRequestConflictError';
   }
 }

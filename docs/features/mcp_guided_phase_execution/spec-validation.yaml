@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "taskId": "mcp_guided_phase_execution",
+  "phaseId": "tech_spec_validate",
+  "result": "approved",
+  "score": 96,
+  "blockers": [],
+  "summary": "Contract review of discoverable MCP execution context, replay protection and recovery. This is a single-reviewer rubric, not a claim of independent model evaluation.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 29,
+      "max": 30,
+      "evidence": [
+        "docs/features/mcp_guided_phase_execution/spec.md: contracts and acceptance criteria",
+        "docs/features/mcp_guided_phase_execution/plan.md: staged implementation and verification"
+      ],
+      "deductions": "Recovery guidance must never automatically complete a newly advanced phase."
+    },
+    {
+      "name": "contracts",
+      "earned": 24,
+      "max": 25,
+      "evidence": [
+        "docs/features/mcp_guided_phase_execution/spec.md: contracts and acceptance criteria",
+        "docs/features/mcp_guided_phase_execution/plan.md: staged implementation and verification"
+      ],
+      "deductions": "Legacy clients keep text JSON and optional revision guards; structured additions are additive."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "docs/features/mcp_guided_phase_execution/spec.md: contracts and acceptance criteria",
+        "docs/features/mcp_guided_phase_execution/plan.md: staged implementation and verification"
+      ],
+      "deductions": "External filesystem changes cannot be locked; hashes and runtime gate enforcement remain authoritative."
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "docs/features/mcp_guided_phase_execution/spec.md: contracts and acceptance criteria",
+        "docs/features/mcp_guided_phase_execution/plan.md: staged implementation and verification"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 9,
+      "max": 10,
+      "evidence": [
+        "docs/features/mcp_guided_phase_execution/spec.md: contracts and acceptance criteria",
+        "docs/features/mcp_guided_phase_execution/plan.md: staged implementation and verification"
+      ],
+      "deductions": "Semantic scoring independence and new model orchestration are explicitly outside this task."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/mcp_guided_phase_execution/spec.md",
+      "sha256": "63845b55c9e4eb47793151a81552fefd5ad652c82d8807ab97b611b0e89c0415"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Remaining limitations concern cross-process filesystem inputs and compatibility scope."
+  }
+}
