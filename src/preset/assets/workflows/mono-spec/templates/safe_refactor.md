@@ -30,7 +30,7 @@ Scope rules:
 
 Output requirements:
 - Apply only safe local refactors when they are clearly justified.
-- Run focused verification after refactoring.
+- If refactoring changes code, run affected verification. If no code changes are justified, reuse the recorded passing checks on the unchanged implementation.
 - Update `{{RESULT_FILE}}` with what changed, what was intentionally skipped, and why the cleanup stayed in scope.
 
 Approval/gate handling:

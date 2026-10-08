@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "include": ["evals/workflow-prompts/**/*.ts", "scripts/eval-workflow-prompts.ts"]
+}

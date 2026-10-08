@@ -39,3 +39,5 @@ After publishing or preparing the publish commands, run:
 ```bash
 playspec complete
 ```
+
+{{include:rules/global_rules.md}}

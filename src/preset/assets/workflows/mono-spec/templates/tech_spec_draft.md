@@ -32,7 +32,7 @@ Evidence-first structured facts:
 Scope rules:
 - First align on the intended user-facing use case.
 - Summarize the current implementation at a high level before deep code reading.
-- Use the available file-discovery workflow for the environment to find only the minimal directly relevant files. If a file-scanner subagent exists, use it; otherwise use targeted repository search such as `rg`, `rg --files`, or equivalent tooling.
+- Find directly relevant files with targeted repository search. Use additional tools or delegation only when available, authorized and useful for this task.
 - Read all must-read files first; read maybe-read files only when needed.
 - Do not broaden into unrelated future phases.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
@@ -43,7 +43,7 @@ Scope rules:
 
 Output requirements:
 - Update `{{SPEC_FILE}}` with the initial technical spec.
-- Include sections for Scope, Use Case alignment, high-level current implementation summary, relevant files reviewed, active entry points and bypasses, current architecture, verified behavior, problems, proposed direction, file-by-file plan, risks/open questions, and reader aids.
+- Cover the requested behavior, scope, relevant current code/evidence, changed contracts and entry points, implementation direction, acceptance/tests and material risks. Scale structure to the task; omit irrelevant sections rather than generating boilerplate.
 - Clearly separate verified code behavior, inferred behavior, and open questions.
 - Include the structured evidence table when structured artifacts drive proposed contracts, schema choices, descriptor metadata, catalog/fingerprint fields, or acceptance tests.
 - Include Mermaid diagrams only when they improve understanding and label proposed flow separately from verified flow.

@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      '#eval': path.resolve(__dirname, 'evals/workflow-prompts'),
       '#core': path.resolve(__dirname, 'src/core'),
       '#storage': path.resolve(__dirname, 'src/storage'),
       '#workflow': path.resolve(__dirname, 'src/workflow'),

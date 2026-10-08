@@ -1073,7 +1073,7 @@ phases:
 
     const core = new PlaySpecCore(workspace.dir, store);
     const validationPrompt = await core.renderExplicitPhasePrompt(taskId, 'tech_spec_validate');
-    expect(validationPrompt).toContain('Risks and questions');
+    expect(validationPrompt).toContain('Findings, most severe first');
     expect(validationPrompt).toContain('STEP_NUMBER=`2`');
     expect(validationPrompt).toContain('STEP_ID=`tech_spec_validate`');
     expect(validationPrompt).toContain('SPEC_FILE=`docs/features/migration_bug_fix/spec.md`');
@@ -1085,10 +1085,10 @@ phases:
     expect(validationPrompt).not.toContain('MASTER_PHASE_FILE');
     expect(validationPrompt).not.toContain('PHASE_SPEC_FILE');
     expect(validationPrompt).not.toContain('PHASE_HANDOFF_FILE');
-    expect(validationPrompt).toContain('Minimum remaining spec work');
-    expect(validationPrompt).toContain('Do not treat helper, interface, callback, command option, function, or data-structure existence');
-    expect(validationPrompt).toContain('active entry point -> validation -> state/data update -> persistence -> propagation/callback/event -> reset/clear -> final user-visible behavior -> tests');
-    expect(validationPrompt).toContain('Codex/the code agent');
+    expect(validationPrompt).toContain('minimal remaining artifact patches');
+    expect(validationPrompt).toContain('A helper/interface alone is not end-to-end proof.');
+    expect(validationPrompt).toContain('Trace changed behavior through validation, state/data update, persistence, propagation, reset/clear and the user-visible outcome.');
+    expect(validationPrompt).toContain('the code agent');
     expect(validationPrompt).toContain('Score: X/100');
     expect(validationPrompt).toContain('technical spec readiness score is `>= 95/100`, no blockers remain');
     expect(validationPrompt).toContain('technical spec readiness score is below `95/100`, any blocker remains');
@@ -1326,10 +1326,10 @@ phases:
     const promptResult = await runCli(['prompt', '--no-copy']);
     expect(promptResult.exitCode).toBe(0);
     expect(promptResult.stdout).toContain('Resolved phase: 2. Phase 2 — Implementation');
-    expect(promptResult.stdout).toContain('Execute Phase 2 for compatible_planning.');
+    expect(promptResult.stdout).toContain('Implement the selected planning phase according to its approved spec.');
     expect(promptResult.stdout).toContain('**Feature:** compatible_planning');
-    expect(promptResult.stdout).toContain('**Phase spec:** docs/compatible_planning/compatible_planning_phase2_implementation_spec.md');
-    expect(promptResult.stdout).toContain('**Phase handoff:** docs/compatible_planning/compatible_planning_phase2_handoff.md');
+    expect(promptResult.stdout).toContain('**Phase spec:** `docs/compatible_planning/compatible_planning_phase2_implementation_spec.md`');
+    expect(promptResult.stdout).toContain('**Phase handoff:** `docs/compatible_planning/compatible_planning_phase2_handoff.md`');
   });
 
   it('rejects unknown phase-execution workflow before creating task state or changing HEAD', async () => {

@@ -22,14 +22,16 @@
     "#migration/*.js": "./dist/migration/*.js",
     "#evolution/*.js": "./dist/evolution/*.js",
     "#viewer/*.js": "./dist/viewer/*.js",
-    "#pack/*.js": "./dist/pack/*.js"
+    "#pack/*.js": "./dist/pack/*.js",
+    "#eval/*.js": "./evals/workflow-prompts/*.ts"
   },
   "scripts": {
     "build": "tsc && tsc-alias && rm -rf dist/preset/assets && mkdir -p dist/preset/assets && cp -R src/preset/assets/. dist/preset/assets",
     "prepack": "pnpm build",
     "test:package-artifact": "vitest run tests/integration/package-artifact.test.ts",
     "test": "vitest run",
-    "dev": "tsx src/cli/index.ts"
+    "dev": "tsx src/cli/index.ts",
+    "eval:workflow-prompts": "tsx scripts/eval-workflow-prompts.ts"
   },
   "engines": {
     "node": ">=22.0.0"

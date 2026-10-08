@@ -173,3 +173,5 @@ After writing the artifacts:
 
 - Run `playspec complete --result candidates_found` only if at least one issue should be created.
 - Run `playspec complete --result no_issues` if no issue qualifies.
+
+{{include:rules/global_rules.md}}
