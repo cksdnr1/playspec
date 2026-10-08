@@ -69,7 +69,7 @@ export class YamlTaskStore implements TaskStore {
   async saveTask(task: TaskRecord): Promise<void> {
     const validated = TaskRecordSchema.parse(task);
     const yamlPath = this.taskYamlPath(validated.id);
-    await writeTextFile(yamlPath, stringifyYaml(validated));
+    await writeTextFileAtomic(yamlPath, stringifyYaml(validated));
   }
 
   async listActiveTasks(): Promise<TaskSummary[]> {

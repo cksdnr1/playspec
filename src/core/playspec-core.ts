@@ -8,6 +8,8 @@ import { mergeVariableDeclarations, VariableResolver } from '#template/variable-
 import { TemplateRenderer } from '#template/template-renderer.js';
 import type { TaskStore } from '#storage/task-store.js';
 import { CompletionLedgerStore } from '#storage/completion-ledger-store.js';
+import { CompletionTransactionStore } from '#storage/completion-transaction-store.js';
+import { randomUUID } from 'node:crypto';
 import {
   TaskNotActiveError,
   GitEvidenceCollectionError,
@@ -63,6 +65,7 @@ import type {
   PromptRenderOptions,
   PromptContextMode,
   CompletePhaseOptions,
+  CompletePhaseInput,
   TaskStatusSummary,
   HarnessAttemptResult,
   HarnessRecord,
@@ -89,6 +92,7 @@ export class PlaySpecCore {
   private readonly rollbackManager: RollbackManager;
   private readonly evolutionContextReader: EvolutionContextReader;
   private readonly completionLedgerStore: CompletionLedgerStore;
+  private readonly completionTransactionStore: CompletionTransactionStore;
   private readonly validationFeedbackExtractor: ValidationFeedbackExtractor;
   private readonly feedbackThreadUpdater: FeedbackThreadUpdater;
 
@@ -105,6 +109,7 @@ export class PlaySpecCore {
     this.rollbackManager = new RollbackManager(workspaceRoot, taskStore, this.gitState);
     this.evolutionContextReader = new EvolutionContextReader(workspaceRoot);
     this.completionLedgerStore = new CompletionLedgerStore(workspaceRoot);
+    this.completionTransactionStore = new CompletionTransactionStore(workspaceRoot, taskStore);
     this.validationFeedbackExtractor = new ValidationFeedbackExtractor(workspaceRoot);
     this.feedbackThreadUpdater = new FeedbackThreadUpdater(workspaceRoot);
   }
@@ -285,12 +290,19 @@ export class PlaySpecCore {
   }
 
   async completePhase(taskId: string, options: CompletePhaseOptions = {}): Promise<CompletionResult> {
-    return this.withTaskWriteLock(taskId, () => this.completePhaseLocked(taskId, options));
+    return this.withTaskWriteLock(taskId, async recovered => {
+      if (recovered && (options.requestId === undefined || options.requestId === recovered.requestId) &&
+          (options.expectedPhaseId === undefined || options.expectedPhaseId === recovered.phase)) {
+        if (options.result !== undefined && options.result !== recovered.result) throw new Error('Recovered completion has a different result.');
+        return this.replayCompletion(await this.taskStore.getTask(taskId), recovered);
+      }
+      return this.completePhaseLocked(taskId, options);
+    });
   }
 
-  private withTaskWriteLock<T>(taskId: string, action: () => Promise<T>): Promise<T> {
+  private withTaskWriteLock<T>(taskId: string, action: (recovered?: CompletionEvent) => Promise<T>): Promise<T> {
     assertSafeTaskId(taskId);
-    return withWriteLock(getActiveTaskRoot(this.workspaceRoot, taskId), action);
+    return withWriteLock(getActiveTaskRoot(this.workspaceRoot, taskId), async () => action(await this.completionTransactionStore.recover(taskId)));
   }
 
   private async completePhaseLocked(
@@ -335,7 +347,13 @@ export class PlaySpecCore {
     if (nextPhase === null) {
       await this.resolveFinalizedArtifacts(task, workflow, phaseId, definition);
     }
-    const completionArtifactSuffix = this.resolveCompletionArtifactSuffix(visitCount);
+    const ledgerVisits = (await this.completionLedgerStore.listEvents(taskId)).filter(event => event.phase === phaseId).length + 1;
+    let completionArtifactSuffix = this.resolveCompletionArtifactSuffix(ledgerVisits);
+    if (await this.anyTaskArtifactExists(task, [
+      `snapshots/phase${phaseId}${completionArtifactSuffix}_before_complete.yaml`,
+      `snapshots/phase${phaseId}${completionArtifactSuffix}_prompt.md`,
+      ...this.buildEvidenceFiles(phaseId, completionArtifactSuffix),
+    ])) completionArtifactSuffix += `_attempt_${randomUUID()}`;
 
     // Render prompt snapshot only after routing validation passes
     const contextMode = options.contextMode ?? DEFAULT_PROMPT_CONTEXT_MODE;
@@ -375,7 +393,13 @@ export class PlaySpecCore {
         snapshotFiles
       );
       const statusAfterCompletion = nextPhase === null ? 'completed' : 'active';
+      const completionInput: CompletePhaseInput = {
+        phaseId, nextPhase, reviewFile, evidenceFiles, snapshotFiles, validationTemplate,
+        stateSync: { lastKnownGitHead: currentGitHead, lastCompletedAt: completedAt },
+        rollback: { lastSafePoint: rollbackSafePoint }, result, visitCount,
+      };
       const completionEvent = await this.writeCompletionEvent({
+        completionInput,
         requestId: options.requestId,
         task,
         definition,
@@ -393,24 +417,9 @@ export class PlaySpecCore {
       });
       const updatedTask = await this.taskStore.completePhase(
         taskId,
-        {
-          phaseId,
-          nextPhase,
-          reviewFile,
-          evidenceFiles,
-          snapshotFiles,
-          validationTemplate,
-          stateSync: {
-            lastKnownGitHead: currentGitHead,
-            lastCompletedAt: completedAt,
-          },
-          rollback: {
-            lastSafePoint: rollbackSafePoint,
-          },
-          result,
-          visitCount,
-        }
+        completionInput
       );
+      await this.completionTransactionStore.clear(taskId);
 
       const evolutionContextSnapshotFile = options.withEvolutionContext
         ? await this.evolutionContextReader.writeSnapshot(task, phaseId, 'complete')
@@ -444,8 +453,14 @@ export class PlaySpecCore {
   }
 
   async listCompletionEvents(taskId: string): Promise<CompletionEvent[]> {
-    await this.taskStore.getTask(taskId);
-    return this.completionLedgerStore.listEvents(taskId);
+    return this.withTaskWriteLock(taskId, async () => {
+      await this.taskStore.getTask(taskId);
+      return this.completionLedgerStore.listEvents(taskId);
+    });
+  }
+
+  async recoverPendingCompletion(taskId: string): Promise<CompletionEvent | undefined> {
+    return this.withTaskWriteLock(taskId, async recovered => recovered);
   }
 
   private async replayCompletion(task: TaskRecord, event: CompletionEvent): Promise<CompletionResult> {
@@ -476,7 +491,7 @@ export class PlaySpecCore {
    * instead of getTask/listTasks for cheap status polling.
    */
   async getTaskStatus(taskId: string): Promise<TaskStatusSummary> {
-    const task = await this.taskStore.getTask(taskId);
+    const task = await this.withTaskWriteLock(taskId, () => this.taskStore.getTask(taskId));
     const isWorkflowComplete = task.status === 'completed' && task.currentPhase === null;
 
     // Report the resolved effective phase. A freshly created active task stores a
@@ -588,7 +603,7 @@ export class PlaySpecCore {
   }
 
   async closeTask(taskId: string): Promise<TaskRecord> {
-    return this.taskStore.archiveCompletedTask(taskId);
+    return this.withTaskWriteLock(taskId, () => this.taskStore.archiveCompletedTask(taskId));
   }
 
   async getHarnessStatus(taskId: string, phaseId?: string): Promise<HarnessRecord> {
@@ -1120,6 +1135,7 @@ export class PlaySpecCore {
   }
 
   private async writeCompletionEvent(input: {
+    completionInput: CompletePhaseInput;
     requestId?: string;
     task: TaskRecord;
     definition: PhaseDefinition;
@@ -1165,6 +1181,7 @@ export class PlaySpecCore {
       ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
     };
     const markdown = this.renderCompletionMarkdown(input.task, event);
+    await this.completionTransactionStore.prepare(input.task, event, input.completionInput, markdown);
     return this.completionLedgerStore.appendEvent(input.task, event, markdown);
   }
 

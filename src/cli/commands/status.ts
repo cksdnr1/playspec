@@ -1,4 +1,5 @@
 import { YamlTaskStore } from '#storage/yaml-task-store.js';
+import { PlaySpecCore } from '#core/playspec-core.js';
 import { ActiveTaskResolver } from '#core/active-task-resolver.js';
 import { TaskIdResolver } from '#core/task-id-resolver.js';
 import { TaskNotActiveError } from '#core/errors.js';
@@ -11,9 +12,11 @@ export async function runStatus(
   quiet?: boolean
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
-  const task = taskIdOption
+  let task = taskIdOption
     ? await store.getTask((await new TaskIdResolver(store).resolve(taskIdOption)).taskId)
     : await new ActiveTaskResolver(workspaceRoot, store).resolveTask();
+  await new PlaySpecCore(workspaceRoot, store).recoverPendingCompletion(task.id);
+  task = await store.getTask(task.id);
 
   if (!taskIdOption && task.status !== 'active') {
     throw new TaskNotActiveError(task.id, task.status);

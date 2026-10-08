@@ -12,7 +12,7 @@ import { YamlTaskStore } from '#storage/yaml-task-store.js';
 import { PlaySpecCore } from '#core/playspec-core.js';
 import { LockTimeoutError } from '#core/errors.js';
 import { writeTextFile } from '#utils/fs.js';
-import { getHeadPath } from '#utils/paths.js';
+import { getActiveTaskRoot, getHeadPath } from '#utils/paths.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(TESTS_DIR, '../../src/cli/index.ts');
@@ -399,7 +399,7 @@ describe('Phase 2 completion engine', () => {
 
     const result = await core.completePhase(taskId, { withReview: true });
     const markdown = await readFile(
-      path.join(workspace.dir, windowsStyleTaskRoot, 'completions', '0001-1.md'),
+      path.join(getActiveTaskRoot(workspace.dir, taskId), 'completions', '0001-1.md'),
       'utf-8'
     );
 

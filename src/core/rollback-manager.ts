@@ -1,5 +1,8 @@
 import { mkdir, readdir, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { getActiveTaskRoot } from '#utils/paths.js';
+import { CompletionTransactionStore } from '#storage/completion-transaction-store.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TaskRecordSchema } from '#core/schemas.js';
 import {
@@ -120,10 +123,12 @@ export class RollbackManager {
   }
 
   async rollbackStateOnly(task: TaskRecord): Promise<RollbackExecutionResult> {
-    const safePoint = getSafePoint(task);
     const taskRoot = this.getTaskRoot(task);
 
     return withWriteLock(taskRoot, async () => {
+      await new CompletionTransactionStore(this.workspaceRoot, this.taskStore).recover(task.id);
+      task = await this.taskStore.getTask(task.id);
+      const safePoint = getSafePoint(task);
       const restoredTask = await this.loadSafePointSnapshot(task, safePoint);
       const quarantinedFiles = await this.quarantineFutureArtifacts(task, safePoint);
       const updatedTask = TaskRecordSchema.parse({
@@ -138,6 +143,12 @@ export class RollbackManager {
         },
       });
 
+      await writeTextFileAtomic(
+        path.join(taskRoot, 'completions', `rollback-${randomUUID()}.yaml`),
+        stringifyYaml({ type: 'state_rollback', taskId: task.id, createdAt: updatedTask.updatedAt,
+          safePointId: safePoint.id, previousPhase: task.currentPhase, restoredPhase: updatedTask.currentPhase,
+          completionHistoryPreserved: true })
+      );
       await writeTextFileAtomic(
         path.join(taskRoot, 'task.yaml'),
         stringifyYaml(updatedTask)
@@ -236,7 +247,7 @@ export class RollbackManager {
   }
 
   private getTaskRoot(task: TaskRecord): string {
-    return path.join(this.workspaceRoot, task.paths.taskRoot);
+    return getActiveTaskRoot(this.workspaceRoot, task.id);
   }
 }
 
