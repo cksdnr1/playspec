@@ -39,15 +39,19 @@ variables:
 artifacts:
   spec:
     path: "{{SPEC_FILE}}"
+    required: true
     kind: spec
   plan:
     path: "{{PLAN_FILE}}"
+    required: true
     kind: plan
   result:
     path: "{{RESULT_FILE}}"
+    required: true
     kind: result
   pr:
     path: "{{PR_FILE}}"
+    required: true
     kind: pr
 phaseOrder:
   - tech_spec_draft

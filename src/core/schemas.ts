@@ -147,6 +147,7 @@ export const VariableDeclarationSchema = z.object({
 
 export const ArtifactDeclarationSchema = z.object({
   path: z.string(),
+  required: z.boolean().optional(),
   kind: z.string().optional(),
   description: z.string().optional(),
 });
@@ -292,6 +293,7 @@ export const PhaseDefinitionSchema = z.object({
   variables: z.record(VariableDeclarationSchema).optional(),
   requiredVariables: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
+  requiredOutputs: z.array(z.string().min(1)).optional(),
   completion: PhaseCompletionSchema.optional(),
   gate: PhaseGateSchema.optional(),
   next: z.string().nullable().optional(),
