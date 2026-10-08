@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { PlaySpecError } from '#core/errors.js';
 import { TemplateRenderer } from '#template/template-renderer.js';
+import { resolveContainedPath } from '#utils/contained-path.js';
 import { readTextFile, writeTextFile, writeTextFileAtomic } from '#utils/fs.js';
 import {
   getEvolutionApplyBackupRoot,
@@ -40,7 +41,7 @@ export class EvolutionApplyRunner {
     const proposal = await this.store.loadProposal(proposalId);
     this.assertProposalCanApply(proposal);
     const actions = this.getExecutableActions(proposal);
-    const targetFiles = this.validateActionTargets(actions);
+    const targetFiles = await this.validateActionTargets(actions);
     const beforeContents = await this.readTargetContents(targetFiles);
     const afterContents = this.simulateActions(beforeContents, actions);
 
@@ -82,7 +83,7 @@ export class EvolutionApplyRunner {
     let targetFiles: string[];
     try {
       actions = this.getExecutableActions(proposal);
-      targetFiles = this.validateActionTargets(actions);
+      targetFiles = await this.validateActionTargets(actions);
     } catch (error: unknown) {
       const report = this.buildFailureReport(
         proposal,
@@ -114,7 +115,7 @@ export class EvolutionApplyRunner {
     for (const action of actions) {
       try {
         workingContents[action.targetPath] = applyActionToContent(workingContents[action.targetPath] ?? '', action);
-        await writeTextFileAtomic(path.join(this.workspaceRoot, action.targetPath), workingContents[action.targetPath] ?? '');
+        await writeTextFileAtomic(await this.resolveAllowedTarget(action.targetPath), workingContents[action.targetPath] ?? '');
         writtenFiles.add(action.targetPath);
         actionReports.push({
           actionId: action.actionId,
@@ -211,7 +212,7 @@ export class EvolutionApplyRunner {
     });
   }
 
-  private validateActionTargets(actions: EvolutionExecutableAction[]): string[] {
+  private async validateActionTargets(actions: EvolutionExecutableAction[]): Promise<string[]> {
     const targetFiles = [...new Set(actions.map((action) => normalizeWorkspacePath(action.targetPath)))];
     for (const targetPath of targetFiles) {
       if (!ALLOWED_TARGET_PREFIXES.some((prefix) => targetPath.startsWith(prefix))) {
@@ -221,13 +222,22 @@ export class EvolutionApplyRunner {
         );
       }
     }
+    for (const targetPath of targetFiles) await this.resolveAllowedTarget(targetPath);
     return targetFiles;
+  }
+
+  private async resolveAllowedTarget(targetPath: string): Promise<string> {
+    const prefix = ALLOWED_TARGET_PREFIXES.find(root => targetPath.startsWith(root));
+    if (!prefix) throw new PlaySpecError(`Evolution target is not allow-listed: ${targetPath}`);
+    const root = await resolveContainedPath(this.workspaceRoot, prefix);
+    const target = await resolveContainedPath(this.workspaceRoot, targetPath);
+    return resolveContainedPath(root, path.relative(root, target));
   }
 
   private async readTargetContents(targetFiles: string[]): Promise<Record<string, string>> {
     const contents: Record<string, string> = {};
     for (const targetPath of targetFiles) {
-      contents[targetPath] = await readTextFile(path.join(this.workspaceRoot, targetPath));
+      contents[targetPath] = await readTextFile(await this.resolveAllowedTarget(targetPath));
     }
     return contents;
   }
@@ -284,7 +294,7 @@ export class EvolutionApplyRunner {
 
   private async validateRule(targetPath: string): Promise<EvolutionApplyValidationReport> {
     try {
-      const content = await readTextFile(path.join(this.workspaceRoot, targetPath));
+      const content = await readTextFile(await this.resolveAllowedTarget(targetPath));
       if (content.trim() === '') {
         throw new Error('Rule file must not be empty.');
       }
