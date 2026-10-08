@@ -44,18 +44,21 @@ export class FeedbackThreadUpdater {
       ...input.feedbackConfig,
       ...(input.evolutionTargetPhaseId ? { evolutionTargetPhaseId: input.evolutionTargetPhaseId } : {}),
     };
+    const dedupeKey = buildDedupeKey(input, feedbackConfig.evolutionTargetPhaseId);
+    const dedupeKeyHash = hashCanonical(dedupeKey);
+    const existing = (await this.store.listThreads()).find((thread) => thread.dedupeKeyHash === dedupeKeyHash);
+    if (input.observationId && existing?.committedObservationIds?.includes(input.observationId)) {
+      return { thread: existing, threadPath: await this.store.pathForThread(existing.id), created: false };
+    }
     const promptSnapshot = await this.snapshotHasher.hashTargetPrompt(
       input.task,
       input.workflow,
       feedbackConfig.evolutionTargetPhaseId,
       new Date(now)
     );
-    const dedupeKey = buildDedupeKey(input, feedbackConfig.evolutionTargetPhaseId);
-    const dedupeKeyHash = hashCanonical(dedupeKey);
-    const existing = (await this.store.listThreads()).find((thread) => thread.dedupeKeyHash === dedupeKeyHash);
     const resolution = this.sourceResolver.resolve(input.workflow, feedbackConfig);
     const event: FeedbackThreadEvent = {
-      eventId: buildEventId(now, input.task.id, input.phaseId),
+      eventId: input.observationId ?? buildEventId(now, input.task.id, input.phaseId),
       taskId: input.task.id,
       phaseId: input.phaseId,
       createdAt: now,
@@ -71,6 +74,7 @@ export class FeedbackThreadUpdater {
     const thread = existing
       ? updateExistingThread(existing, event, now)
       : createThread(input, event, now, dedupeKey, dedupeKeyHash, resolution);
+    if (input.observationId) thread.committedObservationIds = [...(thread.committedObservationIds ?? []), input.observationId];
     const compacted = compactThreadHistory(thread);
     const withTrend = {
       ...compacted,
