@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { resolveContainedPath } from '#utils/contained-path.js';
-import type { PhaseDefinition, TaskRecord } from './types.js';
+import { getActiveTaskRoot } from '#utils/paths.js';
+import type { CompletionEvent, WorkflowDefinition, PhaseDefinition, TaskRecord } from './types.js';
 import { PlaySpecError } from './errors.js';
 import { FeedbackCauseCategorySchema, FeedbackConfidenceSchema } from '#evolution/schemas.js';
 
@@ -38,7 +39,7 @@ export function renderArtifactPath(pattern: string, variables: Record<string, st
 export async function validateGateReport(input: {
   workspaceRoot: string; task: TaskRecord; phaseId: string; definition: PhaseDefinition;
   variables: Record<string, string>; result?: string;
-}): Promise<{ report: ValidationReport; path: string; content: string } | undefined> {
+}): Promise<{ report: ValidationReport; path: string; content: string; artifacts: Array<{ path: string; sha256: string; bytes: Uint8Array }> } | undefined> {
   const config = input.definition.gate?.validation;
   if (!config) return undefined;
   const reportPath = renderArtifactPath(config.reportPath, input.variables);
@@ -69,14 +70,47 @@ export async function validateGateReport(input: {
   if (report.artifacts.length !== expectedPaths.length || new Set(report.artifacts.map(a => a.path)).size !== expectedPaths.length) {
     throw new Error('Validation report must identify exactly the configured evaluated artifacts.');
   }
+  const artifacts: Array<{ path: string; sha256: string; bytes: Uint8Array }> = [];
   for (const artifactPath of expectedPaths) {
     const artifact = report.artifacts.find(candidate => candidate.path === artifactPath);
     const bytes = await readFile(await resolveContainedPath(input.workspaceRoot, artifactPath));
     const hash = createHash('sha256').update(bytes).digest('hex');
     if (!artifact || artifact.sha256 !== hash) throw new Error(`Validation report is stale or mismatched for ${artifactPath}.`);
+    artifacts.push({ path: artifactPath, sha256: hash, bytes });
   }
   if (input.result === (config.approvalResult ?? 'approved') && (report.score < config.threshold || report.blockers.length > 0)) {
     throw new Error(`Approval requires score >= ${config.threshold} and no blockers.`);
   }
-  return { report, path: reportPath, content };
+  return { report, path: reportPath, content, artifacts };
+}
+
+export async function assertArtifactHashes(workspaceRoot: string, artifacts: Array<{ path: string; sha256: string }>): Promise<void> {
+  for (const artifact of artifacts) {
+    const bytes = await readFile(await resolveContainedPath(workspaceRoot, artifact.path));
+    if (createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) {
+      throw new Error(`Approved artifact changed: ${artifact.path}. Revalidate before proceeding.`);
+    }
+  }
+}
+
+/** Only the latest decision for a gate can authorize consumption of its artifacts. */
+export async function assertApprovalFreshness(workspaceRoot: string, task: TaskRecord, workflow: WorkflowDefinition,
+  phaseId: string, events: CompletionEvent[]): Promise<void> {
+  const targetIndex = workflow.phaseOrder.indexOf(phaseId);
+  for (const gateId of workflow.phaseOrder.slice(0, targetIndex)) {
+    const gate = workflow.phases[gateId].gate;
+    if (!gate?.validation) continue;
+    const approval = gate.validation.approvalResult ?? 'approved';
+    if (Object.entries(gate.nextByResult ?? {}).some(([result, target]) => result !== approval && target === phaseId)) continue;
+    const latest = events.filter(event => event.phase === gateId).at(-1);
+    if (!latest || latest.result !== approval) continue; // Prerequisite authorization is enforced separately.
+    let artifacts = latest.evaluatedArtifacts;
+    if (!artifacts && latest.validationReportFile) {
+      const report = ValidationReportSchema.parse(parse(await readFile(await resolveContainedPath(getActiveTaskRoot(workspaceRoot, task.id), latest.validationReportFile), 'utf8')));
+      await assertArtifactHashes(workspaceRoot, report.artifacts);
+    } else if (artifacts) {
+      await assertArtifactHashes(workspaceRoot, artifacts);
+      await assertArtifactHashes(getActiveTaskRoot(workspaceRoot, task.id), artifacts.map(a => ({ path: a.snapshotFile, sha256: a.sha256 })));
+    }
+  }
 }

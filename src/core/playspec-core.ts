@@ -79,7 +79,7 @@ import { getActiveTaskRoot, getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 import { resolveContainedPath } from '#utils/contained-path.js';
 import { withTaskMutationLock } from '#storage/task-mutation-lock.js';
-import { validateGateReport } from '#core/validation-gate.js';
+import { validateGateReport, assertArtifactHashes, assertApprovalFreshness } from '#core/validation-gate.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 const CONTEXT_SUMMARY_MAX_LENGTH = 240;
@@ -361,6 +361,7 @@ export class PlaySpecCore {
         throw new Error(`Required output "${artifactPath}" is missing, empty, not a regular file, or outside the workspace: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
     }
+    await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId));
     const validation = await validateGateReport({ workspaceRoot: this.workspaceRoot, task, phaseId, definition,
       variables: this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition), result });
     if (nextPhase === null) {
@@ -390,6 +391,13 @@ export class PlaySpecCore {
         completionArtifactSuffix
       );
       const evidenceFiles = await this.writeEvidence(task, phaseId, completionArtifactSuffix);
+      const evaluatedArtifacts: NonNullable<CompletionEvent['evaluatedArtifacts']> = [];
+      for (const [index, artifact] of (validation?.artifacts ?? []).entries()) {
+        const snapshotFile = `reviews/phase${phaseId}${completionArtifactSuffix}_artifacts/${index}-${path.basename(artifact.path)}`;
+        await writeTextFileAtomic(path.join(taskRoot, snapshotFile), artifact.bytes);
+        evaluatedArtifacts.push({ path: artifact.path, sha256: artifact.sha256, snapshotFile });
+        evidenceFiles.push(snapshotFile);
+      }
       const validationReportFile = validation ? `reviews/phase${phaseId}${completionArtifactSuffix}_validation.yaml` : undefined;
       if (validationReportFile && validation) {
         await writeTextFileAtomic(path.join(taskRoot, validationReportFile), validation.content);
@@ -424,7 +432,11 @@ export class PlaySpecCore {
         stateSync: { lastKnownGitHead: currentGitHead, lastCompletedAt: completedAt },
         rollback: { lastSafePoint: rollbackSafePoint }, result, visitCount,
       };
+      await assertArtifactHashes(this.workspaceRoot, evaluatedArtifacts);
+      await assertArtifactHashes(taskRoot, evaluatedArtifacts.map(a => ({ path: a.snapshotFile, sha256: a.sha256 })));
+      await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId));
       const completionEvent = await this.writeCompletionEvent({
+        evaluatedArtifacts: validation ? evaluatedArtifacts : undefined,
         validationReportFile,
         feedbackRequest: feedback === undefined && definition.feedback?.enabled ? feedbackRequest : undefined,
         completionInput,
@@ -1011,6 +1023,7 @@ export class PlaySpecCore {
   }
 
   private async writeCompletionEvent(input: {
+    evaluatedArtifacts?: CompletionEvent['evaluatedArtifacts'];
     feedbackRequest?: CompletionFeedbackCaptureInput;
     validationReportFile?: string;
     completionInput: CompletePhaseInput;
@@ -1038,6 +1051,7 @@ export class PlaySpecCore {
       `${id}-${safeFilePart(input.phaseId)}${input.result ? `-${safeFilePart(eventType)}` : ''}.md`
     );
     const event: CompletionEvent = {
+      ...(input.evaluatedArtifacts ? { evaluatedArtifacts: input.evaluatedArtifacts } : {}),
       ...(input.validationReportFile ? { validationReportFile: input.validationReportFile } : {}),
       ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
       id,
