@@ -51,9 +51,15 @@ dimensions:
     max: 10
     evidence: ["docs/features/example_task/spec.md: boundaries"]
     deductions: One nonblocking documentation dependency remains.
+cause:
+  category: artifact_quality_issue
+  confidence: high
+  summary: The remaining findings concern artifact completeness; no prompt defect is established.
 artifacts:
   - path: docs/features/example_task/spec.md
     sha256: REPLACE_WITH_64_LOWERCASE_HEX_DIGITS_FROM_THE_CURRENT_FILE
 ```
 
 The example is not a valid submitted report until its identity, evidence, score and hash are replaced with actual review results. The engine checks schema, rubric arithmetic, identity, artifact freshness and the configured approval rule. It cannot establish the truth of a reviewer's semantic judgments or guarantee an independent reviewer process. Installed workflows must be explicitly updated to adopt new gate policy; custom legacy workflows remain compatible.
+
+Mono-spec feedback reads the immutable validation report snapshot and requires an explicit `cause` classification. Approval (95) and evolution feedback (90) remain separate. Legacy custom `prompt_snapshot` feedback sources are still supported for compatibility; new workflows should use `validation_report` with `gate.validation`.

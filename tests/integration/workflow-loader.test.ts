@@ -388,9 +388,9 @@ phases:
       evaluatedArtifactPhaseId: 'tech_spec_draft',
       evolutionTargetPhaseId: 'tech_spec_draft',
       scoreSource: {
-        artifactRole: 'prompt_snapshot',
+        artifactRole: 'validation_report',
         preferredBlock: 'playspecFeedback',
-        markdownFallback: true,
+        markdownFallback: false,
       },
       approval: {
         threshold: 95,

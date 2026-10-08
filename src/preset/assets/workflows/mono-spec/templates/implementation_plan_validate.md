@@ -158,51 +158,16 @@ For each:
 - Completion command:
 
 9. PlaySpec feedback signal
-Include this machine-readable block exactly once after the readiness sections. Keep approval threshold and feedback threshold separate: approval remains 95, feedback signal threshold is 90.
+Put the actual cause classification in the structured report at `{{PLAN_VALIDATION_FILE}}`, not in a prompt snapshot or instructional example. Approval remains 95; feedback signal threshold remains 90 and is computed by the engine.
 
-Default target rule:
-- For `artifact_quality_issue`, `authoring_prompt_gap`, or `workflow_policy_gap`, target the authoring prompt by using `evolutionTargetPhaseId: implementation_plan_create` and `target.path: implementation_plan_create.md`.
-- For a validator prompt gap, use `cause.category: validation_prompt_gap`, `evolutionTargetPhaseId: implementation_plan_validate`, and `target.path: implementation_plan_validate.md`.
+Required report metadata:
+- `cause.category`: exactly one of `artifact_quality_issue`, `authoring_prompt_gap`, `validation_prompt_gap`, `workflow_policy_gap`, or `extractor_or_parser_error`.
+- `cause.confidence`: one of `low`, `medium`, or `high`.
+- `cause.summary`: a concrete evidence-based explanation; a low artifact score alone does not establish a prompt defect.
+- Optional `evolutionTargetPhaseId`: `implementation_plan_create` normally; `implementation_plan_validate` only for an evidenced `validation_prompt_gap`.
+- Optional `dedupeFieldValues`: stable keys identifying the cause and suggested change when supported by evidence.
 
-```playspecFeedback
-sourcePhaseId: implementation_plan_validate
-evaluatedArtifactPhaseId: implementation_plan_create
-evolutionTargetPhaseId: implementation_plan_create
-score: X
-approval:
-  threshold: 95
-  result: approved | needs_revision
-feedback:
-  threshold: 90
-  result: positive | negative
-cause:
-  category: artifact_quality_issue | authoring_prompt_gap | validation_prompt_gap | workflow_policy_gap | extractor_or_parser_error
-  confidence: low | medium | high
-  summary: One concise sentence naming the cause.
-promptEvolution:
-  targetType: workflow_prompt_template
-  guidance: One concise prompt improvement recommendation.
-workflowSource:
-  kind: bundled_preset
-  root: src/preset/assets/workflows/mono-spec
-  rootPathKind: package_relative
-  packageName: playspec
-  presetId: default
-  version: 1
-target:
-  path: implementation_plan_create.md
-  pathKind: workflow_relative
-  writable: false
-targetWritable: false
-targetPath: src/preset/assets/workflows/mono-spec/templates/implementation_plan_create.md
-summary: One concise feedback summary.
-dedupeFieldValues:
-  targetType: workflow_prompt_template
-  targetGuidanceSection: section-name
-  causeCategory: selected-cause-category
-  suspectedCause: concise-cause-key
-  suggestedChangeFingerprint: concise-change-key
-```
+The engine reads the completed validation report snapshot. It does not read this prompt to obtain an evaluation score or copy report-supplied approval thresholds.
 
 Approval/gate handling:
 - This implementation phase plan validation step has an approval gate.

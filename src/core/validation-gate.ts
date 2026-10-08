@@ -6,8 +6,12 @@ import { z } from 'zod';
 import { resolveContainedPath } from '#utils/contained-path.js';
 import type { PhaseDefinition, TaskRecord } from './types.js';
 import { PlaySpecError } from './errors.js';
+import { FeedbackCauseCategorySchema, FeedbackConfidenceSchema } from '#evolution/schemas.js';
 
 export const ValidationReportSchema = z.object({
+  cause: z.object({ category: FeedbackCauseCategorySchema, confidence: FeedbackConfidenceSchema, summary: z.string().trim().min(1) }).optional(),
+  evolutionTargetPhaseId: z.string().min(1).optional(),
+  dedupeFieldValues: z.record(z.string()).optional(),
   version: z.literal(1), taskId: z.string().min(1), phaseId: z.string().min(1), result: z.string().min(1),
   score: z.number().min(0).max(100), blockers: z.array(z.string().trim().min(1)), summary: z.string().trim().min(1),
   dimensions: z.array(z.object({
