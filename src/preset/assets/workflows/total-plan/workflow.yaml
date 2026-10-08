@@ -25,12 +25,15 @@ variables:
 artifacts:
   totalSpec:
     path: "{{TOTAL_SPEC_FILE}}"
+    required: true
     kind: total-spec
   phasePlan:
     path: "{{PHASE_PLAN_FILE}}"
+    required: true
     kind: phase-plan
   result:
     path: "{{RESULT_FILE}}"
+    required: true
     kind: result
 phaseOrder:
   - total_spec_draft

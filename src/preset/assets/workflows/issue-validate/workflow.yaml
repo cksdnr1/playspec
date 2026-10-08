@@ -25,9 +25,11 @@ variables:
 artifacts:
   validation:
     path: "{{VALIDATION_FILE}}"
+    required: true
     kind: validation
   comment:
     path: "{{ISSUE_COMMENT_FILE}}"
+    required: true
     kind: comment
   bodyUpdate:
     path: "{{ISSUE_BODY_UPDATE_FILE}}"

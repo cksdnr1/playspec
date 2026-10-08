@@ -113,6 +113,7 @@ export interface PhaseDefinition {
   variables?: Record<string, VariableDeclaration>;
   requiredVariables?: string[];
   outputs?: string[];
+  requiredOutputs?: string[];
   completion?: {
     validationTemplate?: string;
     eventType?: string;
@@ -262,6 +263,7 @@ export interface VariableDeclaration {
 
 export interface ArtifactDeclaration {
   path: string;
+  required?: boolean;
   kind?: string;
   description?: string;
 }

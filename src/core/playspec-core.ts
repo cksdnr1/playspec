@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { access } from 'node:fs/promises';
+import { access, stat } from 'node:fs/promises';
 import { parse as parseYaml } from 'yaml';
 import { stringify as stringifyYaml } from 'yaml';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
@@ -345,6 +345,20 @@ export class PlaySpecCore {
       options.result
     );
     this.assertNextPhaseRequiredVariables(task, workflow, nextPhase);
+    const requiredPaths = [...(definition.requiredOutputs ?? []),
+      ...(nextPhase === null ? Object.values(workflow.definition.artifacts ?? {}).filter(a => a.required).map(a => a.path) : [])];
+    const artifactVariables = this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition,
+      requiredPaths.flatMap(extractPlaceholderNames));
+    for (const template of requiredPaths) {
+      const artifactPath = renderInlineTemplate(template, artifactVariables);
+      try {
+        const resolved = await resolveContainedPath(this.workspaceRoot, artifactPath);
+        const info = await stat(resolved);
+        if (!info.isFile() || info.size === 0) throw new Error('Expected a nonempty regular file');
+      } catch (cause) {
+        throw new Error(`Required output "${artifactPath}" is missing, empty, not a regular file, or outside the workspace: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
     const validation = await validateGateReport({ workspaceRoot: this.workspaceRoot, task, phaseId, definition,
       variables: this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition), result });
     if (nextPhase === null) {
