@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import type { PhaseExecutionContext } from '#core/phase-execution-context.js';
 import { MissingRequiredVariablesError, PlaySpecError, ValidationGateError } from '#core/errors.js';
 
@@ -38,6 +39,9 @@ export function structuredError(error: unknown, context?: TaskCallContext) {
     McpInvalidTaskIdError: 'invalid_task_id', McpInvalidSessionIdError: 'invalid_session_id',
     ValidationFeedbackExtractionError: 'feedback_capture_failed', ZodError: 'invalid_arguments', LockTimeoutError: 'lock_timeout',
     WorkflowNotFoundError: 'workflow_not_found',
+    ContextFileNotFoundError: 'context_file_not_found', AbsoluteContextPathError: 'invalid_context_path', ContextPathEscapesWorkspaceError: 'invalid_context_path',
+    NoRollbackSafePointError: 'rollback_safe_point_missing', RollbackSnapshotError: 'rollback_snapshot_invalid', UnsafeGitRollbackBlockedError: 'git_rollback_blocked',
+    McpConfirmationRequiredError: 'confirmation_required', McpApprovalRequiredError: 'approval_required',
     CompletionArgumentsError: 'completion_arguments_required', MissingRequiredVariablesError: 'required_variables_missing',
   };
   const nextActions: McpCall[] = [];
@@ -58,7 +62,8 @@ export function structuredError(error: unknown, context?: TaskCallContext) {
   if (error instanceof MissingRequiredVariablesError) {
     nextActions.push({ tool: 'playspec_show_workflow', arguments: { workflowId: error.workflowId, ...(context?.workspaceRoot ? { workspaceRoot: context.workspaceRoot } : {}) } });
   }
-  return { ...(error instanceof MissingRequiredVariablesError ? { details: { workflowId: error.workflowId, phaseId: error.phaseId, missingVariables: error.missingVariables } } : {}), ...(error instanceof ValidationGateError ? { details: error.details } : {}), code: error instanceof ValidationGateError ? error.code : codes[name] ?? 'operation_failed',
+  const systemCode = error instanceof Error && 'code' in error ? String(error.code) : undefined;
+  return { ...(error instanceof ZodError ? { details: { issues: error.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) } } : {}), ...(error instanceof MissingRequiredVariablesError ? { details: { workflowId: error.workflowId, phaseId: error.phaseId, missingVariables: error.missingVariables } } : {}), ...(error instanceof ValidationGateError ? { details: error.details } : {}), code: error instanceof ValidationGateError ? error.code : codes[name] ?? (systemCode === 'ENOENT' ? 'resource_not_found' : systemCode === 'EACCES' || systemCode === 'EPERM' ? 'permission_denied' : 'operation_failed'),
     message: error instanceof Error ? error.message : String(error),
     hint: error instanceof PlaySpecError ? error.hint ?? null : null,
     retryable: name === 'LockTimeoutError', nextActions,

@@ -95,3 +95,5 @@ This is the supported MCP-only sequence for handling workflow evolution after a 
 - Diff is preview-only.
 - Apply is gated by `approved: true`.
 - Workflow completion does not generate, update, skip, diff, or apply proposals by itself.
+
+All evolution calls, including feedback-thread evidence and human-edit status changes, accept `workspaceRoot`. For canonical proposal input/replacement schemas, rediscovering thread/observation IDs and scoped inspection calls, see [complete MCP tool contracts](mcp-tool-contracts.md).

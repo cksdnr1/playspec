@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "taskId": "mcp_tool_usability",
+  "phaseId": "implementation_plan_validate",
+  "result": "approved",
+  "score": 97,
+  "blockers": [],
+  "summary": "Contract review found no implementation-blocking ambiguity. Scores concern specification readiness only; this is single-reviewer evaluation with no claim of erased memory or independent model execution.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 29,
+      "max": 30,
+      "evidence": [
+        "docs/features/mcp_tool_usability/plan.md",
+        "docs/features/mcp_tool_usability/spec.md"
+      ],
+      "deductions": "No real-client usability study; acceptance uses protocol scenarios."
+    },
+    {
+      "name": "contracts",
+      "earned": 25,
+      "max": 25,
+      "evidence": [
+        "docs/features/mcp_tool_usability/plan.md",
+        "docs/features/mcp_tool_usability/spec.md"
+      ],
+      "deductions": "Full credit: Canonical schema reuse and update metadata rules are explicit."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "docs/features/mcp_tool_usability/plan.md",
+        "docs/features/mcp_tool_usability/spec.md"
+      ],
+      "deductions": "SDK pre-handler validation retains its native error envelope."
+    },
+    {
+      "name": "testability",
+      "earned": 14,
+      "max": 15,
+      "evidence": [
+        "docs/features/mcp_tool_usability/plan.md",
+        "docs/features/mcp_tool_usability/spec.md"
+      ],
+      "deductions": "Full regression and protocol tests are planned; no cross-client UI study."
+    },
+    {
+      "name": "scope",
+      "earned": 10,
+      "max": 10,
+      "evidence": [
+        "docs/features/mcp_tool_usability/plan.md",
+        "docs/features/mcp_tool_usability/spec.md"
+      ],
+      "deductions": "Full credit: Transport-only scope preserves core mutation and approval rules."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/mcp_tool_usability/plan.md",
+      "sha256": "8e5f23f726c82a939ae1ee4170b0614cdba9efe4a8e1f28ac3e67f51560eee0a"
+    },
+    {
+      "path": "docs/features/mcp_tool_usability/spec.md",
+      "sha256": "8f9c54bb465cfbf5fdc80eda7cdb2be026357f5824ffb3fa352be9a0590ed2b2"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Review limits concern protocol tests versus human usability and SDK validation envelope."
+  }
+}

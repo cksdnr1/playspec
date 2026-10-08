@@ -1709,7 +1709,7 @@ phases:
       const threadEvidenceCall = toolSpy.mock.calls.find(
         (call) => call[0] === 'playspec_append_evolution_thread_evidence'
       );
-      expect(Object.keys(threadEvidenceCall?.[2] as Record<string, unknown>)).toEqual(['proposalId', 'threadId']);
+      expect(Object.keys(threadEvidenceCall?.[2] as Record<string, unknown>)).toEqual(['proposalId', 'threadId', 'workspaceRoot']);
     } finally {
       toolSpy.mockRestore();
     }

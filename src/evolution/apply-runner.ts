@@ -23,7 +23,7 @@ import type {
   EvolutionProposal,
 } from './types.js';
 
-const ALLOWED_TARGET_PREFIXES = ['.playspec/templates/', '.playspec/rules/'];
+export const EVOLUTION_ALLOWED_TARGET_PREFIXES = ['.playspec/templates/', '.playspec/rules/'] as const;
 
 export interface EvolutionApplyRunnerOptions {
   approved?: boolean;
@@ -215,7 +215,7 @@ export class EvolutionApplyRunner {
   private async validateActionTargets(actions: EvolutionExecutableAction[]): Promise<string[]> {
     const targetFiles = [...new Set(actions.map((action) => normalizeWorkspacePath(action.targetPath)))];
     for (const targetPath of targetFiles) {
-      if (!ALLOWED_TARGET_PREFIXES.some((prefix) => targetPath.startsWith(prefix))) {
+      if (!EVOLUTION_ALLOWED_TARGET_PREFIXES.some((prefix) => targetPath.startsWith(prefix))) {
         throw new PlaySpecError(
           `Evolution apply target is not allow-listed: ${targetPath}`,
           'Allowed targets are .playspec/templates/ and .playspec/rules/ only.'
@@ -227,7 +227,7 @@ export class EvolutionApplyRunner {
   }
 
   private async resolveAllowedTarget(targetPath: string): Promise<string> {
-    const prefix = ALLOWED_TARGET_PREFIXES.find(root => targetPath.startsWith(root));
+    const prefix = EVOLUTION_ALLOWED_TARGET_PREFIXES.find(root => targetPath.startsWith(root));
     if (!prefix) throw new PlaySpecError(`Evolution target is not allow-listed: ${targetPath}`);
     const root = await resolveContainedPath(this.workspaceRoot, prefix);
     const target = await resolveContainedPath(this.workspaceRoot, targetPath);

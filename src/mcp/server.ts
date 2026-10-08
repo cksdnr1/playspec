@@ -1,3 +1,6 @@
+import { registerGuidedTool } from './tool-contract.js';
+import { EvolutionProposalSchema, HumanEditObservationStatusSchema } from '#evolution/schemas.js';
+import { EvolutionFeedbackThreadStore } from '#evolution/feedback-thread-store.js';
 import { CompletionArgumentsError, phasePromptResponse, scopedReadCall, structuredError } from './phase-guidance.js';
 import type { TaskCallContext } from './phase-guidance.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -14,7 +17,8 @@ import { WorkflowInstaller } from '#workflow/workflow-installer.js';
 import { WorkflowLoader } from '#workflow/workflow-loader.js';
 import { WorkflowRegistry } from '#workflow/workflow-registry.js';
 import { EvolutionProposalStore } from '#evolution/proposal-store.js';
-import { EvolutionApplyRunner } from '#evolution/apply-runner.js';
+import { McpApprovalRequiredError, McpConfirmationRequiredError } from './errors.js';
+import { EvolutionApplyRunner, EVOLUTION_ALLOWED_TARGET_PREFIXES } from '#evolution/apply-runner.js';
 import { appendFeedbackThreadEvidence } from '#evolution/feedback-updater.js';
 import { generateEvolutionProposal } from '#evolution/proposal-generator.js';
 import {
@@ -80,6 +84,21 @@ const taskContextWithEvolution = {
   withEvolutionContext: z.boolean().optional().describe('Include optional evolution evidence context; does not apply proposals.'),
   contextMode: z.enum(['compact', 'strict', 'full']).optional().describe('compact: concise context references; strict: embed context bodies; full: expanded context. Default compact.'),
 };
+
+// Reuse the canonical validator while publishing ownership/path semantics to clients.
+const proposalInput = EvolutionProposalSchema.extend({
+  id: EvolutionProposalSchema.shape.id.describe('Unique filesystem-safe proposal ID; use list/get to rediscover existing IDs.'),
+  revision: EvolutionProposalSchema.shape.revision.describe('Positive proposal revision; normally 1 on initial store. Updates increment it on the server.'),
+  createdAt: EvolutionProposalSchema.shape.createdAt.describe('Creation timestamp string; retained by the server on updates.'),
+  updatedAt: EvolutionProposalSchema.shape.updatedAt.describe('Last update timestamp string; replaced by the server on updates.'),
+  status: EvolutionProposalSchema.shape.status.describe('pending/refining are editable; skipped is inactive. applied/failed are apply-runner managed and cannot be initially stored.'),
+  source: EvolutionProposalSchema.shape.source.describe('Source task/archive IDs and artifact references. Artifact paths are workspace-relative and must exist; generationSource is legacy provenance, not approval.'),
+  targetFiles: EvolutionProposalSchema.shape.targetFiles.describe(`Workspace-relative target files. Executable writes are restricted to: ${EVOLUTION_ALLOWED_TARGET_PREFIXES.join(', ')}. Symlink containment is enforced.`),
+  evidenceRefs: EvolutionProposalSchema.shape.evidenceRefs.describe('Supporting files with note, addedAt timestamp and source append-evidence/generated. Paths are workspace-relative and must exist. Omitted on update preserves existing evidence.'),
+  actions: EvolutionProposalSchema.shape.actions.describe('Discriminated by type. propose_* actions are advisory; replace_file, append_section and replace_section are executable and require content. All paths are workspace-relative; section actions need sectionName. Refine advisory actions before diff/apply.'),
+  rationale: EvolutionProposalSchema.shape.rationale.describe('Evidence-based reason for the complete proposal.'),
+  review: EvolutionProposalSchema.shape.review.describe('Review metadata with unreviewed/needs_review/reviewed status. This does not replace explicit approved:true authorization for applying a reviewed diff.'),
+});
 
 const riskLevel = z.enum(['low', 'medium', 'high']);
 const harnessAttemptResult = z.enum(['success', 'failure']);
@@ -177,11 +196,6 @@ async function expandListTaskDetails(
 
 export function buildMcpServer(workspaceRoot: string): McpServer {
   const server = new McpServer({ name: 'playspec', version: '0.1.0' });
-  const workflowLoader = new WorkflowLoader(workspaceRoot);
-  const workflowInstaller = new WorkflowInstaller(workspaceRoot);
-  const workflowEditor = new WorkflowEditor(workspaceRoot);
-  const proposalStore = new EvolutionProposalStore(workspaceRoot);
-  const humanEditStore = new EvolutionHumanEditStore(workspaceRoot);
   const getScopedTaskContext = (args: { workspaceRoot?: string }) => {
     const effectiveWorkspaceRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
     const scopedTaskStore = new YamlTaskStore(effectiveWorkspaceRoot);
@@ -207,7 +221,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     };
   };
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_list_tasks',
     'List PlaySpec tasks with server-side filtering, bounded pagination, and compact summaries by default',
     {
@@ -264,7 +278,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_get_task',
     'Get full task record by taskId',
     { taskId: z.string(), workspaceRoot: z.string().optional() },
@@ -282,7 +296,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_get_status',
     'Get a lightweight status summary for a task (current phase, status, completion) without the full record. Cheap "where am I" check; prefer this over playspec_get_task / playspec_list_tasks when you only need the current phase.',
     taskContext,
@@ -297,7 +311,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_create_task',
     'Create a PlaySpec task for an installed workflow',
     {
@@ -360,7 +374,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_use_session_task',
     'Bind a task to a session so later calls can use sessionId instead of taskId',
     { sessionId: z.string(), taskId: z.string(), adapter: z.string().optional(), workspaceRoot: z.string().optional() },
@@ -380,7 +394,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_get_session_task',
     'Get the current task bound to a session',
     { sessionId: z.string(), workspaceRoot: z.string().optional() },
@@ -406,7 +420,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_link_tasks',
     'Create a direct task link. Provide sourceTaskId or taskId/sessionId for the source.',
     { ...taskContext, sourceTaskId: z.string().optional(), targetTaskId: z.string(), type: taskLinkType },
@@ -429,7 +443,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_unlink_tasks',
     'Remove direct task links. Provide sourceTaskId or taskId/sessionId for the source.',
     { ...taskContext, sourceTaskId: z.string().optional(), targetTaskId: z.string(), type: taskLinkType.optional() },
@@ -452,7 +466,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_list_workflows',
     'List workflows for the requested workspace. Inspect playspec_show_workflow before create to discover phase and variable requirements.',
     { workspaceRoot: taskContext.workspaceRoot },
@@ -482,7 +496,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_show_workflow',
     'Show a workflow definition, variables, phases and gate requirements in the requested workspace. Use definition.variables to supply required create-task variables.',
     { workflowId: z.string().describe('Workflow ID returned by playspec_list_workflows.'), workspaceRoot: taskContext.workspaceRoot },
@@ -503,17 +517,18 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_validate_workflow',
     'Validate a workflow directory',
-    { workflowPath: z.string() },
+    { workflowPath: z.string(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        const workflow = await workflowLoader.resolveFromDirectory(resolveWorkspacePath(workspaceRoot, args.workflowPath));
+        const effectiveRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const workflow = await new WorkflowLoader(effectiveRoot).resolveFromDirectory(resolveWorkspacePath(effectiveRoot, args.workflowPath));
         return ok({
           id: workflow.id,
           source: workflow.source,
-          rootDir: toWorkspaceRelativeOrAbsolute(workspaceRoot, workflow.rootDir),
+          rootDir: toWorkspaceRelativeOrAbsolute(effectiveRoot, workflow.rootDir),
           phaseOrder: workflow.definition.phaseOrder,
         });
       } catch (e) {
@@ -522,13 +537,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_install_workflow',
     'Install a user workflow directory',
-    { workflowPath: z.string() },
+    { workflowPath: z.string(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        const workflowId = await workflowInstaller.install(resolveWorkspacePath(workspaceRoot, args.workflowPath));
+        const effectiveRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const workflowId = await new WorkflowInstaller(effectiveRoot).install(resolveWorkspacePath(effectiveRoot, args.workflowPath));
         return ok({ workflowId });
       } catch (e) {
         return err(e);
@@ -536,19 +552,19 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_remove_workflow',
     'Remove a user workflow. Requires confirm true.',
-    { workflowId: z.string(), confirm: z.boolean() },
+    { workflowId: z.string(), confirm: z.boolean(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
         if (args.confirm !== true) {
-          throw new PlaySpecError(
+          throw new McpConfirmationRequiredError(
             'MCP workflow removal requires confirm: true.',
             'Inspect playspec_list_workflows or playspec_show_workflow before removing a user workflow.'
           );
         }
-        await workflowInstaller.remove(args.workflowId);
+        await new WorkflowInstaller(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).remove(args.workflowId);
         return ok({ workflowId: args.workflowId, removed: true });
       } catch (e) {
         return err(e);
@@ -556,17 +572,18 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_export_workflow',
     'Export a workflow directory',
-    { workflowId: z.string(), outDir: z.string().optional() },
+    { workflowId: z.string(), outDir: z.string().optional(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        const target = resolveWorkspacePath(workspaceRoot, args.outDir ?? args.workflowId);
-        await workflowInstaller.export(args.workflowId, target);
+        const effectiveRoot = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+        const target = resolveWorkspacePath(effectiveRoot, args.outDir ?? args.workflowId);
+        await new WorkflowInstaller(effectiveRoot).export(args.workflowId, target);
         return ok({
           workflowId: args.workflowId,
-          targetPath: toWorkspaceRelativeOrAbsolute(workspaceRoot, target),
+          targetPath: toWorkspaceRelativeOrAbsolute(effectiveRoot, target),
         });
       } catch (e) {
         return err(e);
@@ -574,65 +591,66 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_workflow_add_phase',
     'Add a phase to an installed project workflow',
     {
       workflowId: z.string(),
       afterPhaseId: z.string(),
       newPhaseId: z.string(),
+      workspaceRoot: taskContext.workspaceRoot,
       title: z.string(),
       templatePath: z.string(),
     },
     async (args) => {
       try {
-        return ok(await workflowEditor.addPhase(args));
+        return ok(await new WorkflowEditor(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).addPhase(args));
       } catch (e) {
         return err(e);
       }
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_workflow_remove_phase',
     'Remove a phase from an installed project workflow',
-    { workflowId: z.string(), phaseId: z.string(), replacement: z.string().optional() },
+    { workflowId: z.string(), phaseId: z.string(), replacement: z.string().optional(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        return ok(await workflowEditor.removePhase(args));
+        return ok(await new WorkflowEditor(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).removePhase(args));
       } catch (e) {
         return err(e);
       }
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_workflow_reorder_phase',
     'Reorder a phase in an installed project workflow',
-    { workflowId: z.string(), phaseId: z.string(), afterPhaseId: z.string() },
+    { workflowId: z.string(), phaseId: z.string(), afterPhaseId: z.string(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        return ok(await workflowEditor.reorderPhase(args));
+        return ok(await new WorkflowEditor(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).reorderPhase(args));
       } catch (e) {
         return err(e);
       }
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_workflow_set_template',
     'Set a phase template in an installed project workflow',
-    { workflowId: z.string(), phaseId: z.string(), templatePath: z.string() },
+    { workflowId: z.string(), phaseId: z.string(), templatePath: z.string(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        return ok(await workflowEditor.setTemplate(args));
+        return ok(await new WorkflowEditor(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).setTemplate(args));
       } catch (e) {
         return err(e);
       }
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_render_next_prompt',
     'Render the current phase prompt and execution context. Returns phaseId, allowedResults, validation report schema/paths/hashes and server-issued execution.completion.arguments. Perform the phase, then submit those arguments; add result only when resultRequired is true.',
     taskContextWithEvolution,
@@ -653,7 +671,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_render_phase_prompt',
     'Inspect a specific phase prompt and execution context. A noncurrent phase is inspection-only and returns no completion call. Requires taskId or sessionId plus phaseId.',
     { ...taskContext, phaseId: z.string(), contextMode: z.enum(['compact', 'strict', 'full']).optional() },
@@ -670,7 +688,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_complete_phase',
     'Complete work for the rendered phase. Copy execution.completion.arguments from playspec_render_next_prompt; add result from execution.allowedResults only when required. Reuse the same arguments/result on retries. Stale phase/revision fails; re-render and perform the new phase before completing it.',
     {
@@ -706,7 +724,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_collect_evidence',
     'Collect git evidence for the current phase. Requires taskId or sessionId.',
     taskContext,
@@ -721,7 +739,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_run_state_desync_check',
     'Check for desync between task state and git state. Requires taskId or sessionId.',
     taskContext,
@@ -736,7 +754,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_rollback_state',
     'Restore task state from the last safe point. Requires taskId or sessionId.',
     taskContext,
@@ -751,7 +769,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_add_context',
     'Add a workspace-relative context file reference to a task. Requires taskId or sessionId.',
     { ...taskContext, path: z.string() },
@@ -766,7 +784,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_set_current_phase',
     'Set current workflow phase for recovery. Requires taskId or sessionId.',
     { ...taskContext, phaseId: z.string() },
@@ -780,7 +798,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_create_snapshot',
     'Create manual task and prompt snapshots for the current phase. Requires taskId or sessionId.',
     taskContext,
@@ -794,7 +812,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_plan_rollback',
     'Preview rollback from the last safe point. Requires taskId or sessionId.',
     taskContext,
@@ -808,14 +826,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_execute_git_rollback',
     'Execute guarded git rollback. Requires taskId or sessionId and confirm true.',
     { ...taskContext, confirm: z.boolean() },
     async (args) => {
       try {
         if (args.confirm !== true) {
-          throw new PlaySpecError(
+          throw new McpConfirmationRequiredError(
             'MCP git rollback requires confirm: true.',
             'Call playspec_plan_rollback first, inspect the plan, then call with confirm: true.'
           );
@@ -828,7 +846,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_get_harness_status',
     'Get automation safety harness status. Requires taskId or sessionId.',
     { ...taskContext, phaseId: z.string().optional() },
@@ -842,7 +860,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_record_harness_attempt',
     'Record an automation harness attempt. Requires taskId or sessionId.',
     { ...taskContext, phaseId: z.string(), result: harnessAttemptResult, reason: z.string().optional() },
@@ -861,7 +879,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_reset_harness',
     'Reset blocked harness state after review. Requires taskId or sessionId.',
     { ...taskContext, reason: z.string().optional() },
@@ -875,7 +893,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_generate_evolution_proposal',
     'Generate or refine an evolution proposal from explicit evidence. Requires taskId or sessionId.',
     {
@@ -908,7 +926,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_list_evolution_proposals',
     'List stored evolution proposals',
     { workspaceRoot: z.string().optional() },
@@ -922,7 +940,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_get_evolution_proposal',
     'Get a stored evolution proposal and validation report when present',
     { proposalId: z.string(), workspaceRoot: z.string().optional() },
@@ -940,10 +958,10 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_store_evolution_proposal',
     'Validate and store an evolution proposal object',
-    { proposal: z.unknown(), workspaceRoot: z.string().optional() },
+    { proposal: proposalInput.describe("Full canonical proposal document. Only pending/refining/skipped may be stored; inspect actions type alternatives. Does not apply target changes."), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
         const scoped = getScopedEvolutionContext(args);
@@ -963,10 +981,10 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_update_evolution_proposal',
     'Update an existing pending/refining evolution proposal object',
-    { proposalId: z.string(), proposal: z.unknown(), workspaceRoot: z.string().optional() },
+    { proposalId: z.string(), proposal: proposalInput.partial({ id: true, revision: true, createdAt: true, updatedAt: true, status: true, evidenceRefs: true }).describe("Replacement proposal document, not a partial patch. Server supplies ID, incremented revision and timestamps; omitted status/evidenceRefs are preserved. Other required fields must be provided."), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
         const scoped = getScopedEvolutionContext(args);
@@ -977,7 +995,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_append_evolution_evidence',
     'Append evidence to an existing pending/refining evolution proposal',
     { proposalId: z.string(), path: z.string(), note: z.string(), workspaceRoot: z.string().optional() },
@@ -991,13 +1009,13 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_append_evolution_thread_evidence',
     'Append feedback thread evidence to an existing pending/refining evolution proposal',
-    { proposalId: z.string(), threadId: z.string() },
+    { proposalId: z.string(), threadId: z.string(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        return ok(await appendFeedbackThreadEvidence(workspaceRoot, {
+        return ok(await appendFeedbackThreadEvidence(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot), {
           proposalId: args.proposalId,
           threadId: args.threadId,
         }));
@@ -1007,7 +1025,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_skip_evolution_proposal',
     'Mark an evolution proposal skipped',
     { proposalId: z.string(), reason: z.string().optional(), workspaceRoot: z.string().optional() },
@@ -1025,7 +1043,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_diff_evolution_proposal',
     'Preview executable evolution proposal changes',
     { proposalId: z.string(), workspaceRoot: z.string().optional() },
@@ -1039,14 +1057,14 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_apply_evolution_proposal',
     'Apply an approved executable evolution proposal. Requires approved true.',
     { proposalId: z.string(), approved: z.boolean(), workspaceRoot: z.string().optional() },
     async (args) => {
       try {
         if (args.approved !== true) {
-          throw new PlaySpecError(
+          throw new McpApprovalRequiredError(
             'MCP evolution apply requires approved: true.',
             'Call playspec_diff_evolution_proposal first, inspect the diff, then call with approved: true.'
           );
@@ -1062,7 +1080,7 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_record_human_edit_observation',
     'Record a human edit observation for future evolution review',
     {
@@ -1104,18 +1122,56 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
     }
   );
 
-  server.tool(
+  registerGuidedTool(server, workspaceRoot,
     'playspec_update_human_edit_observation_status',
     'Mark a human edit observation ignored or superseded',
-    { editId: z.string(), status: humanEditStatus, reason: z.string().optional() },
+    { editId: z.string(), status: humanEditStatus, reason: z.string().optional(), workspaceRoot: taskContext.workspaceRoot },
     async (args) => {
       try {
-        const observation = await humanEditStore.markObservationStatus(args.editId, args.status, { reason: args.reason });
+        const observation = await new EvolutionHumanEditStore(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).markObservationStatus(args.editId, args.status, { reason: args.reason });
         return ok({ observation });
       } catch (e) {
         return err(e);
       }
     }
+  );
+
+  registerGuidedTool(server, workspaceRoot,
+    'playspec_list_feedback_threads',
+    'Rediscover feedback thread IDs in this workspace. Returns compact paginated summaries; use playspec_get_feedback_thread for full history and evidence before appending to a proposal.',
+    { workspaceRoot: taskContext.workspaceRoot, limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() },
+    async (args) => {
+      const root = resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot);
+      const threads = await new EvolutionFeedbackThreadStore(root).listThreads();
+      const limit = args.limit ?? 50; const offset = args.offset ?? 0;
+      const page = threads.slice(offset, offset + limit);
+      return ok({ threads: page.map(t => ({ id: t.id, sourcePhaseId: t.sourcePhaseId, targetPath: t.targetPath, updatedAt: t.updatedAt, trend: t.trend })),
+        pagination: { limit, offset, total: threads.length, returned: page.length, hasMore: offset + page.length < threads.length } });
+    }
+  );
+  registerGuidedTool(server, workspaceRoot,
+    'playspec_get_feedback_thread',
+    'Read a feedback thread by ID, including compact stored history, trend and target details. Does not create or apply a proposal.',
+    { workspaceRoot: taskContext.workspaceRoot, threadId: z.string() },
+    async (args) => ok({ thread: await new EvolutionFeedbackThreadStore(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).loadThread(args.threadId) })
+  );
+  registerGuidedTool(server, workspaceRoot,
+    'playspec_list_human_edit_observations',
+    'Rediscover human edit observation IDs in this workspace. Returns compact paginated summaries; use playspec_get_human_edit_observation before deciding status changes.',
+    { workspaceRoot: taskContext.workspaceRoot, status: HumanEditObservationStatusSchema.optional(), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() },
+    async (args) => {
+      const observations = (await new EvolutionHumanEditStore(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).listObservations()).filter(o => !args.status || o.status === args.status);
+      const limit = args.limit ?? 50; const offset = args.offset ?? 0;
+      const page = observations.slice(offset, offset + limit);
+      return ok({ observations: page.map(o => ({ id: o.id, status: o.status, targetPath: o.targetPath, summary: o.summary, updatedAt: o.updatedAt })),
+        pagination: { limit, offset, total: observations.length, returned: page.length, hasMore: offset + page.length < observations.length } });
+    }
+  );
+  registerGuidedTool(server, workspaceRoot,
+    'playspec_get_human_edit_observation',
+    'Read a human edit observation by ID, including source and before/after file references. Does not modify the observed target.',
+    { workspaceRoot: taskContext.workspaceRoot, editId: z.string() },
+    async (args) => ok({ observation: await new EvolutionHumanEditStore(resolveMcpWorkspaceRoot(workspaceRoot, args.workspaceRoot)).loadObservation(args.editId) })
   );
 
   return server;
