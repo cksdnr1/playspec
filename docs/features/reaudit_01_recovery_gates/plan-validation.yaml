@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "taskId": "reaudit_01_recovery_gates",
+  "phaseId": "implementation_plan_validate",
+  "result": "approved",
+  "score": 97,
+  "blockers": [],
+  "summary": "Review covers explicit contracts and injected failures; numerical rubric is not evidence of independent model review.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 29,
+      "max": 30,
+      "evidence": [
+        "Reproduced audit failure; acceptance tests specified in this document"
+      ],
+      "deductions": "Filesystem external writers cannot be locked by task-level locks."
+    },
+    {
+      "name": "contracts",
+      "earned": 24,
+      "max": 25,
+      "evidence": [
+        "Reproduced audit failure; acceptance tests specified in this document"
+      ],
+      "deductions": "Legacy state requires compatibility handling."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 20,
+      "max": 20,
+      "evidence": [
+        "Reproduced audit failure; acceptance tests specified in this document"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "testability",
+      "earned": 15,
+      "max": 15,
+      "evidence": [
+        "Reproduced audit failure; acceptance tests specified in this document"
+      ],
+      "deductions": ""
+    },
+    {
+      "name": "scope",
+      "earned": 9,
+      "max": 10,
+      "evidence": [
+        "Reproduced audit failure; acceptance tests specified in this document"
+      ],
+      "deductions": "No independent model execution or score calibration added."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/reaudit_01_recovery_gates/plan.md",
+      "sha256": "7b61c53a96e95bd18ebacaeabecd2e6efeff0301df358d133c139543b1b7f727"
+    },
+    {
+      "path": "docs/features/reaudit_01_recovery_gates/spec.md",
+      "sha256": "c95dfd107eb29a56a8a38f14d5fb1a3a2cfa6a8f0c6aa1018b3c22f3816a6aed"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Review covers explicit contracts and injected failures; numerical rubric is not evidence of independent model review."
+  }
+}

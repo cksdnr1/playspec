@@ -1254,6 +1254,9 @@ phases:
     await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'needs_revision');
     expect((await core.completePhase(taskId, { result: 'needs_revision' })).nextPhase).toBe('total_spec_patch');
 
+    await store.updateTask(taskId, { currentPhase: 'total_spec_validate' });
+    await writeGateReport(workspace.dir, taskId, 'total_spec_validate', 'approved');
+    await core.completePhase(taskId, { result: 'approved' });
     await store.updateTask(taskId, { currentPhase: 'phase_plan_validate' });
     await writeGateReport(workspace.dir, taskId, (await store.getTask(taskId)).currentPhase!, 'approved');
     expect((await core.completePhase(taskId, { result: 'approved' })).nextPhase).toBe('final_review');
@@ -1263,6 +1266,9 @@ phases:
     expect((await core.completePhase(taskId, { result: 'needs_revision' })).nextPhase).toBe('phase_plan_patch');
 
     await writeFile(path.join(workspace.dir, 'docs/features/planning_routes/result.md'), '# Final planning review\nVerified specification and phase plan.\n');
+    await store.updateTask(taskId, { currentPhase: 'phase_plan_validate' });
+    await writeGateReport(workspace.dir, taskId, 'phase_plan_validate', 'approved');
+    await core.completePhase(taskId, { result: 'approved' });
     await store.updateTask(taskId, { currentPhase: 'final_review' });
     const finalResult = await core.completePhase(taskId);
     expect(finalResult.nextPhase).toBeNull();

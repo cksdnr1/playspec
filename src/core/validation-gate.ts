@@ -95,7 +95,7 @@ export async function assertArtifactHashes(workspaceRoot: string, artifacts: Arr
 
 /** Only the latest decision for a gate can authorize consumption of its artifacts. */
 export async function assertApprovalFreshness(workspaceRoot: string, task: TaskRecord, workflow: WorkflowDefinition,
-  phaseId: string, events: CompletionEvent[]): Promise<void> {
+  phaseId: string, events: CompletionEvent[], requireApproval = false): Promise<void> {
   const targetIndex = workflow.phaseOrder.indexOf(phaseId);
   for (const gateId of workflow.phaseOrder.slice(0, targetIndex)) {
     const gate = workflow.phases[gateId].gate;
@@ -103,7 +103,13 @@ export async function assertApprovalFreshness(workspaceRoot: string, task: TaskR
     const approval = gate.validation.approvalResult ?? 'approved';
     if (Object.entries(gate.nextByResult ?? {}).some(([result, target]) => result !== approval && target === phaseId)) continue;
     const latest = events.filter(event => event.phase === gateId).at(-1);
-    if (!latest || latest.result !== approval) continue; // Prerequisite authorization is enforced separately.
+    if (!latest || latest.result !== approval) {
+      if (requireApproval) throw new Error(`Validation prerequisite ${gateId} requires its latest approved decision before ${phaseId}.`);
+      continue;
+    }
+    if (requireApproval && !latest.evaluatedArtifacts?.length && !latest.validationReportFile) {
+      throw new Error(`Validation prerequisite ${gateId} has no retained evidence. Revalidate before proceeding.`);
+    }
     let artifacts = latest.evaluatedArtifacts;
     if (!artifacts && latest.validationReportFile) {
       const report = ValidationReportSchema.parse(parse(await readFile(await resolveContainedPath(getActiveTaskRoot(workspaceRoot, task.id), latest.validationReportFile), 'utf8')));

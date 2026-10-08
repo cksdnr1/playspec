@@ -361,7 +361,7 @@ export class PlaySpecCore {
         throw new Error(`Required output "${artifactPath}" is missing, empty, not a regular file, or outside the workspace: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
     }
-    await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId));
+    await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId), true);
     const validation = await validateGateReport({ workspaceRoot: this.workspaceRoot, task, phaseId, definition,
       variables: this.resolveAndAssertRequiredVariables(task, workflow, phaseId, definition), result });
     if (nextPhase === null) {
@@ -434,7 +434,7 @@ export class PlaySpecCore {
       };
       await assertArtifactHashes(this.workspaceRoot, evaluatedArtifacts);
       await assertArtifactHashes(taskRoot, evaluatedArtifacts.map(a => ({ path: a.snapshotFile, sha256: a.sha256 })));
-      await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId));
+      await assertApprovalFreshness(this.workspaceRoot, task, workflow.definition, phaseId, await this.completionLedgerStore.listEvents(taskId), true);
       const completionEvent = await this.writeCompletionEvent({
         evaluatedArtifacts: validation ? evaluatedArtifacts : undefined,
         validationReportFile,
@@ -632,6 +632,7 @@ export class PlaySpecCore {
       throw new InvalidRecoveryTargetError(targetPhaseId, workflow.id, workflow.phaseOrder);
     }
 
+    await assertApprovalFreshness(this.workspaceRoot, task, workflow, targetPhaseId, await this.completionLedgerStore.listEvents(taskId), true);
     const previousPhase = task.currentPhase;
     await this.taskStore.updateTask(taskId, { currentPhase: targetPhaseId });
 
