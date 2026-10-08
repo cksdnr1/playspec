@@ -600,6 +600,9 @@ export class PlaySpecCore {
       const updated: HarnessRecord = {
         ...existing,
         taskId: task.id,
+        attemptCount: 0,
+        lastResult: null,
+        lastFailureReason: null,
         blocked: false,
         circuitBreaker: false,
         updatedAt: now,
@@ -1235,7 +1238,10 @@ Use the rollback safe point above for state rollback context. This markdown is a
     const harnessPath = getHarnessRecordPath(this.workspaceRoot, task.id);
     try {
       const content = await readTextFile(harnessPath);
-      return HarnessRecordSchema.parse(parseYaml(content) as unknown);
+      const record = HarnessRecordSchema.parse(parseYaml(content) as unknown);
+      return record.phaseId === phaseId
+        ? record
+        : this.createDefaultHarnessRecord(task.id, phaseId, record.resetEvents);
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
         return this.createDefaultHarnessRecord(task.id, phaseId);
