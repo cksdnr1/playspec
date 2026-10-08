@@ -70,9 +70,10 @@ import type {
   TaskLinkMutationResult,
   PhaseFeedbackFailurePolicy,
 } from '#core/types.js';
-import { getHarnessRecordPath } from '#utils/paths.js';
+import { getActiveTaskRoot, getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
 import { resolveContainedPath } from '#utils/contained-path.js';
+import { assertSafeTaskId } from '#utils/task-id.js';
 
 const DEFAULT_HARNESS_RETRY_BUDGET = 3;
 const CONTEXT_SUMMARY_MAX_LENGTH = 240;
@@ -119,6 +120,10 @@ export class PlaySpecCore {
   }
 
   async addContextRef(taskId: string, contextPath: string): Promise<boolean> {
+    return this.withTaskWriteLock(taskId, () => this.addContextRefLocked(taskId, contextPath));
+  }
+
+  private async addContextRefLocked(taskId: string, contextPath: string): Promise<boolean> {
     if (path.isAbsolute(contextPath)) {
       throw new AbsoluteContextPathError(contextPath);
     }
@@ -152,7 +157,11 @@ export class PlaySpecCore {
     return true;
   }
 
-  async addTaskLink(
+  async addTaskLink(sourceTaskId: string, targetTaskId: string, type: TaskLinkType): Promise<TaskLinkMutationResult> {
+    return this.withTaskWriteLock(sourceTaskId, () => this.addTaskLinkLocked(sourceTaskId, targetTaskId, type));
+  }
+
+  private async addTaskLinkLocked(
     sourceTaskId: string,
     targetTaskId: string,
     type: TaskLinkType
@@ -193,7 +202,11 @@ export class PlaySpecCore {
     return { sourceTaskId, targetTaskId, type, changed: true };
   }
 
-  async removeTaskLink(
+  async removeTaskLink(sourceTaskId: string, targetTaskId: string, type?: TaskLinkType): Promise<TaskLinkMutationResult> {
+    return this.withTaskWriteLock(sourceTaskId, () => this.removeTaskLinkLocked(sourceTaskId, targetTaskId, type));
+  }
+
+  private async removeTaskLinkLocked(
     sourceTaskId: string,
     targetTaskId: string,
     type?: TaskLinkType
@@ -271,11 +284,29 @@ export class PlaySpecCore {
     return this.rollbackManager.executeGitRollback(task);
   }
 
-  async completePhase(
+  async completePhase(taskId: string, options: CompletePhaseOptions = {}): Promise<CompletionResult> {
+    return this.withTaskWriteLock(taskId, () => this.completePhaseLocked(taskId, options));
+  }
+
+  private withTaskWriteLock<T>(taskId: string, action: () => Promise<T>): Promise<T> {
+    assertSafeTaskId(taskId);
+    return withWriteLock(getActiveTaskRoot(this.workspaceRoot, taskId), action);
+  }
+
+  private async completePhaseLocked(
     taskId: string,
     options: CompletePhaseOptions = {}
   ): Promise<CompletionResult> {
     const task = await this.taskStore.getTask(taskId);
+    if (options.requestId !== undefined) {
+      if (!options.requestId || options.requestId.length > 128) throw new Error('requestId must contain 1 to 128 characters.');
+      const prior = (await this.completionLedgerStore.listEvents(taskId)).find(event => event.requestId === options.requestId);
+      if (prior) {
+        if ((options.expectedPhaseId !== undefined && options.expectedPhaseId !== prior.phase) ||
+            (options.result !== undefined && options.result !== prior.result)) throw new Error('requestId was already used for a different completion.');
+        return this.replayCompletion(task, prior);
+      }
+    }
     this.assertTaskIsActive(task);
 
     const workflow = await this.workflowLoader.resolve(task.workflow);
@@ -312,7 +343,7 @@ export class PlaySpecCore {
       contextMode,
     });
 
-    return withWriteLock(taskRoot, async () => {
+    {
       const snapshotFiles = await this.writeSnapshots(
         task,
         phaseId,
@@ -345,6 +376,7 @@ export class PlaySpecCore {
       );
       const statusAfterCompletion = nextPhase === null ? 'completed' : 'active';
       const completionEvent = await this.writeCompletionEvent({
+        requestId: options.requestId,
         task,
         definition,
         phaseId,
@@ -408,12 +440,28 @@ export class PlaySpecCore {
         completionEvent,
         ...(feedback !== undefined ? { feedback } : {}),
       };
-    });
+    }
   }
 
   async listCompletionEvents(taskId: string): Promise<CompletionEvent[]> {
     await this.taskStore.getTask(taskId);
     return this.completionLedgerStore.listEvents(taskId);
+  }
+
+  private async replayCompletion(task: TaskRecord, event: CompletionEvent): Promise<CompletionResult> {
+    const projection = { ...task, status: event.statusAfterCompletion, currentPhase: event.nextPhase };
+    const workflow = await this.workflowLoader.resolve(task.workflow);
+    const definition = workflow.definition.phases[event.phase];
+    const isWorkflowComplete = event.statusAfterCompletion === 'completed' && event.nextPhase === null;
+    return {
+      taskId: task.id, workflow: task.workflow, completedPhase: event.phase, completedPhaseId: event.phase,
+      previousPhaseId: event.previousPhase, nextPhase: event.nextPhase, nextPhaseId: event.nextPhase,
+      status: event.statusAfterCompletion, taskStatus: event.statusAfterCompletion, isWorkflowComplete,
+      evidenceFiles: event.evidenceFiles, snapshotFiles: event.snapshotFiles,
+      finalizedArtifacts: definition ? await this.resolveFinalizedArtifacts(projection, workflow, event.phase, definition) : [],
+      completionRecordPath: event.markdownFile, operatorGuidance: this.buildCompletionOperatorGuidance(projection, isWorkflowComplete),
+      completionEvent: event, reviewFile: event.reviewFile, ...(event.feedback ? { feedback: event.feedback } : {}),
+    };
   }
 
   async readCompletionMarkdown(taskId: string, completionId: string): Promise<string> {
@@ -517,7 +565,11 @@ export class PlaySpecCore {
     };
   }
 
-  async setCurrentPhase(
+  async setCurrentPhase(taskId: string, targetPhaseId: string): Promise<SetCurrentPhaseResult> {
+    return this.withTaskWriteLock(taskId, () => this.setCurrentPhaseLocked(taskId, targetPhaseId));
+  }
+
+  private async setCurrentPhaseLocked(
     taskId: string,
     targetPhaseId: string
   ): Promise<SetCurrentPhaseResult> {
@@ -1068,6 +1120,7 @@ export class PlaySpecCore {
   }
 
   private async writeCompletionEvent(input: {
+    requestId?: string;
     task: TaskRecord;
     definition: PhaseDefinition;
     phaseId: string;
@@ -1091,6 +1144,7 @@ export class PlaySpecCore {
       `${id}-${safeFilePart(input.phaseId)}${input.result ? `-${safeFilePart(eventType)}` : ''}.md`
     );
     const event: CompletionEvent = {
+      ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
       id,
       sequence,
       taskId: input.task.id,
@@ -1219,7 +1273,7 @@ Use the rollback safe point above for state rollback context. This markdown is a
   }
 
   private getAbsoluteTaskRoot(task: TaskRecord): string {
-    return path.join(this.workspaceRoot, task.paths.taskRoot);
+    return getActiveTaskRoot(this.workspaceRoot, task.id);
   }
 
   private async resolveHarnessPhaseId(task: TaskRecord, phaseId?: string): Promise<string> {

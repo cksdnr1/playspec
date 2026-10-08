@@ -491,12 +491,14 @@ program
   .option('--with-review', 'Persist a review record', false)
   .option('--quiet', 'Suppress the compact Context Header', false)
   .option('--result <value>', 'Result value for result-bearing phases (required in non-interactive mode)')
+  .option('--expected-phase <id>', 'Reject completion if the current phase changed')
+  .option('--request-id <id>', 'Deduplicate retries of the same completion request')
   .option('--no-copy', 'Do not copy the next prompt to clipboard after completion')
   .option('--with-evolution-context', 'Include read-only evolution context summaries and write a completion context snapshot', false)
   .option('--context-mode <mode>', 'Context mode for completion prompt snapshots and the rendered next prompt')
-  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string; copy: boolean; withEvolutionContext: boolean; contextMode?: string }) => {
+  .action(async (opts: { task?: string; withReview: boolean; quiet: boolean; result?: string; copy: boolean; withEvolutionContext: boolean; contextMode?: string; expectedPhase?: string; requestId?: string }) => {
     try {
-      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result, !opts.copy, opts.withEvolutionContext, opts.contextMode);
+      await runComplete(process.cwd(), opts.task, opts.withReview, opts.quiet, opts.result, !opts.copy, opts.withEvolutionContext, opts.contextMode, opts.expectedPhase, opts.requestId);
     } catch (err) {
       handleError(err);
     }

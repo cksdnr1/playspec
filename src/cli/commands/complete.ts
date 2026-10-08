@@ -42,11 +42,13 @@ export async function runComplete(
   noCopy?: boolean,
   withEvolutionContext?: boolean,
   contextModeOption?: string,
+  expectedPhaseIdOption?: string,
+  requestId?: string,
 ): Promise<void> {
   const store = new YamlTaskStore(workspaceRoot);
   const resolver = new ActiveTaskResolver(workspaceRoot, store);
   const task = await resolver.resolveTask(taskIdOption);
-  if (task.status !== 'active') {
+  if (task.status !== 'active' && !requestId) {
     throw new TaskNotActiveError(task.id, task.status);
   }
 
@@ -59,7 +61,7 @@ export async function runComplete(
   let completedPhaseLabel: string | undefined;
   let nextPhaseLabel: string | undefined;
 
-  if (result === undefined) {
+  if (result === undefined && task.status === 'active') {
     const workflowLoader = new WorkflowLoader(workspaceRoot);
     const phaseResolver = new PhaseResolver();
     const workflow = await workflowLoader.load(task.workflow);
@@ -80,6 +82,10 @@ export async function runComplete(
   const core = new PlaySpecCore(workspaceRoot, store);
   const contextMode = normalizePromptContextMode(contextModeOption);
   const completionResult = await core.completePhase(task.id, {
+    requestId,
+    expectedPhaseId: expectedPhaseIdOption ?? (task.status === 'active'
+      ? task.currentPhase ?? (await new WorkflowLoader(workspaceRoot).load(task.workflow)).phaseOrder[0]
+      : undefined),
     withReview,
     result,
     withEvolutionContext,

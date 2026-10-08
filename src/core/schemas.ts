@@ -252,6 +252,7 @@ export const CompletionFeedbackResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export const CompletionEventSchema = z.object({
+  requestId: z.string().min(1).max(128).optional(),
   id: z.string(),
   sequence: z.number().int().positive(),
   taskId: z.string(),

@@ -406,6 +406,7 @@ export interface PromptRenderOptions {
 }
 
 export interface CompletePhaseOptions {
+  requestId?: string;
   withReview?: boolean;
   result?: string;
   withEvolutionContext?: boolean;
@@ -494,6 +495,7 @@ export interface CompletionResult {
 }
 
 export interface CompletionEvent {
+  requestId?: string;
   id: string;
   sequence: number;
   taskId: TaskId;
