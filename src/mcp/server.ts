@@ -659,17 +659,21 @@ export function buildMcpServer(workspaceRoot: string): McpServer {
 
   server.tool(
     'playspec_complete_phase',
-    'Complete the current workflow phase. Requires taskId or sessionId. Pass expectedPhaseId to assert which phase you intend to complete; if the workflow has advanced, completion is rejected instead of completing the wrong phase.',
+    'Complete the current workflow phase. Requires taskId or sessionId. Requires expectedPhaseId from the rendered/current phase and a unique requestId for this logical completion. Reuse the same requestId on retries. If the workflow has advanced, completion is rejected.',
     {
       ...taskContextWithEvolution,
       withReview: z.boolean().optional(),
       result: z.string().optional(),
-      expectedPhaseId: z.string().optional(),
-      requestId: z.string().min(1).max(128).optional(),
+      expectedPhaseId: z.string().trim().min(1),
+      requestId: z.string().trim().min(1).max(128),
     },
     async (args) => {
       try {
         const { core, taskId } = await resolveScopedTask(args);
+        if (typeof args.expectedPhaseId !== 'string' || !args.expectedPhaseId.trim() ||
+            typeof args.requestId !== 'string' || !args.requestId.trim() || args.requestId.length > 128) {
+          throw new Error('playspec_complete_phase requires expectedPhaseId and requestId. Read the current phase, choose a unique requestId, and reuse that ID when retrying this completion.');
+        }
         const completionResult = await core.completePhase(taskId, {
           withReview: args.withReview,
           result: args.result,

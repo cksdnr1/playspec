@@ -1117,7 +1117,7 @@ phases:
         sessionId: 'mcp.explicit-workspace',
         workspaceRoot: workspace.dir,
       });
-      const completed = await completeHandler({ taskId, workspaceRoot: workspace.dir });
+      const completed = await completeHandler({ taskId, workspaceRoot: workspace.dir, expectedPhaseId: '1', requestId: 'explicit-complete' });
       const evidence = await evidenceHandler({ taskId, workspaceRoot: workspace.dir });
       const evidenceFiles = parseToolJson(evidence)['evidenceFiles'] as string[];
       const evidenceDirEntries = await readdir(path.join(
@@ -1280,6 +1280,7 @@ exit 1
           path: 'context/lifecycle.md',
         });
         const problemCompleted = await completeHandler({
+          expectedPhaseId: 'problem', requestId: 'problemCompleted',
           workspaceRoot: workspace.dir,
           sessionId: 'mcp.lifecycle',
         });
@@ -1289,10 +1290,12 @@ exit 1
           contextMode: 'strict',
         });
         const missingGateResult = await completeHandler({
+          expectedPhaseId: 'gate', requestId: 'missingGateResult',
           workspaceRoot: workspace.dir,
           sessionId: 'mcp.lifecycle',
         });
         const gateCompleted = await completeHandler({
+          expectedPhaseId: 'gate', requestId: 'gateCompleted',
           workspaceRoot: workspace.dir,
           sessionId: 'mcp.lifecycle',
           result: 'approved',
@@ -1312,6 +1315,7 @@ exit 1
           generatedId: 'mcp_lifecycle_proposal',
         });
         const finalCompleted = await completeHandler({
+          expectedPhaseId: 'final', requestId: 'finalCompleted',
           workspaceRoot: workspace.dir,
           sessionId: 'mcp.lifecycle',
           withEvolutionContext: true,
@@ -1471,7 +1475,7 @@ exit 1
     const { taskId } = await initWorkspaceWithFeedbackTask();
     const handler = getRegisteredToolHandler('playspec_complete_phase');
 
-    const result = await handler({ taskId, result: 'approved' });
+    const result = await handler({ taskId, result: 'approved', expectedPhaseId: 'validate', requestId: 'feedback-complete' });
     const body = parseToolJson(result);
 
     expect(result.isError).toBeUndefined();
@@ -1541,7 +1545,7 @@ phases:
     const getTaskHandler = getRegisteredToolHandler('playspec_get_task');
     const listTasksHandler = getRegisteredToolHandler('playspec_list_tasks');
 
-    const firstResult = await completeHandler({ taskId });
+    const firstResult = await completeHandler({ taskId, expectedPhaseId: 'draft', requestId: 'draft-complete' });
     expect(firstResult.isError, firstResult.content[0].text).toBeUndefined();
     const firstBody = parseToolJson(firstResult);
     expect(firstBody['taskId']).toBe(taskId);
@@ -1556,7 +1560,7 @@ phases:
       validNextMcpCalls: expect.arrayContaining(['playspec_render_next_prompt', 'playspec_complete_phase']),
     });
 
-    const finalResult = await completeHandler({ taskId });
+    const finalResult = await completeHandler({ taskId, expectedPhaseId: 'finish', requestId: 'finish-complete' });
     expect(finalResult.isError, finalResult.content[0].text).toBeUndefined();
     const finalBody = parseToolJson(finalResult);
     expect(finalBody['taskId']).toBe(taskId);
@@ -1639,7 +1643,7 @@ phases:
     await execa('git', ['init'], { cwd: workspace.dir });
 
     const completeHandler = getRegisteredToolHandler('playspec_complete_phase');
-    const result = await completeHandler({ taskId });
+    const result = await completeHandler({ taskId, expectedPhaseId: 'finish', requestId: 'missing-artifact' });
     const task = await store.getTask(taskId);
 
     expect(result.isError).toBe(true);
@@ -1753,6 +1757,7 @@ phases:
     const getHandler = getRegisteredToolHandler('playspec_get_evolution_proposal');
 
     const completed = await completeHandler({
+      expectedPhaseId: '1', requestId: 'proposal-complete',
       sessionId: 'mcp.codex',
       withEvolutionContext: true,
       contextMode: 'compact',
@@ -2346,10 +2351,37 @@ describe('MCP server process', () => {
   await store.updateTask(taskId, { currentPhase: 'tech_spec_validate' });
   await execa('git', ['init', '-q'], { cwd: workspace.dir });
   const handler = getRegisteredToolHandler('playspec_complete_phase');
-  const missing = await handler({ taskId, result: 'approved' });
+  const missing = await handler({ taskId, result: 'approved', expectedPhaseId: 'tech_spec_validate', requestId: 'evidence-complete' });
   expect(missing.isError).toBe(true); expect(missing.content[0].text).toContain('Validation report is required');
   expect((await store.getTask(taskId)).phaseHistory).toEqual([]);
   await writeGateReport(workspace.dir, taskId, 'tech_spec_validate');
-  const accepted = await handler({ taskId, result: 'approved' });
+  const accepted = await handler({ taskId, result: 'approved', expectedPhaseId: 'tech_spec_validate', requestId: 'evidence-complete' });
   expect(accepted.isError).toBeUndefined(); expect((await store.getTask(taskId)).currentPhase).toBe('implementation_plan_create');
  });
+
+
+it('requires MCP completion guards in schema and direct handler, and deduplicates retries', async () => {
+  const { taskId, store } = await initWorkspaceWithTask('Guarded Completion');
+  await execa('git', ['init', '-q'], { cwd: workspace.dir });
+  const spy = vi.spyOn(McpServer.prototype, 'tool');
+  try {
+    buildMcpServer(workspace.dir);
+    const call = spy.mock.calls.find(call => call[0] === 'playspec_complete_phase')!;
+    const schema = call[2] as Record<string, { safeParse: (value: unknown) => { success: boolean } }>;
+    expect(schema.expectedPhaseId.safeParse(undefined).success).toBe(false);
+    expect(schema.requestId.safeParse(undefined).success).toBe(false);
+  } finally { spy.mockRestore(); }
+  const handler = getRegisteredToolHandler('playspec_complete_phase');
+  for (const args of [{ taskId }, { taskId, expectedPhaseId: '1' }, { taskId, requestId: 'x' }]) {
+    const result = await handler(args); expect(result.isError).toBe(true); expect(result.content[0].text).toContain('requires expectedPhaseId and requestId');
+  }
+  expect((await store.getTask(taskId)).phaseHistory).toHaveLength(0);
+  const args = { taskId, expectedPhaseId: '1', requestId: 'once' };
+  const results = await Promise.all([handler(args), handler({ ...args, requestId: 'other' })]);
+  expect(results.filter(result => !result.isError)).toHaveLength(1);
+  const successful = results.find(result => !result.isError)!;
+  const successfulId = (parseToolJson(successful).completionEvent as { requestId: string }).requestId;
+  const replay = await handler({ ...args, requestId: successfulId });
+  expect(replay.isError).toBeUndefined(); expect((await store.getTask(taskId)).phaseHistory).toHaveLength(1);
+  expect((parseToolJson(replay).completionEvent as { id: string }).id).toBe((parseToolJson(successful).completionEvent as { id: string }).id);
+});

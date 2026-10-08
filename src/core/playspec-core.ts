@@ -39,10 +39,6 @@ import { RollbackManager } from '#core/rollback-manager.js';
 import { EvolutionContextReader } from '#evolution/context-reader.js';
 import { CompletionFeedbackCapture } from '#core/completion-feedback-capture.js';
 import type { CompletionFeedbackCaptureInput } from '#core/completion-feedback-capture.js';
-import {
-  ValidationFeedbackExtractionError,
-  ValidationFeedbackExtractor,
-} from '#evolution/validation-feedback-extractor.js';
 import { DEFAULT_PROMPT_CONTEXT_MODE, writePromptArtifactMetadata } from '#core/prompt-metadata.js';
 import { assertRequiredVariables } from '#core/required-variables.js';
 import type {
@@ -52,7 +48,6 @@ import type {
   WorkflowDefinition,
   ResolvedWorkflow,
   CompletionResult,
-  CompletionFeedbackFailureStage,
   CompletionFeedbackResult,
   CompletionOperatorGuidance,
   EvidenceResult,
@@ -73,7 +68,6 @@ import type {
   HarnessRecord,
   TaskLinkType,
   TaskLinkMutationResult,
-  PhaseFeedbackFailurePolicy,
 } from '#core/types.js';
 import { getActiveTaskRoot, getHarnessRecordPath } from '#utils/paths.js';
 import { readTextFile, withWriteLock, writeTextFileAtomic } from '#utils/fs.js';
