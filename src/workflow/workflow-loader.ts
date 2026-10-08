@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { WorkflowDefinitionSchema } from './workflow-schema.js';
-import { TemplateNotFoundError } from '#core/errors.js';
+import { TemplateNotFoundError, MissingResultMappingError, InvalidRoutingTargetError } from '#core/errors.js';
 import type {
   PhaseDefinition,
   ResolvedWorkflow,
@@ -102,16 +102,33 @@ export class WorkflowLoader {
   }
 
   async validateWorkflowDefinition(definition: WorkflowDefinition, templateDir: string): Promise<void> {
+    if (definition.phaseOrder.length === 0 || new Set(definition.phaseOrder).size !== definition.phaseOrder.length) {
+      throw new Error(`Workflow ${definition.id} phaseOrder must be nonempty and contain unique phase IDs.`);
+    }
     for (const phaseId of new Set([...definition.phaseOrder, ...Object.keys(definition.phases)])) {
       assertSafeWorkflowPhaseId(definition.id, phaseId);
     }
 
-    for (const phaseId of definition.phaseOrder) {
+    for (const phaseId of new Set([...definition.phaseOrder, ...Object.keys(definition.phases)])) {
       const phase = definition.phases[phaseId];
       if (!phase) {
         throw new Error(`Workflow ${definition.id} phaseOrder references missing phase "${phaseId}".`);
       }
       this.validateFeedbackPhaseReferences(definition, phaseId);
+      if (typeof phase.next === 'string' && (!definition.phases[phase.next] || !definition.phaseOrder.includes(phase.next))) {
+        throw new Error(`Workflow ${definition.id} phase "${phaseId}" next references missing or unordered phase "${phase.next}".`);
+      }
+      const results = phase.gate?.results ?? phase.results;
+      const routes = phase.gate?.nextByResult ?? phase.nextByResult;
+      for (const result of results ?? []) {
+        if (!routes || !Object.hasOwn(routes, result)) throw new MissingResultMappingError(phaseId, result);
+      }
+      for (const [result, target] of Object.entries(routes ?? {})) {
+        if (!results?.includes(result)) throw new Error(`Workflow ${definition.id} phase "${phaseId}" has an undeclared result mapping "${result}".`);
+        if (!definition.phases[target] || !definition.phaseOrder.includes(target)) {
+          throw new InvalidRoutingTargetError(phaseId, result, target, definition.id);
+        }
+      }
       const templatePath = this.resolveTemplatePath(templateDir, phase.template);
       try {
         await access(templatePath);
