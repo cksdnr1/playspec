@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { withWriteLock } from '#utils/fs.js';
+import { getEvolutionFeedbackThreadsRoot } from '#utils/paths.js';
 import {
   FeedbackThreadSchema,
 } from './schemas.js';
@@ -30,6 +33,12 @@ export class FeedbackThreadUpdater {
   }
 
   async update(input: FeedbackThreadUpdateInput): Promise<FeedbackThreadUpdateResult> {
+    const target = input.evolutionTargetPhaseId ?? input.feedbackConfig.evolutionTargetPhaseId;
+    const key = hashCanonical(buildDedupeKey(input, target));
+    return withWriteLock(path.join(getEvolutionFeedbackThreadsRoot(this.workspaceRoot), '.locks', key), () => this.updateLocked(input));
+  }
+
+  private async updateLocked(input: FeedbackThreadUpdateInput): Promise<FeedbackThreadUpdateResult> {
     const now = input.createdAt ?? new Date().toISOString();
     const feedbackConfig = {
       ...input.feedbackConfig,
