@@ -498,6 +498,7 @@ export interface CompletionResult {
 }
 
 export interface CompletionEvent {
+  evaluatedArtifacts?: Array<{ path: string; sha256: string; snapshotFile: string }>;
   validationReportFile?: string;
   requestId?: string;
   id: string;
