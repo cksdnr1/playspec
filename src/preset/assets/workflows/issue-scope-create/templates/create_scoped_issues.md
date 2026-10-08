@@ -91,3 +91,5 @@ After writing `{{CREATED_ISSUES_FILE}}`, run:
 ```bash
 playspec complete
 ```
+
+{{include:rules/global_rules.md}}

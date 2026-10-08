@@ -1,7 +1,7 @@
 # {{STEP_NUMBER}}. {{STEP_TITLE}} — {{TASK_TITLE}}
 
 Task:
-Implement focused test coverage for already-implemented phase behavior and record the result.
+Verify already-implemented behavior with relevant existing tests; add focused coverage only for material gaps and record the result.
 
 Variables:
 - FEATURE_SLUG=`{{FEATURE_SLUG}}`
@@ -20,13 +20,13 @@ Source of truth:
 - Current repository code and existing test conventions.
 
 Scope rules:
-- Add focused coverage for the implemented behavior and routing/edge cases called out in the plan.
+- Inspect existing coverage for the changed behavior and planned failure paths. Add focused tests only where meaningful coverage is missing; existing relevant tests may suffice.
 - Avoid broad test rewrites.
 - Do not treat method, helper, interface, callback, or data-structure existence as end-to-end implementation.
 - Tests should exercise active entry point -> state/data update -> propagation/callback/event -> reset/clear -> user-visible behavior where feasible.
 
 Output requirements:
-- Add or update focused tests.
+- Add or update tests when a meaningful gap exists; otherwise explain which existing coverage suffices.
 - Run the relevant test command.
 - Update `{{RESULT_FILE}}` with tests changed, commands run, results, failures, and remaining gaps.
 

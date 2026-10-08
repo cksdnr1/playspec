@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "taskId": "workflow_prompt_contracts",
+  "phaseId": "tech_spec_validate",
+  "result": "approved",
+  "score": 97,
+  "blockers": [],
+  "summary": "Contract review found no implementation-blocking ambiguity. Scores concern specification readiness only; this is single-reviewer evaluation with no claim of erased memory or independent model execution.",
+  "dimensions": [
+    {
+      "name": "correctness",
+      "earned": 29,
+      "max": 30,
+      "evidence": [
+        "docs/features/workflow_prompt_contracts/spec.md"
+      ],
+      "deductions": "No live multi-model measurement; deterministic contradictions are directly evidenced."
+    },
+    {
+      "name": "contracts",
+      "earned": 25,
+      "max": 25,
+      "evidence": [
+        "docs/features/workflow_prompt_contracts/spec.md"
+      ],
+      "deductions": "Full credit: Phase IDs, threshold literals, artifact schemas and updater boundaries are explicit."
+    },
+    {
+      "name": "failure_handling",
+      "earned": 19,
+      "max": 20,
+      "evidence": [
+        "docs/features/workflow_prompt_contracts/spec.md"
+      ],
+      "deductions": "Ungated final review relies on explicit prompt stop conditions, not a new runtime gate."
+    },
+    {
+      "name": "testability",
+      "earned": 14,
+      "max": 15,
+      "evidence": [
+        "docs/features/workflow_prompt_contracts/spec.md"
+      ],
+      "deductions": "Render, gate and corpus-grader tests are planned; no external inference key is available."
+    },
+    {
+      "name": "scope",
+      "earned": 10,
+      "max": 10,
+      "evidence": [
+        "docs/features/workflow_prompt_contracts/spec.md"
+      ],
+      "deductions": "Full credit: Prompt/template/evaluation-only scope preserves routing and core mutation rules."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/features/workflow_prompt_contracts/spec.md",
+      "sha256": "a2b8e2b01ab01d21e4099110cd1c3efa839fa481d116b27e7faadd56c76f967a"
+    }
+  ],
+  "cause": {
+    "category": "artifact_quality_issue",
+    "confidence": "medium",
+    "summary": "Review limits concern external inference measurements and ungated review semantics."
+  }
+}

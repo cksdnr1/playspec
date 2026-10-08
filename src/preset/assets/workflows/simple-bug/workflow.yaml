@@ -23,7 +23,7 @@ phaseOrder:
 phases:
   "1":
     title: "Phase 1 — Investigation & Fix"
-    template: phase_template.md
+    template: investigation_fix.md
     requiredVariables:
       - FEATURE_SLUG
       - PHASE_NUMBER
@@ -34,7 +34,7 @@ phases:
       - WORKFLOW_TYPE
   "2":
     title: "Phase 2 — Verification"
-    template: phase_template.md
+    template: verification.md
     requiredVariables:
       - FEATURE_SLUG
       - PHASE_NUMBER

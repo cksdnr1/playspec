@@ -8,6 +8,7 @@
     "rootDir": "src",
     "baseUrl": ".",
     "paths": {
+      "#eval/*.js": ["./evals/workflow-prompts/*.ts"],
       "#core/*.js": ["./src/core/*.js"],
       "#storage/*.js": ["./src/storage/*.js"],
       "#workflow/*.js": ["./src/workflow/*.js"],
