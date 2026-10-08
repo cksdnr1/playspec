@@ -807,18 +807,10 @@ export class PlaySpecCore {
     workflow: WorkflowDefinition,
     currentPhaseId: string
   ): string | null {
-    try {
-      const { phaseId } = this.phaseResolver.resolveNextPhase(
-        { ...task, currentPhase: currentPhaseId },
-        workflow
-      );
-      return phaseId;
-    } catch (error) {
-      if (error instanceof PhaseNotFoundError) {
-        return null;
-      }
-      throw error;
-    }
+    const current = workflow.phases[currentPhaseId];
+    if (current?.next === null) return null;
+    if (current?.next === undefined && workflow.phaseOrder.at(-1) === currentPhaseId) return null;
+    return this.phaseResolver.resolveNextPhase({ ...task, currentPhase: currentPhaseId }, workflow).phaseId;
   }
 
   private resolveValidationTemplate(workflow: ResolvedWorkflow, definition: PhaseDefinition): string | undefined {
