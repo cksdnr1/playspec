@@ -350,7 +350,7 @@ describe('MigrationRunner — auto mode', () => {
           {
             fieldPath: 'currentPhase',
             previousValue: null,
-            proposedValue: 'planning',
+            proposedValue: '2',
             evidenceSources: ['docs/phase_plan.md'],
             confidence: 'medium',
             reason: 'inferred from phase plan',
@@ -372,7 +372,7 @@ describe('MigrationRunner — auto mode', () => {
           requiresReview: true,
           fieldPath: 'currentPhase',
           previousValue: null,
-          proposedValue: 'planning',
+          proposedValue: '2',
         },
       ]
     );
@@ -383,10 +383,10 @@ describe('MigrationRunner — auto mode', () => {
     const content = await readFile(reportPath, 'utf-8');
     const report = parseYaml(content) as { actionReports: { status: string; reason?: string }[] };
     expect(report.actionReports[0]?.status).toBe('skipped');
-    expect(report.actionReports[0]?.reason).toContain('medium');
+    expect(report.actionReports[0]?.reason).toContain('deterministic');
   });
 
-  it('applies deterministic add_context_ref in auto mode', async () => {
+  it('skips add_context_ref in auto mode without a deterministic state promotion', async () => {
     const store = new YamlTaskStore(workspace.dir);
     const planId = generateMigrationId();
     const plan = makePlan(
@@ -416,7 +416,7 @@ describe('MigrationRunner — auto mode', () => {
     await runner.run(plan);
 
     const taskAfter = await store.getTask(taskId);
-    expect(taskAfter.contextRefs?.some((r) => r.path === 'docs/total_spec.md')).toBe(true);
+    expect(taskAfter.contextRefs ?? []).toEqual([]);
   });
 });
 
